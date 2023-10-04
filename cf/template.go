@@ -6,16 +6,8 @@ import (
 	"strings"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
-	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
-	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/tidwall/sjson"
 )
-
-type PostgresDefinition struct {
-	Secret   *Resource[*secretsmanager.Secret]
-	Databse  *application_pb.Database
-	Postgres *application_pb.Database_Postgres
-}
 
 type Template struct {
 	template *cloudformation.Template

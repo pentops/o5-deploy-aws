@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
+	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	elbv2 "github.com/awslabs/goformation/v7/cloudformation/elasticloadbalancingv2"
 	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
 	"github.com/pentops/o5-go/application/v1/application_pb"
@@ -30,11 +31,12 @@ const (
 )
 
 type globalData struct {
-	uniquePrefix string
+	appName string
 
 	databases map[string]DatabaseReference
 }
 
+// DatabaseReference is used to look up parameters ECS Task Definitions
 type DatabaseReference struct {
 	Definition     *application_pb.Database
 	SecretResource *Resource[*secretsmanager.Secret]
@@ -45,8 +47,8 @@ func BuildCloudformation(app *application_pb.Application, env *environment_pb.En
 	stackTemplate := NewTemplate()
 
 	global := globalData{
-		uniquePrefix: app.Name,
-		databases:    map[string]DatabaseReference{},
+		appName:   app.Name,
+		databases: map[string]DatabaseReference{},
 	}
 
 	runtimes := map[string]*RuntimeService{}
@@ -65,16 +67,51 @@ func BuildCloudformation(app *application_pb.Application, env *environment_pb.En
 
 			addStackResource(stackTemplate.template, secret)
 
-			global.databases[database.Name] = DatabaseReference{
+			ref := DatabaseReference{
 				SecretResource: secret,
 				Definition:     database,
 			}
+			global.databases[database.Name] = ref
 
-			stackTemplate.postgresDatabases = append(stackTemplate.postgresDatabases, &PostgresDefinition{
+			def := &PostgresDefinition{
 				Databse:  database,
 				Postgres: dbType.Postgres,
 				Secret:   secret,
-			})
+			}
+
+			if dbType.Postgres.MigrateContainer != nil {
+				if dbType.Postgres.MigrateContainer.Name == "" {
+					dbType.Postgres.MigrateContainer.Name = "migrate"
+				}
+
+				// TODO: This takes the global var, which is added to by other
+				// databases, so this whole step should be deferred until all
+				// other databases (and likely other resources) are created.
+				// Not likely to be a problem any time soon so long as THIS
+				// database is added early which it is.
+				migrationContainer, err := buildContainer(global, dbType.Postgres.MigrateContainer)
+				if err != nil {
+					return nil, err
+				}
+				addLogs(migrationContainer, fmt.Sprintf("%s/migrate", global.appName))
+				name := fmt.Sprintf("MigrationTaskDefinition%s", strings.Title(database.Name))
+
+				migrationTaskDefinition := NewResource(name, &ecs.TaskDefinition{
+					ContainerDefinitions: []ecs.TaskDefinition_ContainerDefinition{
+						*migrationContainer,
+					},
+					Family:                  String(fmt.Sprintf("%s_migrate_%s", global.appName, database.Name)),
+					ExecutionRoleArn:        cloudformation.RefPtr(ECSTaskExecutionRoleParameter),
+					RequiresCompatibilities: []string{"EC2"},
+				})
+				addStackResource(stackTemplate.template, migrationTaskDefinition)
+				def.MigrationTaskOutputName = String(name)
+				stackTemplate.template.Outputs[name] = cloudformation.Output{
+					Value: migrationTaskDefinition.Ref(),
+				}
+			}
+
+			stackTemplate.postgresDatabases = append(stackTemplate.postgresDatabases, def)
 
 		default:
 			return nil, fmt.Errorf("unknown database type %T", dbType)

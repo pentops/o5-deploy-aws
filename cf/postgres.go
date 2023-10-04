@@ -12,14 +12,33 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	cfsecretsmanager "github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
 	sq "github.com/elgris/sqrl"
 	"github.com/lib/pq"
 	"github.com/pentops/log.go/log"
+	"github.com/pentops/o5-go/application/v1/application_pb"
 	"gopkg.daemonl.com/sqrlx"
 )
 
-func (d *Deployer) migrateData(ctx context.Context, stackName string, template *Template) error {
+type PostgresDefinition struct {
+	Secret                  *Resource[*cfsecretsmanager.Secret]
+	Databse                 *application_pb.Database
+	Postgres                *application_pb.Database_Postgres
+	MigrationTaskOutputName *string
+}
+
+func (d *Deployer) migrateData(ctx context.Context, stackName string, template *Template, rotateExisting bool) error {
+
+	// TODO: Make this lazy or pre check if it is required.
+	remoteStack, err := d.getOneStack(ctx, stackName)
+	if err != nil {
+		return err
+	}
+	if remoteStack == nil {
+		return errors.New("stack not found")
+	}
 
 	for _, db := range template.postgresDatabases {
 		ctx := log.WithFields(ctx, map[string]interface{}{
@@ -27,22 +46,87 @@ func (d *Deployer) migrateData(ctx context.Context, stackName string, template *
 			"serverGroup": db.Postgres.ServerGroup,
 		})
 		log.Debug(ctx, "Upsert Database")
-		if err := d.upsertPostgresDatabase(ctx, db); err != nil {
+		if err := d.upsertPostgresDatabase(ctx, db, rotateExisting); err != nil {
 			return err
 		}
 
-		// Migration not actually done yet
+		if db.MigrationTaskOutputName != nil {
+			var migrationTaskARN string
+			for _, output := range remoteStack.Outputs {
+				if *db.MigrationTaskOutputName == *output.OutputKey {
+					migrationTaskARN = *output.OutputValue
+					break
+				}
+			}
+			if migrationTaskARN == "" {
+				return fmt.Errorf("migration task output %q not found", *db.MigrationTaskOutputName)
+			}
 
-		// TODO:
-		// - Create a task definition in CF
-		// - Pass through the ARN
-		// - Start and wait for the task
+			if err := d.runMigrationTask(ctx, migrationTaskARN); err != nil {
+				return err
+			}
+		}
+
 	}
 
 	log.WithField(ctx, "count", len(template.postgresDatabases)).Info("Migrated Postgres Databases")
 
 	return nil
 
+}
+
+func (d *Deployer) runMigrationTask(ctx context.Context, taskARN string) error {
+	task, err := d.DeployerClients.ECS.RunTask(ctx, &ecs.RunTaskInput{
+		TaskDefinition: String(taskARN),
+		Cluster:        String(d.AWS.EcsClusterName),
+		Count:          aws.Int32(1),
+	})
+	if err != nil {
+		return err
+	}
+
+	for {
+		state, err := d.DeployerClients.ECS.DescribeTasks(ctx, &ecs.DescribeTasksInput{
+			Tasks:   []string{*task.Tasks[0].TaskArn},
+			Cluster: String(d.AWS.EcsClusterName),
+		})
+		if err != nil {
+			return err
+		}
+
+		if len(state.Tasks) != 1 {
+			return fmt.Errorf("expected 1 task, got %d", len(state.Tasks))
+		}
+		task := state.Tasks[0]
+		log.WithFields(ctx, map[string]interface{}{
+			"status": *task.LastStatus,
+		}).Debug("waiting for task to stop")
+
+		if *task.LastStatus != "STOPPED" {
+			time.Sleep(time.Second)
+			continue
+		}
+
+		fmt.Printf("TASK: %s\n", jsonFormat(task))
+
+		if len(state.Tasks[0].Containers) != 1 {
+			return fmt.Errorf("expected 1 container, got %d", len(state.Tasks[0].Containers))
+		}
+		container := state.Tasks[0].Containers[0]
+		if container.ExitCode == nil {
+			return fmt.Errorf("task stopped with no exit code: %s", *container.Reason)
+		}
+		if *container.ExitCode != 0 {
+			return fmt.Errorf("exit code was %d", *container.ExitCode)
+		}
+		return nil
+	}
+
+}
+
+func jsonFormat(v interface{}) string {
+	b, _ := json.MarshalIndent(v, "", "  ")
+	return string(b)
 }
 
 type DBSecret struct {
@@ -75,7 +159,7 @@ func (d *Deployer) rootPostgresCredentials(ctx context.Context, serverGroup stri
 	return secretVal, nil
 }
 
-func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *PostgresDefinition) error {
+func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *PostgresDefinition, rotateExisting bool) error {
 
 	rootSecret, err := d.rootPostgresCredentials(ctx, spec.Postgres.ServerGroup)
 	if err != nil {
@@ -144,6 +228,9 @@ func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *PostgresDef
 		if err != nil {
 			return err
 		}
+	}
+	if count == 1 && !rotateExisting {
+		return nil
 	}
 
 	if len(spec.Postgres.DbExtensions) > 0 {

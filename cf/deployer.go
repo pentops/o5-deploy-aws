@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
@@ -49,11 +50,19 @@ type SecretsManagerAPI interface {
 	UpdateSecret(ctx context.Context, params *secretsmanager.UpdateSecretInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.UpdateSecretOutput, error)
 }
 
+type ECSAPI interface {
+	RunTask(ctx context.Context, params *ecs.RunTaskInput, optFns ...func(*ecs.Options)) (*ecs.RunTaskOutput, error)
+
+	// used by the TasksStoppedWaiter
+	ecs.DescribeTasksAPIClient
+}
+
 type DeployerClients struct {
 	CloudFormation CloudFormationAPI
 	SNS            SNSAPI
 	ELB            ELBV2API
 	SecretsManager SecretsManagerAPI
+	ECS            ECSAPI
 }
 
 func NewDeployerClientsFromConfig(awsConfig aws.Config) DeployerClients {
@@ -62,6 +71,7 @@ func NewDeployerClientsFromConfig(awsConfig aws.Config) DeployerClients {
 		SNS:            sns.NewFromConfig(awsConfig),
 		ELB:            elasticloadbalancingv2.NewFromConfig(awsConfig),
 		SecretsManager: secretsmanager.NewFromConfig(awsConfig),
+		ECS:            ecs.NewFromConfig(awsConfig),
 	}
 }
 
@@ -131,7 +141,7 @@ func (d *Deployer) createNewDeployment(ctx context.Context, stackName string, te
 
 	// Migrate
 	log.Info(ctx, "Migrate Database")
-	if err := d.migrateData(ctx, stackName, template); err != nil {
+	if err := d.migrateData(ctx, stackName, template, true); err != nil {
 		return err
 	}
 
@@ -184,7 +194,7 @@ func (d *Deployer) updateDeployment(ctx context.Context, stackName string, templ
 
 	// Migrate
 	log.Info(ctx, "Data Migrate")
-	if err := d.migrateData(ctx, stackName, template); err != nil {
+	if err := d.migrateData(ctx, stackName, template, false); err != nil {
 		return err
 	}
 

@@ -32,83 +32,17 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 	serviceLinks := []string{}
 
 	for _, def := range runtime.Containers {
-		container := &ecs.TaskDefinition_ContainerDefinition{
-			Name:      def.Name,
-			Essential: Bool(true),
-
-			// TODO: Make these a Parameter,
-			// then Map from App * Env
-			// ... does CF do math?
-			Cpu:    Int(128),
-			Memory: Int(128),
-		}
 
 		// TODO: This should probably be configured
 		serviceEndpoints = append(serviceEndpoints, fmt.Sprintf("%s:8080", def.Name))
 		serviceLinks = append(serviceLinks, fmt.Sprintf("%s:%s", def.Name, def.Name))
 
-		switch src := def.Source.(type) {
-		case *application_pb.Container_Image_:
-			tag := src.Image.Tag
-			if tag == "" {
-				tag = cloudformation.Ref(VersionTagParameter)
-			}
-			container.Image = cloudformation.Join("", []string{
-				cloudformation.Ref(ECSRepoParameter),
-				"/",
-				src.Image.Name,
-				":",
-				tag,
-			})
-
-		case *application_pb.Container_ImageUrl:
-			container.Image = src.ImageUrl
-
-		default:
-			return nil, fmt.Errorf("unknown source type: %T", src)
+		container, err := buildContainer(globals, def)
+		if err != nil {
+			return nil, err
 		}
 
-		for _, envVar := range def.EnvVars {
-			switch varType := envVar.Spec.(type) {
-			case *application_pb.EnvironmentVariable_Value:
-				container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
-					Name:  String(envVar.Name),
-					Value: String(varType.Value),
-				})
-
-			case *application_pb.EnvironmentVariable_Blobstore:
-				return nil, fmt.Errorf("BlobStore not implemented")
-			case *application_pb.EnvironmentVariable_Database:
-				dbName := varType.Database.DatabaseName
-				dbDef, ok := globals.databases[dbName]
-				if !ok {
-					return nil, fmt.Errorf("unknown database: %s", dbName)
-				}
-				jsonKey := "dburl"
-				versionStage := ""
-				versionID := ""
-				container.Secrets = append(container.Secrets, ecs.TaskDefinition_Secret{
-					Name: envVar.Name,
-					ValueFrom: cloudformation.Join(":", []string{
-						*dbDef.SecretResource.Ref(),
-						jsonKey,
-						versionStage,
-						versionID,
-					}),
-				})
-
-				continue
-			case *application_pb.EnvironmentVariable_EnvMap:
-				return nil, fmt.Errorf("EnvMap not implemented")
-			case *application_pb.EnvironmentVariable_FromEnv:
-				return nil, fmt.Errorf("FromEnv not implemented")
-
-			default:
-				return nil, fmt.Errorf("unknown env var type: %T", varType)
-			}
-
-		}
-
+		addLogs(container, globals.appName)
 		defs = append(defs, container)
 	}
 
@@ -128,10 +62,12 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		Links: serviceLinks,
 	}
 
+	addLogs(runtimeSidecar, globals.appName)
+
 	defs = append(defs, runtimeSidecar)
 
 	taskDefinition := NewResource(runtime.Name, &ecs.TaskDefinition{
-		Family:                  String(fmt.Sprintf("%s_%s", globals.uniquePrefix, runtime.Name)),
+		Family:                  String(fmt.Sprintf("%s_%s", globals.appName, runtime.Name)),
 		ExecutionRoleArn:        cloudformation.RefPtr(ECSTaskExecutionRoleParameter),
 		RequiresCompatibilities: []string{"EC2"},
 		//TaskRoleArn:  Set on Apply
@@ -146,13 +82,106 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 	policy := NewPolicyBuilder()
 
 	return &RuntimeService{
-		Prefix:         globals.uniquePrefix,
+		Prefix:         globals.appName,
 		Name:           runtime.Name,
 		Containers:     defs,
 		TaskDefinition: taskDefinition,
 		Service:        service,
 		Policy:         policy,
 	}, nil
+}
+
+func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
+	def.LogConfiguration = &ecs.TaskDefinition_LogConfiguration{
+		LogDriver: "awslogs",
+		Options: map[string]string{
+			// TODO: Include an Environment prefix using parameters
+			"awslogs-group":         fmt.Sprintf("ecs/%s/%s", "TODO", rsPrefix),
+			"awslogs-create-group":  "true",
+			"awslogs-region":        cloudformation.Ref("AWS::Region"),
+			"awslogs-stream-prefix": fmt.Sprintf("%s", def.Name),
+		},
+	}
+}
+
+func buildContainer(globals globalData, def *application_pb.Container) (*ecs.TaskDefinition_ContainerDefinition, error) {
+	container := &ecs.TaskDefinition_ContainerDefinition{
+		Name:      def.Name,
+		Essential: Bool(true),
+
+		// TODO: Make these a Parameter,
+		// then Map from App * Env
+		// ... does CF do math?
+		Cpu:    Int(128),
+		Memory: Int(128),
+	}
+
+	if len(def.Command) > 0 {
+		container.Command = def.Command
+	}
+
+	switch src := def.Source.(type) {
+	case *application_pb.Container_Image_:
+		tag := src.Image.Tag
+		if tag == "" {
+			tag = cloudformation.Ref(VersionTagParameter)
+		}
+		container.Image = cloudformation.Join("", []string{
+			cloudformation.Ref(ECSRepoParameter),
+			"/",
+			src.Image.Name,
+			":",
+			tag,
+		})
+
+	case *application_pb.Container_ImageUrl:
+		container.Image = src.ImageUrl
+
+	default:
+		return nil, fmt.Errorf("unknown source type: %T", src)
+	}
+
+	for _, envVar := range def.EnvVars {
+		switch varType := envVar.Spec.(type) {
+		case *application_pb.EnvironmentVariable_Value:
+			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
+				Name:  String(envVar.Name),
+				Value: String(varType.Value),
+			})
+
+		case *application_pb.EnvironmentVariable_Blobstore:
+			return nil, fmt.Errorf("BlobStore not implemented")
+		case *application_pb.EnvironmentVariable_Database:
+			dbName := varType.Database.DatabaseName
+			dbDef, ok := globals.databases[dbName]
+			if !ok {
+				return nil, fmt.Errorf("unknown database: %s", dbName)
+			}
+			jsonKey := "dburl"
+			versionStage := ""
+			versionID := ""
+			container.Secrets = append(container.Secrets, ecs.TaskDefinition_Secret{
+				Name: envVar.Name,
+				ValueFrom: cloudformation.Join(":", []string{
+					*dbDef.SecretResource.Ref(),
+					jsonKey,
+					versionStage,
+					versionID,
+				}),
+			})
+
+			continue
+		case *application_pb.EnvironmentVariable_EnvMap:
+			return nil, fmt.Errorf("EnvMap not implemented")
+		case *application_pb.EnvironmentVariable_FromEnv:
+			return nil, fmt.Errorf("FromEnv not implemented")
+
+		default:
+			return nil, fmt.Errorf("unknown env var type: %T", varType)
+		}
+
+	}
+	return container, nil
 }
 
 func (rs *RuntimeService) Apply(template *cloudformation.Template) {
@@ -192,15 +221,6 @@ func (rs *RuntimeService) Apply(template *cloudformation.Template) {
 	// Not sure who thought it would be a good idea to not use pointers here...
 	defs := make([]ecs.TaskDefinition_ContainerDefinition, len(rs.Containers))
 	for i, def := range rs.Containers {
-		def.LogConfiguration = &ecs.TaskDefinition_LogConfiguration{
-			LogDriver: "awslogs",
-			Options: map[string]string{
-				"awslogs-group":         fmt.Sprintf("ecs/%s/%s/%s", rs.Prefix, rs.Name, def.Name),
-				"awslogs-create-group":  "true",
-				"awslogs-region":        cloudformation.Ref("AWS::Region"),
-				"awslogs-stream-prefix": fmt.Sprintf("%s-%s", rs.Prefix, rs.Name),
-			},
-		}
 		defs[i] = *def
 	}
 	rs.TaskDefinition.Resource.ContainerDefinitions = defs
