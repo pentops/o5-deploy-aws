@@ -1,4 +1,4 @@
-package cf
+package app
 
 import (
 	"fmt"
@@ -19,22 +19,24 @@ type RuntimeService struct {
 	Containers     []*ecs.TaskDefinition_ContainerDefinition
 	Service        *Resource[*ecs.Service]
 
-	HTTPTargetGroup *Resource[*elbv2.TargetGroup]
-	GRPCTargetGroup *Resource[*elbv2.TargetGroup]
+	TargetGroups map[string]*Resource[*elbv2.TargetGroup]
 
 	Policy *PolicyBuilder
+
+	IngressContainer *ecs.TaskDefinition_ContainerDefinition
+
+	ingressEndpoints map[string]struct{}
+
+	spec *application_pb.Runtime
 }
 
 func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*RuntimeService, error) {
 
 	defs := []*ecs.TaskDefinition_ContainerDefinition{}
-	serviceEndpoints := []string{}
 	serviceLinks := []string{}
 
 	for _, def := range runtime.Containers {
 
-		// TODO: This should probably be configured
-		serviceEndpoints = append(serviceEndpoints, fmt.Sprintf("%s:8080", def.Name))
 		serviceLinks = append(serviceLinks, fmt.Sprintf("%s:%s", def.Name, def.Name))
 
 		container, err := buildContainer(globals, def)
@@ -55,10 +57,6 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		PortMappings: []ecs.TaskDefinition_PortMapping{{
 			ContainerPort: Int(8080),
 		}},
-		Environment: []ecs.TaskDefinition_KeyValuePair{{
-			Name:  String("SERVICE_ENDPOINT"),
-			Value: String(strings.Join(serviceEndpoints, ",")),
-		}},
 		Links: serviceLinks,
 	}
 
@@ -75,19 +73,27 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 
 	service := NewResource(runtime.Name, &ecs.Service{
 		Cluster:        String(cloudformation.Ref(ECSClusterParameter)),
-		TaskDefinition: taskDefinition.Ref(),
+		TaskDefinition: String(taskDefinition.Ref()),
 		//	DesiredCount:  Set on Apply
 	})
 
 	policy := NewPolicyBuilder()
 
+	for _, bucket := range globals.buckets {
+		policy.AddBucketReadWrite(bucket.GetAtt("Arn"))
+	}
+
 	return &RuntimeService{
-		Prefix:         globals.appName,
-		Name:           runtime.Name,
-		Containers:     defs,
-		TaskDefinition: taskDefinition,
-		Service:        service,
-		Policy:         policy,
+		spec:             runtime,
+		Prefix:           globals.appName,
+		Name:             runtime.Name,
+		Containers:       defs,
+		TaskDefinition:   taskDefinition,
+		Service:          service,
+		Policy:           policy,
+		TargetGroups:     map[string]*Resource[*elbv2.TargetGroup]{},
+		ingressEndpoints: map[string]struct{}{},
+		IngressContainer: runtimeSidecar,
 	}, nil
 }
 
@@ -99,7 +105,7 @@ func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
 			"awslogs-group":         fmt.Sprintf("ecs/%s/%s", "TODO", rsPrefix),
 			"awslogs-create-group":  "true",
 			"awslogs-region":        cloudformation.Ref("AWS::Region"),
-			"awslogs-stream-prefix": fmt.Sprintf("%s", def.Name),
+			"awslogs-stream-prefix": def.Name,
 		},
 	}
 }
@@ -109,9 +115,8 @@ func buildContainer(globals globalData, def *application_pb.Container) (*ecs.Tas
 		Name:      def.Name,
 		Essential: Bool(true),
 
-		// TODO: Make these a Parameter,
-		// then Map from App * Env
-		// ... does CF do math?
+		// TODO: Make these a Parameter for each size, for the environment to
+		// set
 		Cpu:    Int(128),
 		Memory: Int(128),
 	}
@@ -122,12 +127,19 @@ func buildContainer(globals globalData, def *application_pb.Container) (*ecs.Tas
 
 	switch src := def.Source.(type) {
 	case *application_pb.Container_Image_:
-		tag := src.Image.Tag
-		if tag == "" {
+		var tag string
+		if src.Image.Tag == nil {
 			tag = cloudformation.Ref(VersionTagParameter)
+		} else {
+			tag = *src.Image.Tag
+		}
+
+		registry := cloudformation.Ref(ECSRepoParameter)
+		if src.Image.Registry != nil {
+			registry = *src.Image.Registry
 		}
 		container.Image = cloudformation.Join("", []string{
-			cloudformation.Ref(ECSRepoParameter),
+			registry,
 			"/",
 			src.Image.Name,
 			":",
@@ -150,7 +162,61 @@ func buildContainer(globals globalData, def *application_pb.Container) (*ecs.Tas
 			})
 
 		case *application_pb.EnvironmentVariable_Blobstore:
-			return nil, fmt.Errorf("BlobStore not implemented")
+			bucketName := varType.Blobstore.Name
+			bucketResource, ok := globals.buckets[bucketName]
+			if !ok {
+				return nil, fmt.Errorf("unknown blobstore: %s", bucketName)
+			}
+
+			if !varType.Blobstore.GetS3Direct() {
+				return nil, fmt.Errorf("only S3Direct is supported")
+			}
+
+			var value *string
+			if varType.Blobstore.SubPath == nil {
+				value = cloudformation.JoinPtr("", []string{
+					"s3://",
+					*bucketResource.Resource.BucketName, // This is NOT a real string
+				})
+			} else {
+				value = cloudformation.JoinPtr("", []string{
+					"s3://",
+					*bucketResource.Resource.BucketName, // This is NOT a real string
+					"/",
+					*varType.Blobstore.SubPath,
+				})
+			}
+
+			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
+				Name:  String(envVar.Name),
+				Value: value,
+			})
+			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
+				Name:  String("AWS_REGION"),
+				Value: cloudformation.RefPtr("AWS::Region"),
+			})
+
+		case *application_pb.EnvironmentVariable_Secret:
+			secretName := varType.Secret.SecretName
+			secretDef, ok := globals.secrets[secretName]
+			if !ok {
+				return nil, fmt.Errorf("unknown secret: %s", secretName)
+			}
+
+			jsonKey := varType.Secret.JsonKey
+			versionStage := ""
+			versionID := ""
+
+			container.Secrets = append(container.Secrets, ecs.TaskDefinition_Secret{
+				Name: envVar.Name,
+				ValueFrom: cloudformation.Join(":", []string{
+					secretDef.Ref(),
+					jsonKey,
+					versionStage,
+					versionID,
+				}),
+			})
+
 		case *application_pb.EnvironmentVariable_Database:
 			dbName := varType.Database.DatabaseName
 			dbDef, ok := globals.databases[dbName]
@@ -163,7 +229,7 @@ func buildContainer(globals globalData, def *application_pb.Container) (*ecs.Tas
 			container.Secrets = append(container.Secrets, ecs.TaskDefinition_Secret{
 				Name: envVar.Name,
 				ValueFrom: cloudformation.Join(":", []string{
-					*dbDef.SecretResource.Ref(),
+					dbDef.SecretResource.Ref(),
 					jsonKey,
 					versionStage,
 					versionID,
@@ -173,6 +239,7 @@ func buildContainer(globals globalData, def *application_pb.Container) (*ecs.Tas
 			continue
 		case *application_pb.EnvironmentVariable_EnvMap:
 			return nil, fmt.Errorf("EnvMap not implemented")
+
 		case *application_pb.EnvironmentVariable_FromEnv:
 			return nil, fmt.Errorf("FromEnv not implemented")
 
@@ -184,33 +251,20 @@ func buildContainer(globals globalData, def *application_pb.Container) (*ecs.Tas
 	return container, nil
 }
 
-func (rs *RuntimeService) Apply(template *cloudformation.Template) {
-	template.Parameters[ECSClusterParameter] = cloudformation.Parameter{
-		Type: "String",
+func (rs *RuntimeService) Apply(template *Application) {
+	ingressEndpoints := make([]string, 0, len(rs.ingressEndpoints))
+	for endpoint := range rs.ingressEndpoints {
+		ingressEndpoints = append(ingressEndpoints, endpoint)
 	}
-	template.Parameters[ECSRepoParameter] = cloudformation.Parameter{
-		Type: "String",
-	}
-	template.Parameters[VersionTagParameter] = cloudformation.Parameter{
-		Type: "String",
-	}
-	template.Parameters[ECSTaskExecutionRoleParameter] = cloudformation.Parameter{
-		Type: "String",
-	}
-	template.Parameters[ListenerARNParameter] = cloudformation.Parameter{
-		Type: "String",
-	}
-	template.Parameters[EnvNameParameter] = cloudformation.Parameter{
-		Type: "String",
-	}
-	template.Parameters[VPCParameter] = cloudformation.Parameter{
-		Type: "AWS::EC2::VPC::Id",
-	}
+	rs.IngressContainer.Environment = append(rs.IngressContainer.Environment, ecs.TaskDefinition_KeyValuePair{
+		Name:  String("SERVICE_ENDPOINT"),
+		Value: String(strings.Join(ingressEndpoints, ",")),
+	})
 
 	desiredCountParameter := fmt.Sprintf("DesiredCount%s", rs.Name)
-	template.Parameters[desiredCountParameter] = cloudformation.Parameter{
+	template.AddParameter(desiredCountParameter, cloudformation.Parameter{
 		Type: "Number",
-	}
+	})
 
 	if rs.Service.Overrides == nil {
 		rs.Service.Overrides = map[string]string{}
@@ -225,11 +279,11 @@ func (rs *RuntimeService) Apply(template *cloudformation.Template) {
 	}
 	rs.TaskDefinition.Resource.ContainerDefinitions = defs
 
-	template.Resources[rs.TaskDefinition.Name] = rs.TaskDefinition
-	template.Resources[rs.Service.Name] = rs.Service
+	template.AddResource(rs.TaskDefinition)
+	template.AddResource(rs.Service)
 
 	rolePolicies := rs.Policy.Build(rs.Prefix, rs.Name)
-	role := &iam.Role{
+	role := NewResource(fmt.Sprintf("%sAssume", rs.Name), &iam.Role{
 		AssumeRolePolicyDocument: map[string]interface{}{
 			"Version": "2012-10-17",
 			"Statement": []interface{}{
@@ -247,28 +301,76 @@ func (rs *RuntimeService) Apply(template *cloudformation.Template) {
 		Policies:          rolePolicies,
 		RoleName: cloudformation.JoinPtr("-", []string{
 			cloudformation.Ref("AWS::StackName"),
-			rs.Prefix,
 			rs.Name,
-			"role",
+			"assume-role",
 		}),
-	}
+	})
 
-	taskRoleName := fmt.Sprintf("%sTaskRole", rs.Service.Name)
-	rs.TaskDefinition.Resource.TaskRoleArn = cloudformation.GetAttPtr(taskRoleName, "Arn")
-	template.Resources[taskRoleName] = role
+	rs.TaskDefinition.Resource.TaskRoleArn = String(role.GetAtt("Arn"))
+	template.AddResource(role)
 
-	if rs.HTTPTargetGroup != nil {
-		addStackResource(template, rs.HTTPTargetGroup)
-	}
-	if rs.GRPCTargetGroup != nil {
-		addStackResource(template, rs.GRPCTargetGroup)
+	for _, targetGroup := range rs.TargetGroups {
+		template.AddResource(targetGroup)
 	}
 
 }
 
-func (rs *RuntimeService) LazyHTTPTargetGroup() *Resource[*elbv2.TargetGroup] {
-	if rs.HTTPTargetGroup == nil {
-		rs.HTTPTargetGroup = NewResource("HTTP", &elbv2.TargetGroup{
+func (rs *RuntimeService) AddRoutes(ingress *ListenerRuleSet) error {
+	for _, route := range rs.spec.Routes {
+		targetContainer := O5SidecarContainerName
+		port := route.Port
+		if port == 0 {
+			port = 8080
+		}
+		if route.TargetContainer == "" {
+			route.TargetContainer = rs.spec.Containers[0].Name
+		}
+		if route.BypassIngress {
+			targetContainer = route.TargetContainer
+		} else {
+			rs.ingressEndpoints[fmt.Sprintf("%s:%d", route.TargetContainer, port)] = struct{}{}
+		}
+		targetGroup, err := rs.LazyTargetGroup(route.Protocol, targetContainer, int(port))
+		if err != nil {
+			return err
+		}
+
+		routeRule, err := ingress.AddRoute(targetGroup, route)
+		if err != nil {
+			return err
+		}
+
+		rs.Service.DependsOn(routeRule)
+	}
+
+	return nil
+}
+
+func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol, targetContainer string, port int) (*Resource[*elbv2.TargetGroup], error) {
+	lookupKey := fmt.Sprintf("%s%s", protocol, targetContainer)
+	existing, ok := rs.TargetGroups[lookupKey]
+	if ok {
+		return existing, nil
+	}
+
+	var container *ecs.TaskDefinition_ContainerDefinition
+
+	for _, search := range rs.Containers {
+		if search.Name == targetContainer {
+			container = search
+			break
+		}
+	}
+
+	if container == nil {
+		return nil, fmt.Errorf("container %s not found in service %s", targetContainer, rs.Name)
+	}
+
+	var targetGroupDefinition *elbv2.TargetGroup
+
+	switch protocol {
+	case application_pb.RouteProtocol_ROUTE_PROTOCOL_HTTP:
+		targetGroupDefinition = &elbv2.TargetGroup{
 			VpcId:                      String(cloudformation.Ref(VPCParameter)),
 			Port:                       Int(8080),
 			Protocol:                   String("HTTP"),
@@ -280,20 +382,10 @@ func (rs *RuntimeService) LazyHTTPTargetGroup() *Resource[*elbv2.TargetGroup] {
 			Matcher: &elbv2.TargetGroup_Matcher{
 				HttpCode: String("200,401,404"),
 			},
-		})
-		rs.Service.Resource.LoadBalancers = append(rs.Service.Resource.LoadBalancers, ecs.Service_LoadBalancer{
-			ContainerName:  String(O5SidecarContainerName),
-			ContainerPort:  Int(8080),
-			TargetGroupArn: rs.HTTPTargetGroup.Ref(),
-		})
-	}
-	return rs.HTTPTargetGroup
+		}
 
-}
-
-func (rs *RuntimeService) LazyGRPCTargetGroup() *Resource[*elbv2.TargetGroup] {
-	if rs.GRPCTargetGroup == nil {
-		rs.GRPCTargetGroup = NewResource("GRPC", &elbv2.TargetGroup{
+	case application_pb.RouteProtocol_ROUTE_PROTOCOL_GRPC:
+		targetGroupDefinition = &elbv2.TargetGroup{
 			VpcId:                      String(cloudformation.Ref(VPCParameter)),
 			Port:                       Int(8080),
 			Protocol:                   String("HTTP"),
@@ -306,12 +398,29 @@ func (rs *RuntimeService) LazyGRPCTargetGroup() *Resource[*elbv2.TargetGroup] {
 			Matcher: &elbv2.TargetGroup_Matcher{
 				HttpCode: String("0-99"),
 			},
-		})
-		rs.Service.Resource.LoadBalancers = append(rs.Service.Resource.LoadBalancers, ecs.Service_LoadBalancer{
-			ContainerName:  String(O5SidecarContainerName),
-			ContainerPort:  Int(8080),
-			TargetGroupArn: rs.GRPCTargetGroup.Ref(),
+		}
+	}
+	targetGroupResource := NewResource(lookupKey, targetGroupDefinition)
+	rs.TargetGroups[lookupKey] = targetGroupResource
+
+	rs.Service.Resource.LoadBalancers = append(rs.Service.Resource.LoadBalancers, ecs.Service_LoadBalancer{
+		ContainerName:  String(targetContainer),
+		ContainerPort:  Int(port),
+		TargetGroupArn: String(targetGroupResource.Ref()),
+	})
+
+	found := false
+	for _, portMap := range container.PortMappings {
+		if *portMap.ContainerPort == port {
+			found = true
+			break
+		}
+	}
+	if !found {
+		container.PortMappings = append(container.PortMappings, ecs.TaskDefinition_PortMapping{
+			ContainerPort: Int(port),
 		})
 	}
-	return rs.GRPCTargetGroup
+
+	return targetGroupResource, nil
 }

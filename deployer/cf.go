@@ -1,10 +1,9 @@
-package cf
+package deployer
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	"github.com/aws/smithy-go"
 	protovalidate "github.com/bufbuild/protovalidate-go"
 	"github.com/pentops/log.go/log"
+	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
 
@@ -26,7 +26,8 @@ type Deployer struct {
 	DeployerClients
 	Environment *environment_pb.Environment
 	AWS         *environment_pb.AWS
-	VersionTag  string
+
+	RotateSecrets bool
 
 	takenPriorities map[int]bool
 }
@@ -36,6 +37,7 @@ type CloudFormationAPI interface {
 	CreateStack(ctx context.Context, params *cloudformation.CreateStackInput, optFns ...func(*cloudformation.Options)) (*cloudformation.CreateStackOutput, error)
 	UpdateStack(ctx context.Context, params *cloudformation.UpdateStackInput, optFns ...func(*cloudformation.Options)) (*cloudformation.UpdateStackOutput, error)
 	DeleteStack(ctx context.Context, params *cloudformation.DeleteStackInput, optFns ...func(*cloudformation.Options)) (*cloudformation.DeleteStackOutput, error)
+	CancelUpdateStack(ctx context.Context, params *cloudformation.CancelUpdateStackInput, optFns ...func(*cloudformation.Options)) (*cloudformation.CancelUpdateStackOutput, error)
 }
 
 type SNSAPI interface {
@@ -75,7 +77,7 @@ func NewDeployerClientsFromConfig(awsConfig aws.Config) DeployerClients {
 	}
 }
 
-func NewDeployer(environment *environment_pb.Environment, version string, clients DeployerClients) (*Deployer, error) {
+func NewDeployer(environment *environment_pb.Environment, clients DeployerClients) (*Deployer, error) {
 
 	validator, err := protovalidate.New()
 	if err != nil {
@@ -95,36 +97,46 @@ func NewDeployer(environment *environment_pb.Environment, version string, client
 		Environment:     environment,
 		AWS:             awsTarget,
 		DeployerClients: clients,
-		VersionTag:      version,
 	}, nil
 }
 
-func (d *Deployer) Deploy(ctx context.Context, stackName string, template *Template) error {
+func (d *Deployer) Deploy(ctx context.Context, template *app.Application, cancelUpdates bool) error {
+	stackName := fmt.Sprintf("%s-%s", d.Environment.FullName, template.AppName())
 	ctx = log.WithFields(ctx, map[string]interface{}{
 		"stackName":   stackName,
 		"environment": d.Environment.FullName,
 	})
 
-	remoteStack, err := d.waitForStack(ctx, stackName)
+	remoteStack, err := d.getOneStack(ctx, stackName)
 	if err != nil {
 		return err
 	}
-
 	if remoteStack == nil {
 		return d.createNewDeployment(ctx, stackName, template)
 	}
 
-	return d.updateDeployment(ctx, stackName, template, remoteStack.Parameters)
+	if cancelUpdates && remoteStack.StackStatus == types.StackStatusUpdateInProgress {
+		if err := d.cancelUpdate(ctx, stackName); err != nil {
+			return err
+		}
+	}
+
+	remoteStackStable, err := d.waitForStack(ctx, stackName)
+	if err != nil {
+		return err
+	}
+
+	return d.updateDeployment(ctx, stackName, template, remoteStackStable.Parameters)
 }
 
 type stackParameters struct {
 	name               string
-	template           *Template
+	template           *app.Application
 	scale              int
 	previousParameters []types.Parameter
 }
 
-func (d *Deployer) createNewDeployment(ctx context.Context, stackName string, template *Template) error {
+func (d *Deployer) createNewDeployment(ctx context.Context, stackName string, template *app.Application) error {
 	// Create, scale 0
 	log.Info(ctx, "Create with scale 0")
 	if err := d.createCloudformationStack(ctx, stackParameters{
@@ -162,7 +174,7 @@ func (d *Deployer) createNewDeployment(ctx context.Context, stackName string, te
 	return nil
 }
 
-func (d *Deployer) updateDeployment(ctx context.Context, stackName string, template *Template, previous []types.Parameter) error {
+func (d *Deployer) updateDeployment(ctx context.Context, stackName string, template *app.Application, previous []types.Parameter) error {
 	// Scale Down
 	log.Info(ctx, "Scale Down")
 	if err := d.setScale(ctx, stackParameters{
@@ -194,7 +206,7 @@ func (d *Deployer) updateDeployment(ctx context.Context, stackName string, templ
 
 	// Migrate
 	log.Info(ctx, "Data Migrate")
-	if err := d.migrateData(ctx, stackName, template, false); err != nil {
+	if err := d.migrateData(ctx, stackName, template, d.RotateSecrets); err != nil {
 		return err
 	}
 
@@ -242,7 +254,14 @@ func (d *Deployer) getOneStack(ctx context.Context, stackName string) (*types.St
 
 	remoteStack := res.Stacks[0]
 	return &remoteStack, nil
+}
 
+func (d *Deployer) cancelUpdate(ctx context.Context, stackName string) error {
+	log.Info(ctx, "Cancel Update")
+	_, err := d.CloudFormation.CancelUpdateStack(ctx, &cloudformation.CancelUpdateStackInput{
+		StackName: aws.String(stackName),
+	})
+	return err
 }
 
 func (d *Deployer) waitForStack(ctx context.Context, stackName string) (*types.Stack, error) {
@@ -384,112 +403,6 @@ func (d *Deployer) deleteStack(ctx context.Context, name string) error {
 	})
 
 	return err
-}
-
-func (d *Deployer) applyInitialParameters(ctx context.Context, stack stackParameters) ([]types.Parameter, error) {
-
-	mappedPreviousParameters := make(map[string]string, len(stack.previousParameters))
-	for _, param := range stack.previousParameters {
-		mappedPreviousParameters[*param.ParameterKey] = *param.ParameterValue
-	}
-
-	parameters := make([]types.Parameter, 0, len(stack.template.template.Parameters))
-
-	for key, param := range stack.template.template.Parameters {
-		if param.Default != nil {
-			continue
-		}
-		parameter := types.Parameter{
-			ParameterKey: aws.String(key),
-		}
-		switch {
-		case key == ListenerARNParameter:
-			parameter.ParameterValue = aws.String(d.AWS.ListenerArn)
-
-		case key == ECSClusterParameter:
-			parameter.ParameterValue = aws.String(d.AWS.EcsClusterName)
-
-		case key == ECSRepoParameter:
-			parameter.ParameterValue = aws.String(d.AWS.EcsRepo)
-
-		case key == ECSTaskExecutionRoleParameter:
-			parameter.ParameterValue = aws.String(d.AWS.EcsTaskExecutionRole)
-
-		case key == VersionTagParameter:
-			parameter.ParameterValue = aws.String(d.VersionTag)
-
-		case key == EnvNameParameter:
-			parameter.ParameterValue = aws.String(d.Environment.FullName)
-
-		case key == VPCParameter:
-			parameter.ParameterValue = aws.String(d.AWS.VpcId)
-
-		case strings.HasPrefix(key, "ListenerRulePriority"):
-
-			existingPriority, ok := mappedPreviousParameters[key]
-			if ok {
-				parameter.ParameterValue = aws.String(existingPriority)
-			} else {
-				priority, err := d.nextAvailableListenerRulePriority(ctx)
-				if err != nil {
-					return nil, err
-				}
-
-				parameter.ParameterValue = aws.String(fmt.Sprintf("%d", priority))
-			}
-
-		case strings.HasPrefix(key, "DesiredCount"):
-			parameter.ParameterValue = Stringf("%d", stack.scale)
-
-		default:
-			return nil, fmt.Errorf("unknown parameter %s", key)
-		}
-		parameters = append(parameters, parameter)
-	}
-
-	return parameters, nil
-}
-
-func (d *Deployer) nextAvailableListenerRulePriority(ctx context.Context) (int, error) {
-	if d.takenPriorities == nil {
-		d.takenPriorities = make(map[int]bool)
-		var marker *string
-		for {
-			rules, err := d.ELB.DescribeRules(ctx, &elbv2.DescribeRulesInput{
-				ListenerArn: aws.String(d.AWS.ListenerArn),
-				Marker:      marker,
-			})
-			if err != nil {
-				return 0, err
-			}
-
-			for _, rule := range rules.Rules {
-				if *rule.Priority == "default" {
-					continue
-				}
-				priority, err := strconv.Atoi(*rule.Priority)
-				if err != nil {
-					return 0, err
-				}
-
-				d.takenPriorities[priority] = true
-			}
-
-			marker = rules.NextMarker
-			if marker == nil {
-				break
-			}
-		}
-	}
-
-	for i := 1000; i < 2000; i++ {
-		if _, ok := d.takenPriorities[i]; !ok {
-			d.takenPriorities[i] = true
-			return i, nil
-		}
-	}
-
-	return 0, errors.New("no available listener rule priorities")
 }
 
 func (d *Deployer) createCloudformationStack(ctx context.Context, stack stackParameters) error {

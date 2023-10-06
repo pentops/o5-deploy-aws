@@ -1,4 +1,4 @@
-package cf
+package app
 
 import (
 	"github.com/awslabs/goformation/v7/cloudformation"
