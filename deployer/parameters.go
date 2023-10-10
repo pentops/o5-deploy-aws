@@ -12,114 +12,99 @@ import (
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
 
-func (d *Deployer) applyInitialParameters(ctx context.Context, stack stackParameters) ([]types.Parameter, error) {
-
-	mappedPreviousParameters := make(map[string]string, len(stack.previousParameters))
-	for _, param := range stack.previousParameters {
-		mappedPreviousParameters[*param.ParameterKey] = *param.ParameterValue
-	}
-
-	stackParameters := stack.template.Template().Parameters
-	parameters := make([]types.Parameter, 0, len(stackParameters))
-
-	for key, param := range stackParameters {
-		if param.Default != nil {
-			continue
-		}
-		parameter := types.Parameter{
-			ParameterKey: aws.String(key),
-		}
-		switch {
-		case key == app.ListenerARNParameter:
-			parameter.ParameterValue = aws.String(d.AWS.ListenerArn)
-
-		case key == app.HostHeaderParameter:
-			hh := "*.*"
-			if d.AWS.HostHeader != nil {
-				hh = *d.AWS.HostHeader
-			}
-			parameter.ParameterValue = aws.String(hh)
-
-		case key == app.ECSClusterParameter:
-			parameter.ParameterValue = aws.String(d.AWS.EcsClusterName)
-
-		case key == app.ECSRepoParameter:
-			parameter.ParameterValue = aws.String(d.AWS.EcsRepo)
-
-		case key == app.ECSTaskExecutionRoleParameter:
-			parameter.ParameterValue = aws.String(d.AWS.EcsTaskExecutionRole)
-
-		case key == app.EnvNameParameter:
-			parameter.ParameterValue = aws.String(d.Environment.FullName)
-
-		case key == app.VPCParameter:
-			parameter.ParameterValue = aws.String(d.AWS.VpcId)
-
-		case strings.HasPrefix(key, "ListenerRulePriority"):
-			group := application_pb.RouteGroup_ROUTE_GROUP_NORMAL
-			if strings.HasPrefix(key, "ListenerRulePriorityFirst") {
-				group = application_pb.RouteGroup_ROUTE_GROUP_FIRST
-			} else if strings.HasPrefix(key, "ListenerRulePriorityFallback") {
-				group = application_pb.RouteGroup_ROUTE_GROUP_FALLBACK
-			}
-			existingPriority, ok := mappedPreviousParameters[key]
-			if ok {
-				parameter.ParameterValue = aws.String(existingPriority)
-			} else {
-				priority, err := d.nextAvailableListenerRulePriority(ctx, group)
-				if err != nil {
-					return nil, err
-				}
-
-				parameter.ParameterValue = aws.String(fmt.Sprintf("%d", priority))
-			}
-
-		case strings.HasPrefix(key, "DesiredCount"):
-			parameter.ParameterValue = app.Stringf("%d", stack.scale)
-
-		default:
-			return nil, fmt.Errorf("unknown parameter %s", key)
-		}
-		parameters = append(parameters, parameter)
-	}
-
-	return parameters, nil
+type ParameterResolver interface {
+	WellKnownParameter(name string) (string, bool)
+	CustomEnvVar(name string) (string, bool)
+	NextAvailableListenerRulePriority(group application_pb.RouteGroup) (int, error)
+	DesiredCount() int
 }
 
-func (d *Deployer) nextAvailableListenerRulePriority(ctx context.Context, group application_pb.RouteGroup) (int, error) {
-	if d.takenPriorities == nil {
-		d.takenPriorities = make(map[int]bool)
-		var marker *string
-		for {
-			rules, err := d.ELB.DescribeRules(ctx, &elbv2.DescribeRulesInput{
-				ListenerArn: aws.String(d.AWS.ListenerArn),
-				Marker:      marker,
-			})
-			if err != nil {
-				return 0, err
-			}
+func resolveParameter(ctx context.Context, param *app.Parameter, resolver ParameterResolver) (*types.Parameter, error) {
 
-			for _, rule := range rules.Rules {
-				if *rule.Priority == "default" {
-					continue
-				}
-				priority, err := strconv.Atoi(*rule.Priority)
-				if err != nil {
-					return 0, err
-				}
+	parameter := &types.Parameter{
+		ParameterKey: aws.String(param.Name),
+	}
+	switch param.Source {
+	case app.ParameterSourceDefault:
+		if param.Default == nil {
+			return nil, errors.New("default parameter source requires a default value")
+		}
+		parameter.ParameterValue = aws.String(*param.Default)
 
-				d.takenPriorities[priority] = true
-			}
+	case app.ParameterSourceWellKnown:
+		value, ok := resolver.WellKnownParameter(param.Name)
+		if !ok {
+			return nil, fmt.Errorf("unknown well known parameter: %s", param.Name)
+		}
+		parameter.ParameterValue = aws.String(value)
 
-			marker = rules.NextMarker
-			if marker == nil {
-				break
+	case app.ParameterSourceRulePriority:
+		if len(param.Args) != 1 {
+			return nil, errors.New("invalid parameter source args")
+		}
+
+		group, ok := param.Args[0].(application_pb.RouteGroup)
+		if !ok {
+			return nil, errors.New("invalid parameter source args")
+		}
+		priority, err := resolver.NextAvailableListenerRulePriority(group)
+		if err != nil {
+			return nil, err
+		}
+
+		parameter.ParameterValue = aws.String(fmt.Sprintf("%d", priority))
+
+	case app.ParameterSourceDesiredCount:
+		parameter.ParameterValue = app.Stringf("%d", resolver.DesiredCount())
+
+	case app.ParameterSourceEnvVar:
+		key, ok := param.Args[0].(string)
+		if !ok {
+			return nil, errors.New("invalid parameter source args")
+		}
+		val, ok := resolver.CustomEnvVar(key)
+		if !ok {
+			return nil, fmt.Errorf("unknown env var: %s", key)
+		}
+		parameter.ParameterValue = aws.String(val)
+
+	default:
+		return nil, fmt.Errorf("unknown parameter source (%v) %s", param.Source, param.Name)
+	}
+	return parameter, nil
+}
+
+type deployerResolver struct {
+	takenPriorities map[int]bool
+	wellKnown       map[string]string
+	custom          []*environment_pb.CustomVariable
+	desiredCount    int
+}
+
+func (dr *deployerResolver) DesiredCount() int {
+	return dr.desiredCount
+}
+
+func (dr *deployerResolver) CustomEnvVar(name string) (string, bool) {
+	for _, envVar := range dr.custom {
+		if envVar.Name == name {
+			var val string
+			switch sourceType := envVar.Src.(type) {
+			case *environment_pb.CustomVariable_Value:
+				val = sourceType.Value
+			case *environment_pb.CustomVariable_Join_:
+				val = strings.Join(sourceType.Join.Values, sourceType.Join.Delimiter)
 			}
+			return val, true
 		}
 	}
+	return "", false
+}
 
+func (dr *deployerResolver) NextAvailableListenerRulePriority(group application_pb.RouteGroup) (int, error) {
 	var groupRange [2]int
 
 	switch group {
@@ -135,11 +120,94 @@ func (d *Deployer) nextAvailableListenerRulePriority(ctx context.Context, group 
 	}
 
 	for i := groupRange[0]; i < groupRange[1]; i++ {
-		if _, ok := d.takenPriorities[i]; !ok {
-			d.takenPriorities[i] = true
+		if _, ok := dr.takenPriorities[i]; !ok {
+			dr.takenPriorities[i] = true
 			return i, nil
 		}
 	}
 
 	return 0, errors.New("no available listener rule priorities")
+}
+
+func (dr *deployerResolver) WellKnownParameter(name string) (string, bool) {
+	val, ok := dr.wellKnown[name]
+	return val, ok
+}
+
+func (d *Deployer) applyInitialParameters(ctx context.Context, stack stackParameters) ([]types.Parameter, error) {
+
+	mappedPreviousParameters := make(map[string]string, len(stack.previousParameters))
+	for _, param := range stack.previousParameters {
+		mappedPreviousParameters[*param.ParameterKey] = *param.ParameterValue
+	}
+
+	stackParameters := stack.template.Parameters
+	parameters := make([]types.Parameter, 0, len(stackParameters))
+
+	takenPriorities, err := d.loadTakenPriorities(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	hostHeader := "*.*"
+	if d.AWS.HostHeader != nil {
+		hostHeader = *d.AWS.HostHeader
+	}
+
+	dr := &deployerResolver{
+		takenPriorities: takenPriorities,
+		wellKnown: map[string]string{
+			app.ListenerARNParameter:          d.AWS.ListenerArn,
+			app.HostHeaderParameter:           hostHeader,
+			app.ECSClusterParameter:           d.AWS.EcsClusterName,
+			app.ECSRepoParameter:              d.AWS.EcsRepo,
+			app.ECSTaskExecutionRoleParameter: d.AWS.EcsTaskExecutionRole,
+			app.EnvNameParameter:              d.Environment.FullName,
+			app.VPCParameter:                  d.AWS.VpcId,
+		},
+		custom:       d.Environment.Vars,
+		desiredCount: stack.scale,
+	}
+
+	for _, param := range stackParameters {
+		parameter, err := resolveParameter(ctx, param, dr)
+		if err != nil {
+			return nil, fmt.Errorf("parameter '%s': %w", param.Name, err)
+		}
+		parameters = append(parameters, *parameter)
+	}
+
+	return parameters, nil
+}
+
+func (d *Deployer) loadTakenPriorities(ctx context.Context) (map[int]bool, error) {
+	takenPriorities := make(map[int]bool)
+	var marker *string
+	for {
+		rules, err := d.ELB.DescribeRules(ctx, &elbv2.DescribeRulesInput{
+			ListenerArn: aws.String(d.AWS.ListenerArn),
+			Marker:      marker,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		for _, rule := range rules.Rules {
+			if *rule.Priority == "default" {
+				continue
+			}
+			priority, err := strconv.Atoi(*rule.Priority)
+			if err != nil {
+				return nil, err
+			}
+
+			takenPriorities[priority] = true
+		}
+
+		marker = rules.NextMarker
+		if marker == nil {
+			break
+		}
+	}
+	return takenPriorities, nil
 }

@@ -72,13 +72,14 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		return err
 	}
 
-	built, err := app.BuildApplication(appConfig, flagConfig.version)
+	app, err := app.BuildApplication(appConfig, flagConfig.version)
 	if err != nil {
 		return err
 	}
+	built := app.Build()
 
 	if flagConfig.dryRun {
-		tpl := built.Template()
+		tpl := built.Template
 		yaml, err := tpl.YAML()
 		if err != nil {
 			return err

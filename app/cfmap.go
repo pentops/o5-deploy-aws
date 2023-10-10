@@ -29,8 +29,6 @@ const (
 	O5SidecarImageName     = "ghcr.io/pentops/o5-runtime-sidecar:latest"
 )
 
-var titleCase = cases.Title(language.English)
-
 type globalData struct {
 	appName string
 
@@ -49,32 +47,29 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 
 	stackTemplate := NewApplication(app.Name)
 
-	template := stackTemplate.template
-	template.Parameters[ECSClusterParameter] = cloudformation.Parameter{
-		Type: "String",
-	}
-	template.Parameters[ECSRepoParameter] = cloudformation.Parameter{
-		Type: "String",
-	}
-	template.Parameters[VersionTagParameter] = cloudformation.Parameter{
-		// This doesn't need to be a parameter, but will make debugging easier
-		Type:    "String",
-		Default: String(versionTag),
-	}
-	template.Parameters[ECSTaskExecutionRoleParameter] = cloudformation.Parameter{
-		Type: "String",
-	}
-	template.Parameters[ListenerARNParameter] = cloudformation.Parameter{
-		Type: "String",
-	}
-	template.Parameters[HostHeaderParameter] = cloudformation.Parameter{
-		Type: "String",
-	}
-	template.Parameters[EnvNameParameter] = cloudformation.Parameter{
-		Type: "String",
-	}
-	template.Parameters[VPCParameter] = cloudformation.Parameter{
-		Type: "AWS::EC2::VPC::Id",
+	for _, key := range []string{
+		ECSClusterParameter,
+		ECSRepoParameter,
+		ECSTaskExecutionRoleParameter,
+		ListenerARNParameter,
+		HostHeaderParameter,
+		EnvNameParameter,
+		VPCParameter,
+		VersionTagParameter,
+	} {
+		parameter := &Parameter{
+			Name:   key,
+			Type:   "String",
+			Source: ParameterSourceWellKnown,
+		}
+		switch key {
+		case VersionTagParameter:
+			parameter.Default = String(versionTag)
+			parameter.Source = ParameterSourceDefault
+		case VPCParameter:
+			parameter.Type = "AWS::EC2::VPC::Id"
+		}
+		stackTemplate.AddParameter(parameter)
 	}
 
 	global := globalData{
@@ -145,11 +140,12 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 				Secret:   secret,
 			}
 
-			secretName := fmt.Sprintf("DatabaseSecret%s", titleCase.String(database.Name))
+			secretName := fmt.Sprintf("DatabaseSecret%s", CleanParameterName(database.Name))
 			def.SecretOutputName = String(secretName)
-			stackTemplate.template.Outputs[secretName] = cloudformation.Output{
+			stackTemplate.AddOutput(&Output{
+				Name:  secretName,
 				Value: secret.Ref(),
-			}
+			})
 
 			if dbType.Postgres.MigrateContainer != nil {
 				if dbType.Postgres.MigrateContainer.Name == "" {
@@ -165,12 +161,12 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 				if err != nil {
 					return nil, err
 				}
-				addLogs(migrationContainer, fmt.Sprintf("%s/migrate", global.appName))
-				name := fmt.Sprintf("MigrationTaskDefinition%s", titleCase.String(database.Name))
+				addLogs(migrationContainer.Container, fmt.Sprintf("%s/migrate", global.appName))
+				name := fmt.Sprintf("MigrationTaskDefinition%s", CleanParameterName(database.Name))
 
 				migrationTaskDefinition := NewResource(name, &ecs.TaskDefinition{
 					ContainerDefinitions: []ecs.TaskDefinition_ContainerDefinition{
-						*migrationContainer,
+						*migrationContainer.Container,
 					},
 					Family:                  String(fmt.Sprintf("%s_migrate_%s", global.appName, database.Name)),
 					ExecutionRoleArn:        cloudformation.RefPtr(ECSTaskExecutionRoleParameter),
@@ -178,9 +174,10 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 				})
 				stackTemplate.AddResource(migrationTaskDefinition)
 				def.MigrationTaskOutputName = String(name)
-				stackTemplate.template.Outputs[name] = cloudformation.Output{
+				stackTemplate.AddOutput(&Output{
+					Name:  name,
 					Value: migrationTaskDefinition.Ref(),
-				}
+				})
 			}
 
 			stackTemplate.postgresDatabases = append(stackTemplate.postgresDatabases, def)

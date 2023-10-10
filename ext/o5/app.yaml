@@ -9,12 +9,8 @@ secrets:
 
 runtimes:
   - name: main
-    routes:
-      - prefix: "/githubwebhook"
-        protocol: ROUTE_PROTOCOL_HTTP
-        target_container: main
-        bypass_ingress: true
-        port: 8080
+    subscriptions:
+      - name: "webhook-github"
     containers:
       - name: main
         demand: DEMAND_LIGHT
@@ -23,17 +19,11 @@ runtimes:
             registry: ghcr.io/pentops
         command: [serve]
         envVars:
-          - name: WEBHOOK_PORT
-            value: "8080"
           - name: ENV_CONFIG
             blobstore:
               name: env-configs
               s3_direct: true
               subPath: "devcore.yaml"
-          - name: GITHUB_WEBHOOK_SECRET
-            secret:
-              secretName: github
-              jsonKey: webhookSecret
           - name: GH_PRIVATE_KEY
             secret:
               secretName: github

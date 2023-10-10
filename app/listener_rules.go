@@ -66,10 +66,12 @@ func (ll *ListenerRuleSet) AddRoute(targetGroup *Resource[*elbv2.TargetGroup], r
 		Overrides: map[string]string{
 			"Priority": cloudformation.Ref(priority),
 		},
-		parameters: []Parameter{{
+		parameters: []*Parameter{{
 			Name:        priority,
 			Type:        "Number",
 			Description: fmt.Sprintf(":o5:priority:%s", route.Prefix),
+			Source:      ParameterSourceRulePriority,
+			Args:        []interface{}{route.RouteGroup},
 		}},
 	}
 

@@ -8,6 +8,8 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	elbv2 "github.com/awslabs/goformation/v7/cloudformation/elasticloadbalancingv2"
 	"github.com/awslabs/goformation/v7/cloudformation/iam"
+	"github.com/awslabs/goformation/v7/cloudformation/sns"
+	"github.com/awslabs/goformation/v7/cloudformation/sqs"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 )
 
@@ -16,7 +18,7 @@ type RuntimeService struct {
 	Name   string
 
 	TaskDefinition *Resource[*ecs.TaskDefinition]
-	Containers     []*ecs.TaskDefinition_ContainerDefinition
+	Containers     []*ContainerDefinition
 	Service        *Resource[*ecs.Service]
 
 	TargetGroups map[string]*Resource[*elbv2.TargetGroup]
@@ -32,7 +34,7 @@ type RuntimeService struct {
 
 func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*RuntimeService, error) {
 
-	defs := []*ecs.TaskDefinition_ContainerDefinition{}
+	defs := []*ContainerDefinition{}
 	serviceLinks := []string{}
 
 	for _, def := range runtime.Containers {
@@ -44,7 +46,7 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 			return nil, err
 		}
 
-		addLogs(container, globals.appName)
+		addLogs(container.Container, globals.appName)
 		defs = append(defs, container)
 	}
 
@@ -62,7 +64,9 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 
 	addLogs(runtimeSidecar, globals.appName)
 
-	defs = append(defs, runtimeSidecar)
+	defs = append(defs, &ContainerDefinition{
+		Container: runtimeSidecar,
+	})
 
 	taskDefinition := NewResource(runtime.Name, &ecs.TaskDefinition{
 		Family:                  String(fmt.Sprintf("%s_%s", globals.appName, runtime.Name)),
@@ -71,10 +75,16 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		//TaskRoleArn:  Set on Apply
 	})
 
-	service := NewResource(runtime.Name, &ecs.Service{
+	service := NewResource(CleanParameterName(runtime.Name), &ecs.Service{
 		Cluster:        String(cloudformation.Ref(ECSClusterParameter)),
 		TaskDefinition: String(taskDefinition.Ref()),
 		//	DesiredCount:  Set on Apply
+		DeploymentConfiguration: &ecs.Service_DeploymentConfiguration{
+			DeploymentCircuitBreaker: &ecs.Service_DeploymentCircuitBreaker{
+				Enable:   true,
+				Rollback: true,
+			},
+		},
 	})
 
 	policy := NewPolicyBuilder()
@@ -110,7 +120,12 @@ func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
 	}
 }
 
-func buildContainer(globals globalData, def *application_pb.Container) (*ecs.TaskDefinition_ContainerDefinition, error) {
+type ContainerDefinition struct {
+	Container  *ecs.TaskDefinition_ContainerDefinition
+	Parameters map[string]*Parameter
+}
+
+func buildContainer(globals globalData, def *application_pb.Container) (*ContainerDefinition, error) {
 	container := &ecs.TaskDefinition_ContainerDefinition{
 		Name:      def.Name,
 		Essential: Bool(true),
@@ -123,6 +138,11 @@ func buildContainer(globals globalData, def *application_pb.Container) (*ecs.Tas
 
 	if len(def.Command) > 0 {
 		container.Command = def.Command
+	}
+
+	containerDef := &ContainerDefinition{
+		Container:  container,
+		Parameters: map[string]*Parameter{},
 	}
 
 	switch src := def.Source.(type) {
@@ -241,14 +261,28 @@ func buildContainer(globals globalData, def *application_pb.Container) (*ecs.Tas
 			return nil, fmt.Errorf("EnvMap not implemented")
 
 		case *application_pb.EnvironmentVariable_FromEnv:
-			return nil, fmt.Errorf("FromEnv not implemented")
+			varName := varType.FromEnv.Name
+			paramName := fmt.Sprintf("EnvVar%s", CleanParameterName(varName))
+			containerDef.Parameters[paramName] = &Parameter{
+				Name:   paramName,
+				Type:   "String",
+				Source: ParameterSourceEnvVar,
+				Args:   []interface{}{varType.FromEnv.Name},
+			}
+
+			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
+				Name:  String(envVar.Name),
+				Value: cloudformation.RefPtr(paramName),
+			})
+
+			continue
 
 		default:
 			return nil, fmt.Errorf("unknown env var type: %T", varType)
 		}
 
 	}
-	return container, nil
+	return containerDef, nil
 }
 
 func (rs *RuntimeService) Apply(template *Application) {
@@ -262,8 +296,10 @@ func (rs *RuntimeService) Apply(template *Application) {
 	})
 
 	desiredCountParameter := fmt.Sprintf("DesiredCount%s", rs.Name)
-	template.AddParameter(desiredCountParameter, cloudformation.Parameter{
-		Type: "Number",
+	template.AddParameter(&Parameter{
+		Name:   desiredCountParameter,
+		Type:   "Number",
+		Source: ParameterSourceDesiredCount,
 	})
 
 	if rs.Service.Overrides == nil {
@@ -275,12 +311,48 @@ func (rs *RuntimeService) Apply(template *Application) {
 	// Not sure who thought it would be a good idea to not use pointers here...
 	defs := make([]ecs.TaskDefinition_ContainerDefinition, len(rs.Containers))
 	for i, def := range rs.Containers {
-		defs[i] = *def
+		defs[i] = *def.Container
+		for _, param := range def.Parameters {
+			template.parameters[param.Name] = param
+		}
 	}
 	rs.TaskDefinition.Resource.ContainerDefinitions = defs
 
 	template.AddResource(rs.TaskDefinition)
 	template.AddResource(rs.Service)
+
+	if len(rs.spec.Subscriptions) > 0 {
+		queueResource := NewResource(rs.Name, &sqs.Queue{
+			QueueName: cloudformation.JoinPtr("-", []string{
+				cloudformation.Ref("AWS::StackName"),
+				rs.Name,
+			}),
+			SqsManagedSseEnabled: Bool(true),
+		})
+		template.AddResource(queueResource)
+		rs.Policy.AddSQSSubscribe(queueResource.GetAtt("Arn"))
+
+		for _, sub := range rs.spec.Subscriptions {
+			snsTopicARN := cloudformation.Join("", []string{
+				"arn:aws:sns:",
+				cloudformation.Ref("AWS::Region"),
+				":",
+				cloudformation.Ref("AWS::AccountId"),
+				":",
+				cloudformation.Ref(EnvNameParameter),
+				"-",
+				sub.Name,
+			})
+			subscription := NewResource(CleanParameterName(rs.Name, sub.Name), &sns.Subscription{
+				TopicArn:           snsTopicARN,
+				Protocol:           "sqs",
+				RawMessageDelivery: Bool(true),
+				Endpoint:           String(queueResource.GetAtt("Arn")),
+			})
+			template.AddSNSTopic(sub.Name)
+			template.AddResource(subscription)
+		}
+	}
 
 	rolePolicies := rs.Policy.Build(rs.Prefix, rs.Name)
 	role := NewResource(fmt.Sprintf("%sAssume", rs.Name), &iam.Role{
@@ -307,6 +379,7 @@ func (rs *RuntimeService) Apply(template *Application) {
 	})
 
 	rs.TaskDefinition.Resource.TaskRoleArn = String(role.GetAtt("Arn"))
+
 	template.AddResource(role)
 
 	for _, targetGroup := range rs.TargetGroups {
@@ -356,8 +429,8 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 	var container *ecs.TaskDefinition_ContainerDefinition
 
 	for _, search := range rs.Containers {
-		if search.Name == targetContainer {
-			container = search
+		if search.Container.Name == targetContainer {
+			container = search.Container
 			break
 		}
 	}
@@ -396,7 +469,7 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 			HealthyThresholdCount:      Int(2),
 			HealthCheckIntervalSeconds: Int(15),
 			Matcher: &elbv2.TargetGroup_Matcher{
-				HttpCode: String("0-99"),
+				GrpcCode: String("0-99"),
 			},
 		}
 	}

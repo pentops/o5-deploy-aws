@@ -24,12 +24,9 @@ import (
 
 type Deployer struct {
 	DeployerClients
-	Environment *environment_pb.Environment
-	AWS         *environment_pb.AWS
-
+	Environment   *environment_pb.Environment
+	AWS           *environment_pb.AWS
 	RotateSecrets bool
-
-	takenPriorities map[int]bool
 }
 
 type CloudFormationAPI interface {
@@ -38,9 +35,6 @@ type CloudFormationAPI interface {
 	UpdateStack(ctx context.Context, params *cloudformation.UpdateStackInput, optFns ...func(*cloudformation.Options)) (*cloudformation.UpdateStackOutput, error)
 	DeleteStack(ctx context.Context, params *cloudformation.DeleteStackInput, optFns ...func(*cloudformation.Options)) (*cloudformation.DeleteStackOutput, error)
 	CancelUpdateStack(ctx context.Context, params *cloudformation.CancelUpdateStackInput, optFns ...func(*cloudformation.Options)) (*cloudformation.CancelUpdateStackOutput, error)
-}
-
-type SNSAPI interface {
 }
 
 type ELBV2API interface {
@@ -57,6 +51,10 @@ type ECSAPI interface {
 
 	// used by the TasksStoppedWaiter
 	ecs.DescribeTasksAPIClient
+}
+
+type SNSAPI interface {
+	CreateTopic(ctx context.Context, params *sns.CreateTopicInput, optsFns ...func(*sns.Options)) (*sns.CreateTopicOutput, error)
 }
 
 type DeployerClients struct {
@@ -100,19 +98,24 @@ func NewDeployer(environment *environment_pb.Environment, clients DeployerClient
 	}, nil
 }
 
-func (d *Deployer) Deploy(ctx context.Context, template *app.Application, cancelUpdates bool) error {
-	stackName := fmt.Sprintf("%s-%s", d.Environment.FullName, template.AppName())
+func (d *Deployer) Deploy(ctx context.Context, app *app.BuiltApplication, cancelUpdates bool) error {
+	stackName := fmt.Sprintf("%s-%s", d.Environment.FullName, app.Name)
 	ctx = log.WithFields(ctx, map[string]interface{}{
 		"stackName":   stackName,
 		"environment": d.Environment.FullName,
 	})
 
+	if err := d.upsertSNSTopics(ctx, app.SNSTopics); err != nil {
+		return err
+	}
+
 	remoteStack, err := d.getOneStack(ctx, stackName)
 	if err != nil {
 		return err
 	}
+
 	if remoteStack == nil {
-		return d.createNewDeployment(ctx, stackName, template)
+		return d.createNewDeployment(ctx, stackName, app)
 	}
 
 	if cancelUpdates && remoteStack.StackStatus == types.StackStatusUpdateInProgress {
@@ -126,22 +129,34 @@ func (d *Deployer) Deploy(ctx context.Context, template *app.Application, cancel
 		return err
 	}
 
-	return d.updateDeployment(ctx, stackName, template, remoteStackStable.Parameters)
+	return d.updateDeployment(ctx, stackName, app, remoteStackStable.Parameters)
+}
+
+func (d *Deployer) upsertSNSTopics(ctx context.Context, topics []*app.SNSTopic) error {
+	for _, topic := range topics {
+		_, err := d.DeployerClients.SNS.CreateTopic(ctx, &sns.CreateTopicInput{
+			Name: aws.String(fmt.Sprintf("%s-%s", d.Environment.FullName, topic.Name)),
+		})
+		if err != nil {
+			return fmt.Errorf("creating sns topic %s: %w", topic.Name, err)
+		}
+	}
+	return nil
 }
 
 type stackParameters struct {
 	name               string
-	template           *app.Application
+	template           *app.BuiltApplication
 	scale              int
 	previousParameters []types.Parameter
 }
 
-func (d *Deployer) createNewDeployment(ctx context.Context, stackName string, template *app.Application) error {
+func (d *Deployer) createNewDeployment(ctx context.Context, stackName string, app *app.BuiltApplication) error {
 	// Create, scale 0
 	log.Info(ctx, "Create with scale 0")
 	if err := d.createCloudformationStack(ctx, stackParameters{
 		name:     stackName,
-		template: template,
+		template: app,
 		scale:    0,
 	}); err != nil {
 		return err
@@ -153,7 +168,7 @@ func (d *Deployer) createNewDeployment(ctx context.Context, stackName string, te
 
 	// Migrate
 	log.Info(ctx, "Migrate Database")
-	if err := d.migrateData(ctx, stackName, template, true); err != nil {
+	if err := d.migrateData(ctx, stackName, app, true); err != nil {
 		return err
 	}
 
@@ -161,7 +176,7 @@ func (d *Deployer) createNewDeployment(ctx context.Context, stackName string, te
 	log.Info(ctx, "Scale Up")
 	if err := d.updateCloudformationStack(ctx, stackParameters{
 		name:     stackName,
-		template: template,
+		template: app,
 		scale:    1,
 	}); err != nil {
 		return err
@@ -174,7 +189,8 @@ func (d *Deployer) createNewDeployment(ctx context.Context, stackName string, te
 	return nil
 }
 
-func (d *Deployer) updateDeployment(ctx context.Context, stackName string, template *app.Application, previous []types.Parameter) error {
+func (d *Deployer) updateDeployment(ctx context.Context, stackName string, app *app.BuiltApplication, previous []types.Parameter) error {
+
 	// Scale Down
 	log.Info(ctx, "Scale Down")
 	if err := d.setScale(ctx, stackParameters{
@@ -194,7 +210,7 @@ func (d *Deployer) updateDeployment(ctx context.Context, stackName string, templ
 	if err := d.updateCloudformationStack(ctx, stackParameters{
 		previousParameters: previous,
 		name:               stackName,
-		template:           template,
+		template:           app,
 		scale:              0,
 	}); err != nil {
 		return err
@@ -206,7 +222,7 @@ func (d *Deployer) updateDeployment(ctx context.Context, stackName string, templ
 
 	// Migrate
 	log.Info(ctx, "Data Migrate")
-	if err := d.migrateData(ctx, stackName, template, d.RotateSecrets); err != nil {
+	if err := d.migrateData(ctx, stackName, app, d.RotateSecrets); err != nil {
 		return err
 	}
 
@@ -215,7 +231,7 @@ func (d *Deployer) updateDeployment(ctx context.Context, stackName string, templ
 	if err := d.updateCloudformationStack(ctx, stackParameters{
 		previousParameters: previous,
 		name:               stackName,
-		template:           template,
+		template:           app,
 		scale:              1,
 	}); err != nil {
 		return err
@@ -412,7 +428,7 @@ func (d *Deployer) createCloudformationStack(ctx context.Context, stack stackPar
 		return err
 	}
 
-	jsonStack, err := stack.template.Template().JSON()
+	jsonStack, err := stack.template.Template.JSON()
 	if err != nil {
 		return err
 	}
@@ -439,7 +455,7 @@ func (d *Deployer) updateCloudformationStack(ctx context.Context, stack stackPar
 		return err
 	}
 
-	jsonStack, err := stack.template.Template().JSON()
+	jsonStack, err := stack.template.Template.JSON()
 	if err != nil {
 		return err
 	}

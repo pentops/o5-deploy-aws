@@ -10,6 +10,8 @@ import (
 	cfsecretsmanager "github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/tidwall/sjson"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 func String(str string) *string {
@@ -28,10 +30,41 @@ func Bool(b bool) *bool {
 	return &b
 }
 
+var reUnsafe = regexp.MustCompile(`[^a-zA-Z0-9]`)
+
+func CleanParameterName(unsafes ...string) string {
+	titleCase := cases.Title(language.English)
+	outParts := []string{}
+	for _, unsafe := range unsafes {
+		safeString := reUnsafe.ReplaceAllString(unsafe, "_")
+		parts := strings.Split(safeString, "_")
+		for _, part := range parts {
+			outParts = append(outParts, titleCase.String(part))
+		}
+	}
+	safeString := strings.Join(outParts, "")
+	return safeString
+}
+
+type BuiltApplication struct {
+	Template          *cloudformation.Template
+	Parameters        map[string]*Parameter
+	PostgresDatabases []*PostgresDefinition
+	SNSTopics         []*SNSTopic
+	Name              string
+}
+
 type Application struct {
 	appName           string
-	template          *cloudformation.Template
 	postgresDatabases []*PostgresDefinition
+	parameters        map[string]*Parameter
+	resources         map[string]IResource
+	outputs           map[string]*Output
+	snsTopics         map[string]*SNSTopic
+}
+
+type SNSTopic struct {
+	Name string
 }
 
 type PostgresDefinition struct {
@@ -43,11 +76,13 @@ type PostgresDefinition struct {
 }
 
 func NewApplication(name string) *Application {
-	template := cloudformation.NewTemplate()
 
 	return &Application{
-		template: template,
-		appName:  name,
+		appName:    name,
+		parameters: map[string]*Parameter{},
+		resources:  map[string]IResource{},
+		outputs:    map[string]*Output{},
+		snsTopics:  map[string]*SNSTopic{},
 	}
 }
 
@@ -55,35 +90,90 @@ func (ss *Application) AppName() string {
 	return ss.appName
 }
 
-func (ss *Application) Template() *cloudformation.Template {
-	return ss.template
-}
+func (ss *Application) Build() *BuiltApplication {
+	template := cloudformation.NewTemplate()
+	parameters := map[string]*Parameter{}
 
-func (ss *Application) PostgresDatabases() []*PostgresDefinition {
-	return ss.postgresDatabases
-}
+	for _, param := range ss.parameters {
+		parameters[param.Name] = param
+	}
 
-func (ss *Application) AddResource(resource IResource) {
-	ss.template.Resources[resource.Name()] = resource
-	for _, param := range resource.Parameters() {
-		ss.template.Parameters[param.Name] = cloudformation.Parameter{
-			Description: String(param.Description),
-			Type:        param.Type,
-			Default:     param.Default,
+	for _, resource := range ss.resources {
+		template.Resources[resource.Name()] = resource
+		for _, param := range resource.Parameters() {
+			parameters[param.Name] = param
 		}
+	}
+
+	for _, param := range parameters {
+		mapped := cloudformation.Parameter{
+			Type: param.Type,
+		}
+
+		if param.Default != nil {
+			mapped.Default = param.Default
+		}
+		if param.Description != "" {
+			mapped.Description = String(param.Description)
+		}
+
+		template.Parameters[param.Name] = mapped
+	}
+
+	for _, output := range ss.outputs {
+		template.Outputs[output.Name] = cloudformation.Output{
+			Description: String(output.Description),
+			Value:       output.Value,
+		}
+	}
+	snsToipcs := []*SNSTopic{}
+	for _, topic := range ss.snsTopics {
+		snsToipcs = append(snsToipcs, topic)
+	}
+
+	return &BuiltApplication{
+		Template:          template,
+		Parameters:        parameters,
+		PostgresDatabases: ss.postgresDatabases,
+		SNSTopics:         snsToipcs,
+		Name:              ss.appName,
 	}
 }
 
-func (ss *Application) AddParameter(name string, param cloudformation.Parameter) {
-	ss.template.Parameters[name] = param
+func (ss *Application) AddSNSTopic(name string) {
+	ss.snsTopics[name] = &SNSTopic{
+		Name: name,
+	}
+}
+
+func (ss *Application) AddResource(resource IResource) {
+	ss.resources[resource.Name()] = resource
+}
+
+func (ss *Application) AddParameter(param *Parameter) {
+	if param.Name == "" {
+		panic("No Name")
+	}
+	if param.Type == "" {
+		panic("No Type")
+	}
+	if param.Source == ParameterSourceDefault && param.Default == nil {
+		panic("No Default")
+	}
+	ss.parameters[param.Name] = param
+}
+
+func (ss *Application) AddOutput(output *Output) {
+	ss.outputs[output.Name] = output
 }
 
 func (ss *Application) Parameter(name string) *string {
-	_, ok := ss.template.Parameters[name]
+	_, ok := ss.parameters[name]
 	if !ok {
-		ss.template.Parameters[name] = cloudformation.Parameter{
+		ss.AddParameter(&Parameter{
+			Name: name,
 			Type: "String",
-		}
+		})
 	}
 	return String(cloudformation.Ref(name))
 }
@@ -94,22 +184,43 @@ type IResource interface {
 	GetAtt(name string) string
 	Name() string
 	DependsOn(IResource)
-	Parameters() []Parameter
+	Parameters() []*Parameter
 }
 
 type Resource[T cloudformation.Resource] struct {
 	name         string
 	Resource     T
 	Overrides    map[string]string
-	parameters   []Parameter
+	parameters   []*Parameter
 	dependencies []IResource
 }
+
+type ParameterSource int
+
+const (
+	ParameterSourceDefault ParameterSource = iota
+	ParameterSourceWellKnown
+	ParameterSourceRulePriority
+	ParameterSourceDesiredCount
+	ParameterSourceEnvVar
+)
 
 type Parameter struct {
 	Name        string
 	Type        string
 	Description string
-	Default     interface{}
+	Default     *string
+
+	// This should probably be a method interface but struggling with the structure
+	// between the two packages
+	Source ParameterSource
+	Args   []interface{}
+}
+
+type Output struct {
+	Name        string
+	Value       string
+	Description string
 }
 
 var reResourceUnsafe = regexp.MustCompile(`[^a-zA-Z0-9]`)
@@ -134,7 +245,7 @@ func (rr *Resource[T]) DependsOn(b IResource) {
 	rr.dependencies = append(rr.dependencies, b)
 }
 
-func (rr Resource[T]) Parameters() []Parameter {
+func (rr Resource[T]) Parameters() []*Parameter {
 	return rr.parameters
 }
 

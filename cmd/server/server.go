@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -13,13 +14,14 @@ import (
 	"github.com/pentops/o5-deploy-aws/github"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
+	"github.com/pentops/o5-go/github/v1/github_pb"
+	"google.golang.org/grpc"
 	"gopkg.daemonl.com/envconf"
 )
 
 type envConfig struct {
-	EnvConfig           string `env:"ENV_CONFIG"`
-	GithubWebhookSecret string `env:"GITHUB_WEBHOOK_SECRET"`
-	WebhookPort         int    `env:"WEBHOOK_PORT" default:"8080"`
+	EnvConfig  string `env:"ENV_CONFIG"`
+	WorkerPort int    `env:"WORKER_PORT" default:"8081"`
 }
 
 var Version string
@@ -75,20 +77,36 @@ func do(ctx context.Context, cfg envConfig) error {
 	githubWorker, err := github.NewWebhookWorker(
 		githubClient,
 		asyncDeployer,
-		cfg.GithubWebhookSecret,
 	)
 	if err != nil {
 		return err
 	}
 
-	return githubWorker.RunServer(ctx, fmt.Sprintf(":%d", cfg.WebhookPort))
+	grpcServer := grpc.NewServer()
+	github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.WorkerPort))
+	if err != nil {
+		return err
+	}
+	log.WithField(ctx, "port", cfg.WorkerPort).Info("Begin Worker Server")
+	closeOnContextCancel(ctx, grpcServer)
+
+	return grpcServer.Serve(lis)
+}
+
+func closeOnContextCancel(ctx context.Context, srv *grpc.Server) {
+	go func() {
+		<-ctx.Done()
+		srv.GracefulStop()
+	}()
 }
 
 type AsyncDeployer struct {
 	github.IDeployer
 }
 
-func (d *AsyncDeployer) Deploy(ctx context.Context, appStack *app.Application, cancelUpdate bool) error {
+func (d *AsyncDeployer) Deploy(ctx context.Context, appStack *app.BuiltApplication, cancelUpdate bool) error {
 	// TODO: Env Deployer should run asynchronously, in multiple stages, inside
 	// the environment.
 	// In this version, the deployment must run in the same environment as the webhook server.

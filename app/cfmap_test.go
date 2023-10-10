@@ -34,7 +34,8 @@ func TestBasicMap(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	yy, err := out.template.YAML()
+	template := out.BuildTemplate()
+	yy, err := template.YAML()
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -119,7 +120,7 @@ func getResource(t testing.TB, template *Application, name string, into cloudfor
 	t.Helper()
 
 	fullName := resourceName(name, into)
-	raw, ok := template.template.Resources[fullName]
+	raw, ok := template.resources[fullName]
 	if !ok {
 		t.Fatalf("resource %s not found", fullName)
 	}
@@ -162,7 +163,7 @@ func TestRuntime(t *testing.T) {
 	}
 
 	{
-		imageRaw := rs.Containers[0].Image
+		imageRaw := rs.Containers[0].Container.Image
 
 		join := &Join{}
 		decode(t, imageRaw, join)

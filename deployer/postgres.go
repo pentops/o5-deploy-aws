@@ -21,7 +21,7 @@ import (
 	"gopkg.daemonl.com/sqrlx"
 )
 
-func (d *Deployer) migrateData(ctx context.Context, stackName string, template *app.Application, rotateExisting bool) error {
+func (d *Deployer) migrateData(ctx context.Context, stackName string, template *app.BuiltApplication, rotateExisting bool) error {
 
 	// TODO: Make this lazy or pre check if it is required.
 	remoteStack, err := d.getOneStack(ctx, stackName)
@@ -32,7 +32,7 @@ func (d *Deployer) migrateData(ctx context.Context, stackName string, template *
 		return errors.New("stack not found")
 	}
 
-	for _, db := range template.PostgresDatabases() {
+	for _, db := range template.PostgresDatabases {
 		ctx := log.WithFields(ctx, map[string]interface{}{
 			"database":    db.Databse.Name,
 			"serverGroup": db.Postgres.ServerGroup,
