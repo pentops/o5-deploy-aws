@@ -9,18 +9,18 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/github"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 	"gopkg.daemonl.com/envconf"
 )
 
 type envConfig struct {
-	EnvConfig  string `env:"ENV_CONFIG"`
+	ConfigFile string `env:"CONFIG_FILE"`
 	WorkerPort int    `env:"WORKER_PORT" default:"8081"`
 }
 
@@ -29,7 +29,7 @@ var Version string
 func main() {
 	ctx := context.Background()
 	ctx = log.WithFields(ctx, map[string]interface{}{
-		"application": "userauth",
+		"application": "o5-deploy-aws",
 		"version":     Version,
 	})
 
@@ -53,16 +53,26 @@ func do(ctx context.Context, cfg envConfig) error {
 	}
 
 	s3Client := s3.NewFromConfig(awsConfig)
-	deployerClients := deployer.NewDeployerClientsFromConfig(awsConfig)
 
-	env := &environment_pb.Environment{}
-	if err := protoread.PullAndParse(ctx, s3Client, cfg.EnvConfig, env); err != nil {
+	configFile := &github_pb.DeployerConfig{}
+	if err := protoread.PullAndParse(ctx, s3Client, cfg.ConfigFile, configFile); err != nil {
 		return err
 	}
 
-	envDeployer, err := deployer.NewDeployer(env, deployerClients)
-	if err != nil {
-		return err
+	environmentDeployers := map[string]github.IDeployer{}
+
+	for _, envConfigFile := range configFile.TargetEnvironments {
+		env := &environment_pb.Environment{}
+		if err := protoread.PullAndParse(ctx, s3Client, envConfigFile, env); err != nil {
+			return err
+		}
+
+		envDeployer, err := deployer.NewDeployer(env, awsConfig)
+		if err != nil {
+			return err
+		}
+
+		environmentDeployers[env.FullName] = envDeployer
 	}
 
 	githubClient, err := github.NewEnvClient(ctx)
@@ -70,13 +80,12 @@ func do(ctx context.Context, cfg envConfig) error {
 		return err
 	}
 
-	asyncDeployer := &AsyncDeployer{
-		IDeployer: envDeployer,
-	}
+	refLookup := RefLookup(configFile.Refs)
 
 	githubWorker, err := github.NewWebhookWorker(
 		githubClient,
-		asyncDeployer,
+		environmentDeployers,
+		refLookup,
 	)
 	if err != nil {
 		return err
@@ -84,6 +93,7 @@ func do(ctx context.Context, cfg envConfig) error {
 
 	grpcServer := grpc.NewServer()
 	github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
+	reflection.Register(grpcServer)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.WorkerPort))
 	if err != nil {
@@ -102,27 +112,24 @@ func closeOnContextCancel(ctx context.Context, srv *grpc.Server) {
 	}()
 }
 
-type AsyncDeployer struct {
-	github.IDeployer
-}
+type RefLookup []*github_pb.RefLink
 
-func (d *AsyncDeployer) Deploy(ctx context.Context, appStack *app.BuiltApplication, cancelUpdate bool) error {
-	// TODO: Env Deployer should run asynchronously, in multiple stages, inside
-	// the environment.
-	// In this version, the deployment must run in the same environment as the webhook server.
-	// This version is only appropriate for single env dev deployments and will
-	// require quite a lot of work, e.g. listening for cloudformation and ECS
-	// events.
-	go func() {
-		ctx := context.Background()
-		err := d.IDeployer.Deploy(ctx, appStack, cancelUpdate)
-		if err != nil {
-			log.WithError(ctx, err).Error("Failed to deploy")
-		} else {
-			log.Info(ctx, "Deployed")
+func (rl RefLookup) PushTargets(push *github_pb.PushMessage) []string {
+	environments := []string{}
+	for _, r := range rl {
+		if r.Owner != push.Owner {
+			continue
 		}
 
-		// TODO: Write outcome back to Github, or otherwise notify the outcome
-	}()
-	return nil
+		if r.Repo != push.Repo {
+			continue
+		}
+
+		if r.RefMatch != push.Ref {
+			continue
+		}
+
+		environments = append(environments, r.Targets...)
+	}
+	return environments
 }

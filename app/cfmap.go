@@ -24,6 +24,7 @@ const (
 	HostHeaderParameter           = "HostHeader"
 	EnvNameParameter              = "EnvName"
 	VPCParameter                  = "VPCID"
+	MetaDeployAssumeRoleParameter = "MetaDeployAssumeRoleArns"
 
 	O5SidecarContainerName = "o5_runtime"
 	O5SidecarImageName     = "ghcr.io/pentops/o5-runtime-sidecar:latest"
@@ -56,6 +57,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		EnvNameParameter,
 		VPCParameter,
 		VersionTagParameter,
+		MetaDeployAssumeRoleParameter,
 	} {
 		parameter := &Parameter{
 			Name:   key,

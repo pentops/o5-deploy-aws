@@ -93,9 +93,7 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		return err
 	}
 
-	clients := deployer.NewDeployerClientsFromConfig(awsConfig)
-
-	deployer, err := deployer.NewDeployer(env, clients)
+	deployer, err := deployer.NewDeployer(env, awsConfig)
 	if err != nil {
 		return err
 	}

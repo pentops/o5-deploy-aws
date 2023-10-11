@@ -19,6 +19,7 @@ type ParameterResolver interface {
 	WellKnownParameter(name string) (string, bool)
 	CustomEnvVar(name string) (string, bool)
 	NextAvailableListenerRulePriority(group application_pb.RouteGroup) (int, error)
+	CrossEnvSNSPrefix(envName string) (string, error)
 	DesiredCount() int
 }
 
@@ -60,6 +61,22 @@ func resolveParameter(ctx context.Context, param *app.Parameter, resolver Parame
 	case app.ParameterSourceDesiredCount:
 		parameter.ParameterValue = app.Stringf("%d", resolver.DesiredCount())
 
+	case app.ParameterSourceCrossEnvSNS:
+		if len(param.Args) != 1 {
+			return nil, errors.New("invalid parameter source args")
+		}
+		envName, ok := param.Args[0].(string)
+		if !ok {
+			return nil, errors.New("invalid parameter source args")
+		}
+
+		topicPrefix, err := resolver.CrossEnvSNSPrefix(envName)
+		if err != nil {
+			return nil, err
+		}
+
+		parameter.ParameterValue = aws.String(topicPrefix)
+
 	case app.ParameterSourceEnvVar:
 		key, ok := param.Args[0].(string)
 		if !ok {
@@ -78,10 +95,11 @@ func resolveParameter(ctx context.Context, param *app.Parameter, resolver Parame
 }
 
 type deployerResolver struct {
-	takenPriorities map[int]bool
-	wellKnown       map[string]string
-	custom          []*environment_pb.CustomVariable
-	desiredCount    int
+	takenPriorities     map[int]bool
+	wellKnown           map[string]string
+	custom              []*environment_pb.CustomVariable
+	desiredCount        int
+	crossEnvSNSPrefixes map[string]string
 }
 
 func (dr *deployerResolver) DesiredCount() int {
@@ -102,6 +120,13 @@ func (dr *deployerResolver) CustomEnvVar(name string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func (dr *deployerResolver) CrossEnvSNSPrefix(envName string) (string, error) {
+	if prefix, ok := dr.crossEnvSNSPrefixes[envName]; ok {
+		return prefix, nil
+	}
+	return "", fmt.Errorf("unknown env for SNS prefix: %s", envName)
 }
 
 func (dr *deployerResolver) NextAvailableListenerRulePriority(group application_pb.RouteGroup) (int, error) {
@@ -154,6 +179,12 @@ func (d *Deployer) applyInitialParameters(ctx context.Context, stack stackParame
 		hostHeader = *d.AWS.HostHeader
 	}
 
+	crossEnvSNS := map[string]string{}
+
+	for _, envLink := range d.AWS.EnvironmentLinks {
+		crossEnvSNS[envLink.FullName] = envLink.SnsPrefix
+	}
+
 	dr := &deployerResolver{
 		takenPriorities: takenPriorities,
 		wellKnown: map[string]string{
@@ -164,9 +195,11 @@ func (d *Deployer) applyInitialParameters(ctx context.Context, stack stackParame
 			app.ECSTaskExecutionRoleParameter: d.AWS.EcsTaskExecutionRole,
 			app.EnvNameParameter:              d.Environment.FullName,
 			app.VPCParameter:                  d.AWS.VpcId,
+			app.MetaDeployAssumeRoleParameter: strings.Join(d.AWS.O5DeployerGrantRoles, ","),
 		},
-		custom:       d.Environment.Vars,
-		desiredCount: stack.scale,
+		custom:              d.Environment.Vars,
+		desiredCount:        stack.scale,
+		crossEnvSNSPrefixes: crossEnvSNS,
 	}
 
 	for _, param := range stackParameters {
@@ -181,10 +214,17 @@ func (d *Deployer) applyInitialParameters(ctx context.Context, stack stackParame
 }
 
 func (d *Deployer) loadTakenPriorities(ctx context.Context) (map[int]bool, error) {
+	clients, err := d.Clients(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	elbClient := clients.ELB
+
 	takenPriorities := make(map[int]bool)
 	var marker *string
 	for {
-		rules, err := d.ELB.DescribeRules(ctx, &elbv2.DescribeRulesInput{
+		rules, err := elbClient.DescribeRules(ctx, &elbv2.DescribeRulesInput{
 			ListenerArn: aws.String(d.AWS.ListenerArn),
 			Marker:      marker,
 		})

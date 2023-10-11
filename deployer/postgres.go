@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	sq "github.com/elgris/sqrl"
@@ -21,16 +22,7 @@ import (
 	"gopkg.daemonl.com/sqrlx"
 )
 
-func (d *Deployer) migrateData(ctx context.Context, stackName string, template *app.BuiltApplication, rotateExisting bool) error {
-
-	// TODO: Make this lazy or pre check if it is required.
-	remoteStack, err := d.getOneStack(ctx, stackName)
-	if err != nil {
-		return err
-	}
-	if remoteStack == nil {
-		return errors.New("stack not found")
-	}
+func (d *Deployer) migrateData(ctx context.Context, stackOutputs []types.Output, template *app.BuiltApplication, rotateExisting bool) error {
 
 	for _, db := range template.PostgresDatabases {
 		ctx := log.WithFields(ctx, map[string]interface{}{
@@ -40,7 +32,7 @@ func (d *Deployer) migrateData(ctx context.Context, stackName string, template *
 		log.Debug(ctx, "Upsert Database")
 		var migrationTaskARN string
 		var secretARN string
-		for _, output := range remoteStack.Outputs {
+		for _, output := range stackOutputs {
 			if *db.MigrationTaskOutputName == *output.OutputKey {
 				migrationTaskARN = *output.OutputValue
 			}
@@ -76,7 +68,14 @@ func (d *Deployer) migrateData(ctx context.Context, stackName string, template *
 }
 
 func (d *Deployer) runMigrationTask(ctx context.Context, taskARN string) error {
-	task, err := d.DeployerClients.ECS.RunTask(ctx, &ecs.RunTaskInput{
+
+	clients, err := d.Clients(ctx)
+	if err != nil {
+		return err
+	}
+	ecsClient := clients.ECS
+
+	task, err := ecsClient.RunTask(ctx, &ecs.RunTaskInput{
 		TaskDefinition: aws.String(taskARN),
 		Cluster:        aws.String(d.AWS.EcsClusterName),
 		Count:          aws.Int32(1),
@@ -86,7 +85,7 @@ func (d *Deployer) runMigrationTask(ctx context.Context, taskARN string) error {
 	}
 
 	for {
-		state, err := d.DeployerClients.ECS.DescribeTasks(ctx, &ecs.DescribeTasksInput{
+		state, err := ecsClient.DescribeTasks(ctx, &ecs.DescribeTasksInput{
 			Tasks:   []string{*task.Tasks[0].TaskArn},
 			Cluster: aws.String(d.AWS.EcsClusterName),
 		})
@@ -143,6 +142,11 @@ func (ss DBSecret) buildURLForDB(dbName string) string {
 func (d *Deployer) rootPostgresCredentials(ctx context.Context, serverGroup string) (*DBSecret, error) {
 	// "/${var.env_name}/global/rds/${var.name}/root" from TF
 
+	clients, err := d.Clients(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	var secretName string
 	for _, host := range d.AWS.RdsHosts {
 		if host.ServerGroup == serverGroup {
@@ -154,7 +158,7 @@ func (d *Deployer) rootPostgresCredentials(ctx context.Context, serverGroup stri
 		return nil, fmt.Errorf("no host found for server group %q", serverGroup)
 	}
 
-	res, err := d.DeployerClients.SecretsManager.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+	res, err := clients.SecretsManager.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
 		SecretId: aws.String(secretName),
 	})
 	if err != nil {
@@ -425,7 +429,12 @@ func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *app.Postgre
 		"secretName":  spec.Secret.Resource.Name,
 	}).Debug("Storing New User Credentials")
 
-	_, err = d.DeployerClients.SecretsManager.UpdateSecret(ctx, &secretsmanager.UpdateSecretInput{
+	clients, err := d.Clients(ctx)
+	if err != nil {
+		return err
+	}
+
+	_, err = clients.SecretsManager.UpdateSecret(ctx, &secretsmanager.UpdateSecretInput{
 		// ARN or Name
 		SecretId:     aws.String(secretARN),
 		SecretString: aws.String(string(jsonBytes)),

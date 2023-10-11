@@ -13,6 +13,8 @@ type PolicyBuilder struct {
 	sqsPublish     []string
 	snsPublish     []string
 	sesSend        []string
+
+	metaDeployPermissions bool
 }
 
 func NewPolicyBuilder() *PolicyBuilder {
@@ -45,6 +47,10 @@ func (pb *PolicyBuilder) AddSNSPublish(arn string) {
 
 func (pb *PolicyBuilder) AddSESSend(email string) {
 	pb.sesSend = append(pb.sesSend, email)
+}
+
+func (pb *PolicyBuilder) AddMetaDeployPermissions() {
+	pb.metaDeployPermissions = true
 }
 
 func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Policy {
@@ -260,6 +266,27 @@ func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Po
 		}
 
 		rolePolicies = append(rolePolicies, policy)
+	}
+
+	if pb.metaDeployPermissions {
+		policy := iam.Role_Policy{
+			PolicyName: uniqueName("meta-deploy-permissions"),
+			PolicyDocument: map[string]interface{}{
+				"Version": "2012-10-17",
+				"Statement": []interface{}{
+					map[string]interface{}{
+						"Effect": "Allow",
+						"Action": []interface{}{
+							"sts:AssumeRole",
+						},
+						"Resource": cloudformation.Split(",", cloudformation.Ref(MetaDeployAssumeRoleParameter)),
+					},
+				},
+			},
+		}
+
+		rolePolicies = append(rolePolicies, policy)
+
 	}
 
 	return rolePolicies

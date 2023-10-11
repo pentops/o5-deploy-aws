@@ -20,7 +20,7 @@ require (
 	github.com/google/go-github/v47 v47.1.0
 	github.com/lib/pq v1.10.3
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
-	github.com/pentops/o5-go v0.0.0-20231010001749-1f5790dea2f7
+	github.com/pentops/o5-go v0.0.0-20231011033055-b8190fa1c0f8
 	github.com/stretchr/testify v1.8.4
 	github.com/tidwall/sjson v1.2.5
 	golang.org/x/oauth2 v0.12.0

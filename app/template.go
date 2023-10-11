@@ -202,6 +202,7 @@ const (
 	ParameterSourceWellKnown
 	ParameterSourceRulePriority
 	ParameterSourceDesiredCount
+	ParameterSourceCrossEnvSNS
 	ParameterSourceEnvVar
 )
 

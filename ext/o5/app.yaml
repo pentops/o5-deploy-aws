@@ -9,8 +9,11 @@ secrets:
 
 runtimes:
   - name: main
+    grantMetaDeployPermissions: true
     subscriptions:
       - name: "webhook-github"
+        envName: "publicweb"
+
     containers:
       - name: main
         demand: DEMAND_LIGHT
@@ -19,11 +22,11 @@ runtimes:
             registry: ghcr.io/pentops
         command: [serve]
         envVars:
-          - name: ENV_CONFIG
+          - name: CONFIG_FILE
             blobstore:
               name: env-configs
               s3_direct: true
-              subPath: "devcore.yaml"
+              subPath: "config.yaml"
           - name: GH_PRIVATE_KEY
             secret:
               secretName: github
