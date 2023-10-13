@@ -20,8 +20,8 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 
 		// TODO: Make these a Parameter for each size, for the environment to
 		// set
-		Cpu:    Int(128),
-		Memory: Int(256),
+		Cpu:               Int(128),
+		MemoryReservation: Int(256),
 	}
 
 	if len(def.Command) > 0 {
