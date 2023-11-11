@@ -196,6 +196,7 @@ func (d *Deployer) applyInitialParameters(ctx context.Context, stack stackParame
 			app.EnvNameParameter:              d.Environment.FullName,
 			app.VPCParameter:                  d.AWS.VpcId,
 			app.MetaDeployAssumeRoleParameter: strings.Join(d.AWS.O5DeployerGrantRoles, ","),
+			app.JWKSParameter:                 strings.Join(d.Environment.TrustJwks, ","),
 		},
 		custom:              d.Environment.Vars,
 		desiredCount:        stack.scale,

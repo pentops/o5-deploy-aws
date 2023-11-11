@@ -115,8 +115,11 @@ func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
 	def.LogConfiguration = &ecs.TaskDefinition_LogConfiguration{
 		LogDriver: "awslogs",
 		Options: map[string]string{
-			// TODO: Include an Environment prefix using parameters
-			"awslogs-group":         fmt.Sprintf("ecs/%s/%s", "TODO", rsPrefix),
+			"awslogs-group": cloudformation.Join("/", []string{
+				"ecs",
+				cloudformation.Ref(EnvNameParameter),
+				rsPrefix,
+			}),
 			"awslogs-create-group":  "true",
 			"awslogs-region":        cloudformation.Ref("AWS::Region"),
 			"awslogs-stream-prefix": def.Name,
@@ -241,7 +244,10 @@ func (rs *RuntimeService) Apply(template *Application) {
 		Value: String(strings.Join(ingressEndpoints, ",")),
 	}, ecs.TaskDefinition_KeyValuePair{
 		Name:  String("AWS_REGION"),
-		Value: String(cloudformation.Ref("AWS::Region")),
+		Value: String(cloudformation.Ref(AWSRegionParameter)),
+	}, ecs.TaskDefinition_KeyValuePair{
+		Name:  String("JWKS"),
+		Value: String(cloudformation.Ref(JWKSParameter)),
 	})
 	if ingressNeedsPublicPort {
 		rs.IngressContainer.Environment = append(rs.IngressContainer.Environment, ecs.TaskDefinition_KeyValuePair{

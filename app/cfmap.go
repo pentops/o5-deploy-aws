@@ -25,6 +25,8 @@ const (
 	EnvNameParameter              = "EnvName"
 	VPCParameter                  = "VPCID"
 	MetaDeployAssumeRoleParameter = "MetaDeployAssumeRoleArns"
+	JWKSParameter                 = "JWKS"
+	AWSRegionParameter            = "AWS::Region"
 
 	O5SidecarContainerName = "o5_runtime"
 	O5SidecarImageName     = "ghcr.io/pentops/o5-runtime-sidecar:latest"
@@ -58,6 +60,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		VPCParameter,
 		VersionTagParameter,
 		MetaDeployAssumeRoleParameter,
+		JWKSParameter,
 	} {
 		parameter := &Parameter{
 			Name:   key,

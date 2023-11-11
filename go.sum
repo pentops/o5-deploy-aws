@@ -125,6 +125,8 @@ github.com/pentops/o5-go v0.0.0-20231011031539-818572c3b72e h1:uL+J+tE3C8ny6HqVD
 github.com/pentops/o5-go v0.0.0-20231011031539-818572c3b72e/go.mod h1:YREzbtRQB7StF9H49EBFAzlk0hsD1h2tkMlEb7ybN2U=
 github.com/pentops/o5-go v0.0.0-20231011033055-b8190fa1c0f8 h1:X3BzZ3guJNiiVTLjgrD6o5XeX0xOIMGKG1WBBMYRoEY=
 github.com/pentops/o5-go v0.0.0-20231011033055-b8190fa1c0f8/go.mod h1:YREzbtRQB7StF9H49EBFAzlk0hsD1h2tkMlEb7ybN2U=
+github.com/pentops/o5-go v0.0.0-20231107000020-504c08975ba6 h1:z8QhtrIal1YhFuE6+LwQPsVm4I2pl5J0TbMsS6mK2qQ=
+github.com/pentops/o5-go v0.0.0-20231107000020-504c08975ba6/go.mod h1:YREzbtRQB7StF9H49EBFAzlk0hsD1h2tkMlEb7ybN2U=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stoewer/go-strcase v1.3.0 h1:g0eASXYtp+yvN9fK8sH94oCIk0fau9uV1/ZdJ0AVEzs=
