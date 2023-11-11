@@ -9,6 +9,7 @@ CREATE TABLE deployment_event (
 	id uuid NOT NULL,
 	deployment_id uuid NOT NULL,
 	event jsonb NOT NULL,
+	timestamptz timestamp NOT NULL
 );
 
 -- +goose Down

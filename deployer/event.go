@@ -2,11 +2,15 @@ package deployer
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
+	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"google.golang.org/protobuf/encoding/protojson"
+	"gopkg.daemonl.com/sqrlx"
 )
 
 func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
@@ -23,6 +27,8 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 	}).Debug("Beign Deployment Event")
 
 	var nextEvent *deployer_pb.DeploymentEvent
+	type sideEffect func() error
+	var sideEffects []sideEffect
 
 	switch et := event.Event.Type.(type) {
 
@@ -39,17 +45,15 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 
 	case *deployer_pb.DeploymentEventType_StackWait_:
 		deployment.Status = deployer_pb.DeploymentStatus_WAITING
-
-		d.eg.Go(func() error {
+		sideEffects = []sideEffect{func() error {
 			return d.runStackWait(ctx, deployment)
-		})
+		}}
 
 	case *deployer_pb.DeploymentEventType_StackCreate_:
 		deployment.Status = deployer_pb.DeploymentStatus_CREATING
-
-		if err := d.createNewDeployment(ctx, deployment); err != nil {
-			return err
-		}
+		sideEffects = []sideEffect{func() error {
+			return d.createNewDeployment(ctx, deployment)
+		}}
 
 	case *deployer_pb.DeploymentEventType_StackStatus_:
 		switch et.StackStatus.Lifecycle {
@@ -117,7 +121,7 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 			}
 			deployment.DataMigrations[i] = migration
 
-			d.eg.Go(func() error {
+			sideEffects = append(sideEffects, func() error {
 				return d.runMigration(ctx, deployment, migration)
 			})
 
@@ -177,18 +181,18 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 			deployment.Status = deployer_pb.DeploymentStatus_SCALING_UP
 		}
 
-		d.eg.Go(func() error {
+		sideEffects = []sideEffect{func() error {
 			return d.eventStackScale(ctx, deployment, int(et.StackScale.DesiredCount))
-		})
+		}}
 
 	case *deployer_pb.DeploymentEventType_StackTrigger_:
 		switch deployment.Status {
 		case deployer_pb.DeploymentStatus_SCALED_DOWN:
 			deployment.Status = deployer_pb.DeploymentStatus_INFRA_MIGRATE
 
-			d.eg.Go(func() error {
+			sideEffects = []sideEffect{func() error {
 				return d.migrateInfra(ctx, deployment)
-			})
+			}}
 
 		default:
 			return fmt.Errorf("unexpected stack trigger event: %s", deployment.Status)
@@ -201,14 +205,60 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 		return fmt.Errorf("unknown event type: %T", et)
 	}
 
-	if d.EventCallback != nil {
-		if err := d.EventCallback(ctx, deployment, event); err != nil {
+	deploymentJSON, err := protojson.Marshal(deployment)
+	if err != nil {
+		return err
+	}
+
+	upsertState := sqrlx.Upsert("deployment").
+		Key("id", deployment.DeploymentId).
+		Set("state", deploymentJSON)
+
+	eventJSON, err := protojson.Marshal(event)
+	if err != nil {
+		return err
+	}
+
+	insertEvent := sq.Insert("deployment_event").SetMap(map[string]interface{}{
+		"deployment_id": deployment.DeploymentId,
+		"id":            event.Metadata.EventId,
+		"event":         eventJSON,
+		"timestamp":     event.Metadata.Timestamp.AsTime(),
+	})
+
+	if err := d.db.Transact(ctx, &sqrlx.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+		Retryable: true,
+		ReadOnly:  false,
+	}, func(ctx context.Context, tx sqrlx.Transaction) error {
+
+		_, err := tx.Insert(ctx, upsertState)
+		if err != nil {
 			return err
 		}
+
+		_, err = tx.Insert(ctx, insertEvent)
+		if err != nil {
+			return err
+		}
+
+		return nil
+
+	}); err != nil {
+		return err
+	}
+
+	log.WithFields(ctx, map[string]interface{}{
+		"deploymentId": event.DeploymentId,
+		"event":        event.Event,
+	}).Info("Deployment Event")
+
+	for _, se := range sideEffects {
+		d.eg.Go(se)
 	}
 
 	if nextEvent != nil {
-		return d.RegisterEvent(ctx, nextEvent)
+		d.AsyncEvent(ctx, nextEvent)
 	}
 
 	return nil

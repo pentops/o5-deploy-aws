@@ -7,6 +7,24 @@ blobstores:
 secrets:
   - name: github
 
+databases:
+  - name: main
+    postgres:
+      dbName: o5
+      serverGroup: default
+      dbExtensions:
+        - "uuid-ossp"
+
+      migrateContainer:
+        image:
+          name: o5-deploy-aws
+          registry: ghcr.io/pentops
+        command: [migrate]
+        envVars:
+          - name: "POSTGRES_URL"
+            database:
+              databaseName: main
+
 runtimes:
   - name: main
     grantMetaDeployPermissions: true

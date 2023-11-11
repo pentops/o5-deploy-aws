@@ -20,6 +20,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	protovalidate "github.com/bufbuild/protovalidate-go"
+	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/app"
@@ -28,6 +29,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"gopkg.daemonl.com/sqrlx"
 )
 
 type CloudFormationAPI interface {
@@ -76,21 +78,24 @@ type ClientBuilder interface {
 	GetConfig(ctx context.Context, assumeRole string) (*DeployerClients, error)
 }
 
-type EventCallback func(ctx context.Context, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error
-
 type Deployer struct {
 	Environment   *environment_pb.Environment
 	AWS           *environment_pb.AWS
 	RotateSecrets bool
 	clientCache   *DeployerClients
 	awsConfig     aws.Config
-	EventCallback EventCallback
 	eg            errgroup.Group
+
+	db *sqrlx.Wrapper
 
 	deployments map[string]*deployer_pb.DeploymentState
 }
 
-func NewDeployer(environment *environment_pb.Environment, awsConfig aws.Config) (*Deployer, error) {
+func NewDeployer(conn sqrlx.Connection, environment *environment_pb.Environment, awsConfig aws.Config) (*Deployer, error) {
+	db, err := sqrlx.New(conn, sq.Dollar)
+	if err != nil {
+		return nil, err
+	}
 
 	validator, err := protovalidate.New()
 	if err != nil {
@@ -112,6 +117,7 @@ func NewDeployer(environment *environment_pb.Environment, awsConfig aws.Config) 
 		awsConfig:   awsConfig,
 		deployments: map[string]*deployer_pb.DeploymentState{},
 		eg:          errgroup.Group{},
+		db:          db,
 	}, nil
 }
 
@@ -274,6 +280,15 @@ func (d *Deployer) eventGotLock(ctx context.Context, deployment *deployer_pb.Dep
 	}
 
 	if remoteStack == nil {
+		return newEvent(deployment, &deployer_pb.DeploymentEventType_StackCreate_{
+			StackCreate: &deployer_pb.DeploymentEventType_StackCreate{},
+		}), nil
+	}
+
+	if remoteStack.StackStatus == types.StackStatusRollbackComplete {
+		if err := cf.deleteStack(ctx, deployment.StackName); err != nil {
+			return nil, err
+		}
 		return newEvent(deployment, &deployer_pb.DeploymentEventType_StackCreate_{
 			StackCreate: &deployer_pb.DeploymentEventType_StackCreate{},
 		}), nil

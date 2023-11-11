@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"regexp"
 	"time"
@@ -16,7 +15,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	sq "github.com/elgris/sqrl"
-	"github.com/lib/pq"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"gopkg.daemonl.com/sqrlx"
@@ -350,12 +348,7 @@ func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *deployer_pb
 	} else if count == 0 {
 		_, err = db.ExecRaw(ctx, fmt.Sprintf(`CREATE ROLE %s`, dbName))
 		if err != nil {
-			pqErr := pq.Error{}
-			if !errors.As(err, &pqErr) {
-				return err
-			}
-
-			return fmt.Errorf("PQ ERR: %+v", pqErr)
+			return err
 		}
 
 		_, err = db.ExecRaw(ctx, fmt.Sprintf(`GRANT %s TO current_user`, dbName))

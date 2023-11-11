@@ -61,49 +61,6 @@ func (cf *CFWrapper) cancelUpdate(ctx context.Context, stackName string) error {
 	return err
 }
 
-func (cf *CFWrapper) waitForStack(ctx context.Context, stackName string) (*types.Stack, error) {
-	for {
-		remoteStack, err := cf.getOneStack(ctx, stackName)
-		if err != nil {
-			return nil, err
-		}
-		if remoteStack == nil {
-			return nil, nil
-		}
-
-		log.WithFields(ctx, map[string]interface{}{
-			"currentStatus": remoteStack.StackStatus,
-		}).Debug("Waiting for stack to be stable")
-
-		switch remoteStack.StackStatus {
-		case types.StackStatusCreateComplete, // Initial
-			types.StackStatusUpdateComplete,         // Update
-			types.StackStatusUpdateRollbackComplete: // Ready to try again.
-			log.WithFields(ctx, map[string]interface{}{
-				"currentStatus": remoteStack.StackStatus,
-			}).Debug("Stack is stable")
-			return remoteStack, nil
-
-		case types.StackStatusRollbackComplete:
-			log.WithFields(ctx, map[string]interface{}{
-				"currentStatus": remoteStack.StackStatus,
-			}).Debug("Deleting Rolled Back Stack")
-			if err := cf.deleteStack(ctx, stackName); err != nil {
-				return nil, err
-			}
-
-			// then continue waiting
-
-		case types.StackStatusCreateFailed, types.StackStatusRollbackFailed, types.StackStatusDeleteComplete, types.StackStatusDeleteFailed:
-			return nil, fmt.Errorf("stack %s is in status %s", stackName, remoteStack.StackStatus)
-
-		default:
-		}
-
-		time.Sleep(time.Second)
-	}
-}
-
 var stackStatusProgress = []types.StackStatus{
 	types.StackStatusCreateInProgress,
 	types.StackStatusUpdateInProgress,

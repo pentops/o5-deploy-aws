@@ -12,18 +12,14 @@ import (
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/github"
 	"github.com/pentops/o5-deploy-aws/protoread"
-	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
+	"github.com/pressly/goose"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"gopkg.daemonl.com/envconf"
 )
-
-type envConfig struct {
-	ConfigFile string `env:"CONFIG_FILE"`
-	WorkerPort int    `env:"WORKER_PORT" default:"8081"`
-}
 
 var Version string
 
@@ -34,19 +30,56 @@ func main() {
 		"version":     Version,
 	})
 
-	config := envConfig{}
-	if err := envconf.Parse(&config); err != nil {
-		log.WithError(ctx, err).Error("Failed to load config")
-		os.Exit(1)
+	args := os.Args[1:]
+	if len(args) == 0 {
+		args = append(args, "serve")
 	}
 
-	if err := do(ctx, config); err != nil {
-		log.WithError(ctx, err).Error("Failed to serve")
+	switch args[0] {
+	case "serve":
+		if err := runServe(ctx); err != nil {
+			log.WithError(ctx, err).Error("Failed to serve")
+			os.Exit(1)
+		}
+
+	case "migrate":
+		if err := runMigrate(ctx); err != nil {
+			log.WithError(ctx, err).Error("Failed to migrate")
+			os.Exit(1)
+		}
+
+	default:
+		log.WithField(ctx, "command", args[0]).Error("Unknown command")
 		os.Exit(1)
 	}
 }
 
-func do(ctx context.Context, cfg envConfig) error {
+func runMigrate(ctx context.Context) error {
+	var config = struct {
+		MigrationsDir string `env:"MIGRATIONS_DIR" default:"./ext/db"`
+	}{}
+
+	if err := envconf.Parse(&config); err != nil {
+		return fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	db, err := service.OpenDatabase(ctx)
+	if err != nil {
+		return err
+	}
+
+	return goose.Up(db, "/migrations")
+}
+
+func runServe(ctx context.Context) error {
+	type envConfig struct {
+		ConfigFile string `env:"CONFIG_FILE"`
+		WorkerPort int    `env:"WORKER_PORT" default:"8081"`
+	}
+	cfg := envConfig{}
+	if err := envconf.Parse(&cfg); err != nil {
+		return err
+	}
 
 	awsConfig, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -62,23 +95,20 @@ func do(ctx context.Context, cfg envConfig) error {
 
 	environmentDeployers := map[string]github.IDeployer{}
 
+	db, err := service.OpenDatabase(ctx)
+	if err != nil {
+		return err
+	}
+
 	for _, envConfigFile := range configFile.TargetEnvironments {
 		env := &environment_pb.Environment{}
 		if err := protoread.PullAndParse(ctx, s3Client, envConfigFile, env); err != nil {
 			return err
 		}
 
-		envDeployer, err := deployer.NewDeployer(env, awsConfig)
+		envDeployer, err := deployer.NewDeployer(db, env, awsConfig)
 		if err != nil {
 			return err
-		}
-
-		envDeployer.EventCallback = func(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
-			log.WithFields(ctx, map[string]interface{}{
-				"deploymentId": event.DeploymentId,
-				"event":        event.Event,
-			}).Info("Deployment Event")
-			return nil
 		}
 
 		environmentDeployers[env.FullName] = envDeployer
