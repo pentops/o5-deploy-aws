@@ -14,13 +14,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	protovalidate "github.com/bufbuild/protovalidate-go"
+	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/app"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type CloudFormationAPI interface {
@@ -51,20 +55,25 @@ type SNSAPI interface {
 	CreateTopic(ctx context.Context, params *sns.CreateTopicInput, optsFns ...func(*sns.Options)) (*sns.CreateTopicOutput, error)
 }
 
+type S3API interface {
+	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+}
+
 type DeployerClients struct {
 	CloudFormation CloudFormationAPI
 	SNS            SNSAPI
 	ELB            ELBV2API
 	SecretsManager SecretsManagerAPI
 	ECS            ECSAPI
-}
-
-type RoleAssumer struct {
+	S3             S3API
 }
 
 type ClientBuilder interface {
 	GetConfig(ctx context.Context, assumeRole string) (*DeployerClients, error)
 }
+
+type EventCallback func(ctx context.Context, event *deployer_pb.DeploymentEvent) error
 
 type Deployer struct {
 	Environment   *environment_pb.Environment
@@ -72,6 +81,9 @@ type Deployer struct {
 	RotateSecrets bool
 	clientCache   *DeployerClients
 	awsConfig     aws.Config
+	EventCallback EventCallback
+
+	deployments map[string]*deployer_pb.DeploymentState
 }
 
 func NewDeployer(environment *environment_pb.Environment, awsConfig aws.Config) (*Deployer, error) {
@@ -94,7 +106,22 @@ func NewDeployer(environment *environment_pb.Environment, awsConfig aws.Config) 
 		Environment: environment,
 		AWS:         awsTarget,
 		awsConfig:   awsConfig,
+		deployments: map[string]*deployer_pb.DeploymentState{},
 	}, nil
+}
+
+func (d *Deployer) getDeployment(ctx context.Context, id string) (*deployer_pb.DeploymentState, error) {
+	if deployment, ok := d.deployments[id]; ok {
+		return deployment, nil
+	}
+	return nil, fmt.Errorf("no deployment found with id %s", id)
+}
+
+func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
+	if d.EventCallback != nil {
+		return d.EventCallback(ctx, event)
+	}
+	return nil
 }
 
 func (d *Deployer) Clients(ctx context.Context) (*DeployerClients, error) {
@@ -121,6 +148,9 @@ func (d *Deployer) Clients(ctx context.Context) (*DeployerClients, error) {
 			*tempCredentials.Credentials.SessionToken),
 		),
 	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
 
 	return &DeployerClients{
 		CloudFormation: cloudformation.NewFromConfig(assumeRoleConfig),
@@ -128,8 +158,21 @@ func (d *Deployer) Clients(ctx context.Context) (*DeployerClients, error) {
 		ELB:            elasticloadbalancingv2.NewFromConfig(assumeRoleConfig),
 		SecretsManager: secretsmanager.NewFromConfig(assumeRoleConfig),
 		ECS:            ecs.NewFromConfig(assumeRoleConfig),
+		S3:             s3.NewFromConfig(assumeRoleConfig),
 	}, nil
 
+}
+
+type Deployment struct {
+	ID        string
+	StackName string
+	App       Application //*app.BuiltApplication
+}
+
+type Application interface {
+	TemplateJSON() ([]byte, error)
+	PostgresDatabases() []*deployer_pb.PostgresDatabase
+	Parameters() []*deployer_pb.Parameter
 }
 
 func (d *Deployer) Deploy(ctx context.Context, app *app.BuiltApplication, cancelUpdates bool) error {
@@ -138,6 +181,43 @@ func (d *Deployer) Deploy(ctx context.Context, app *app.BuiltApplication, cancel
 		"stackName":   stackName,
 		"environment": d.Environment.FullName,
 	})
+
+	deployment := &Deployment{
+		ID:        uuid.NewString(),
+		StackName: stackName,
+		App:       app,
+	}
+
+	d.deployments[deployment.ID] = &deployer_pb.DeploymentState{
+		DeploymentId: deployment.ID,
+		Status:       deployer_pb.DeploymentStatus_LOCKED,
+		Spec: &deployer_pb.DeploymentSpec{
+			AppName:         app.Name,
+			Version:         app.Version,
+			EnvironmentName: d.Environment.FullName,
+		},
+	}
+
+	if err := d.RegisterEvent(ctx, &deployer_pb.DeploymentEvent{
+		DeploymentId: deployment.ID,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+		Event: &deployer_pb.DeploymentEventType{
+			Type: &deployer_pb.DeploymentEventType_Triggered_{
+				Triggered: &deployer_pb.DeploymentEventType_Triggered{
+					Spec: &deployer_pb.DeploymentSpec{
+						AppName:         app.Name,
+						Version:         app.Version,
+						EnvironmentName: d.Environment.FullName,
+					},
+				},
+			},
+		},
+	}); err != nil {
+		return err
+	}
 
 	if err := d.upsertSNSTopics(ctx, app.SNSTopics); err != nil {
 		return err
@@ -158,7 +238,7 @@ func (d *Deployer) Deploy(ctx context.Context, app *app.BuiltApplication, cancel
 	}
 
 	if remoteStack == nil {
-		return d.createNewDeployment(ctx, stackName, app)
+		return d.createNewDeployment(ctx, deployment)
 	}
 
 	if cancelUpdates && remoteStack.StackStatus == types.StackStatusUpdateInProgress {
@@ -172,7 +252,7 @@ func (d *Deployer) Deploy(ctx context.Context, app *app.BuiltApplication, cancel
 		return err
 	}
 
-	return d.updateDeployment(ctx, stackName, app, remoteStackStable.Parameters)
+	return d.updateDeployment(ctx, deployment, remoteStackStable.Parameters)
 }
 
 func (d *Deployer) upsertSNSTopics(ctx context.Context, topics []*app.SNSTopic) error {
@@ -194,7 +274,7 @@ func (d *Deployer) upsertSNSTopics(ctx context.Context, topics []*app.SNSTopic) 
 	return nil
 }
 
-func (d *Deployer) createNewDeployment(ctx context.Context, stackName string, app *app.BuiltApplication) error {
+func (d *Deployer) createNewDeployment(ctx context.Context, deployment *Deployment) error {
 
 	clients, err := d.Clients(ctx)
 	if err != nil {
@@ -202,8 +282,8 @@ func (d *Deployer) createNewDeployment(ctx context.Context, stackName string, ap
 	}
 
 	initialParameters, err := d.applyInitialParameters(ctx, stackParameters{
-		name:     stackName,
-		template: app,
+		name:     deployment.StackName,
+		template: deployment.App,
 		scale:    0,
 	})
 	if err != nil {
@@ -218,40 +298,60 @@ func (d *Deployer) createNewDeployment(ctx context.Context, stackName string, ap
 	log.Info(ctx, "Create with scale 0")
 	if err := cf.createCloudformationStack(ctx, StackArgs{
 		Parameters: initialParameters,
-		Template:   app,
-		Name:       stackName,
+		Template:   deployment.App,
+		Name:       deployment.StackName,
 	}); err != nil {
 		return err
 	}
 
-	lastState, err := cf.waitForSuccess(ctx, stackName, "Stack Create")
+	lastState, err := cf.waitForSuccess(ctx, deployment.StackName, d.waitStatusCallback(deployment, "stack create"))
 	if err != nil {
 		return err
 	}
 
 	// Migrate
 	log.Info(ctx, "Migrate Database")
-	if err := d.migrateData(ctx, lastState.Outputs, app, true); err != nil {
+	if err := d.migrateData(ctx, lastState.Outputs, deployment.App, true); err != nil {
 		return err
 	}
 
 	// Scale Up
 	log.Info(ctx, "Scale Up")
-	if err := cf.setScale(ctx, stackName, 1); err != nil {
+	if err := cf.setScale(ctx, deployment.StackName, 1); err != nil {
 		return err
 	}
 	if err != nil {
 		return err
 	}
 
-	if err := cf.WaitForSuccess(ctx, stackName, "Scale Up"); err != nil {
+	if err := cf.WaitForSuccess(ctx, deployment.StackName, d.waitStatusCallback(deployment, "scale up")); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (d *Deployer) updateDeployment(ctx context.Context, stackName string, app *app.BuiltApplication, previous []types.Parameter) error {
+func (d *Deployer) waitStatusCallback(deployment *Deployment, phaseLabel string) waiterCallback {
+	return func(ctx context.Context, stackStatus StackStatus) error {
+		return d.RegisterEvent(ctx, &deployer_pb.DeploymentEvent{
+			DeploymentId: deployment.ID,
+			Metadata: &deployer_pb.EventMetadata{
+				EventId:   uuid.NewString(),
+				Timestamp: timestamppb.Now(),
+			},
+			Event: &deployer_pb.DeploymentEventType{
+				Type: &deployer_pb.DeploymentEventType_StackStatus_{
+					StackStatus: &deployer_pb.DeploymentEventType_StackStatus{
+						Lifecycle:  stackStatus.SummaryType,
+						FullStatus: string(stackStatus.StatusName),
+					},
+				},
+			},
+		})
+	}
+}
+
+func (d *Deployer) updateDeployment(ctx context.Context, deployment *Deployment, previous []types.Parameter) error {
 
 	clients, err := d.Clients(ctx)
 	if err != nil {
@@ -263,21 +363,55 @@ func (d *Deployer) updateDeployment(ctx context.Context, stackName string, app *
 	}
 
 	// Scale Down
-	log.Info(ctx, "Scale Down")
-	if err := cf.setScale(ctx, stackName, 0); err != nil {
+	log.Info(ctx, "Trigger: Scale Down")
+	if err := d.RegisterEvent(ctx, &deployer_pb.DeploymentEvent{
+		DeploymentId: deployment.ID,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+		Event: &deployer_pb.DeploymentEventType{
+			Type: &deployer_pb.DeploymentEventType_StackTrigger_{
+				StackTrigger: &deployer_pb.DeploymentEventType_StackTrigger{
+					Phase: "scale down",
+				},
+			},
+		},
+	}); err != nil {
 		return err
 	}
 
-	if err := cf.WaitForSuccess(ctx, stackName, "Scale Down"); err != nil {
+	if err := cf.setScale(ctx, deployment.StackName, 0); err != nil {
+		return err
+	}
+
+	if err := cf.WaitForSuccess(ctx, deployment.StackName, d.waitStatusCallback(deployment, "scale down")); err != nil {
 		return err
 	}
 
 	// Update, Keep Scale 0
+	if err := d.RegisterEvent(ctx, &deployer_pb.DeploymentEvent{
+		DeploymentId: deployment.ID,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+		Event: &deployer_pb.DeploymentEventType{
+			Type: &deployer_pb.DeploymentEventType_StackTrigger_{
+				StackTrigger: &deployer_pb.DeploymentEventType_StackTrigger{
+					Phase: "update",
+				},
+			},
+		},
+	}); err != nil {
+		return err
+	}
+
 	log.Info(ctx, "Update Pre Migrate")
 	initialParameters, err := d.applyInitialParameters(ctx, stackParameters{
 		previousParameters: previous,
-		name:               stackName,
-		template:           app,
+		name:               deployment.StackName,
+		template:           deployment.App,
 		scale:              0,
 	})
 	if err != nil {
@@ -285,31 +419,31 @@ func (d *Deployer) updateDeployment(ctx context.Context, stackName string, app *
 	}
 
 	if err := cf.updateCloudformationStack(ctx, StackArgs{
-		Template:   app,
+		Template:   deployment.App,
 		Parameters: initialParameters,
-		Name:       stackName,
+		Name:       deployment.StackName,
 	}); err != nil {
 		return err
 	}
 
-	lastState, err := cf.waitForSuccess(ctx, stackName, "Update")
+	lastState, err := cf.waitForSuccess(ctx, deployment.StackName, d.waitStatusCallback(deployment, "update"))
 	if err != nil {
 		return err
 	}
 
 	// Migrate
 	log.Info(ctx, "Data Migrate")
-	if err := d.migrateData(ctx, lastState.Outputs, app, d.RotateSecrets); err != nil {
+	if err := d.migrateData(ctx, lastState.Outputs, deployment.App, d.RotateSecrets); err != nil {
 		return err
 	}
 
 	// Scale Up
 	log.Info(ctx, "Scale Up")
-	if err := cf.setScale(ctx, stackName, 1); err != nil {
+	if err := cf.setScale(ctx, deployment.StackName, 1); err != nil {
 		return err
 	}
 
-	if err := cf.WaitForSuccess(ctx, stackName, "Scale Up"); err != nil {
+	if err := cf.WaitForSuccess(ctx, deployment.StackName, d.waitStatusCallback(deployment, "scale up")); err != nil {
 		return err
 	}
 

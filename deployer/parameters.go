@@ -12,6 +12,7 @@ import (
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
 
@@ -23,34 +24,24 @@ type ParameterResolver interface {
 	DesiredCount() int
 }
 
-func resolveParameter(ctx context.Context, param *app.Parameter, resolver ParameterResolver) (*types.Parameter, error) {
+func resolveParameter(ctx context.Context, param *deployer_pb.Parameter, resolver ParameterResolver) (*types.Parameter, error) {
 
 	parameter := &types.Parameter{
 		ParameterKey: aws.String(param.Name),
 	}
-	switch param.Source {
-	case app.ParameterSourceDefault:
-		if param.Default == nil {
-			return nil, errors.New("default parameter source requires a default value")
-		}
-		parameter.ParameterValue = aws.String(*param.Default)
+	switch ps := param.Source.Type.(type) {
+	case *deployer_pb.ParameterSourceType_Static_:
+		parameter.ParameterValue = aws.String(ps.Static.Value)
 
-	case app.ParameterSourceWellKnown:
+	case *deployer_pb.ParameterSourceType_WellKnown_:
 		value, ok := resolver.WellKnownParameter(param.Name)
 		if !ok {
 			return nil, fmt.Errorf("unknown well known parameter: %s", param.Name)
 		}
 		parameter.ParameterValue = aws.String(value)
 
-	case app.ParameterSourceRulePriority:
-		if len(param.Args) != 1 {
-			return nil, errors.New("invalid parameter source args")
-		}
-
-		group, ok := param.Args[0].(application_pb.RouteGroup)
-		if !ok {
-			return nil, errors.New("invalid parameter source args")
-		}
+	case *deployer_pb.ParameterSourceType_RulePriority_:
+		group := ps.RulePriority.RouteGroup
 		priority, err := resolver.NextAvailableListenerRulePriority(group)
 		if err != nil {
 			return nil, err
@@ -58,18 +49,11 @@ func resolveParameter(ctx context.Context, param *app.Parameter, resolver Parame
 
 		parameter.ParameterValue = aws.String(fmt.Sprintf("%d", priority))
 
-	case app.ParameterSourceDesiredCount:
+	case *deployer_pb.ParameterSourceType_DesiredCount_:
 		parameter.ParameterValue = app.Stringf("%d", resolver.DesiredCount())
 
-	case app.ParameterSourceCrossEnvSNS:
-		if len(param.Args) != 1 {
-			return nil, errors.New("invalid parameter source args")
-		}
-		envName, ok := param.Args[0].(string)
-		if !ok {
-			return nil, errors.New("invalid parameter source args")
-		}
-
+	case *deployer_pb.ParameterSourceType_CrossEnvSns_:
+		envName := ps.CrossEnvSns.EnvName
 		topicPrefix, err := resolver.CrossEnvSNSPrefix(envName)
 		if err != nil {
 			return nil, err
@@ -77,11 +61,8 @@ func resolveParameter(ctx context.Context, param *app.Parameter, resolver Parame
 
 		parameter.ParameterValue = aws.String(topicPrefix)
 
-	case app.ParameterSourceEnvVar:
-		key, ok := param.Args[0].(string)
-		if !ok {
-			return nil, errors.New("invalid parameter source args")
-		}
+	case *deployer_pb.ParameterSourceType_EnvVar_:
+		key := ps.EnvVar.Name
 		val, ok := resolver.CustomEnvVar(key)
 		if !ok {
 			return nil, fmt.Errorf("unknown env var: %s", key)
@@ -166,7 +147,7 @@ func (d *Deployer) applyInitialParameters(ctx context.Context, stack stackParame
 		mappedPreviousParameters[*param.ParameterKey] = *param.ParameterValue
 	}
 
-	stackParameters := stack.template.Parameters
+	stackParameters := stack.template.Parameters()
 	parameters := make([]types.Parameter, 0, len(stackParameters))
 
 	takenPriorities, err := d.loadTakenPriorities(ctx)

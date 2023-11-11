@@ -18,16 +18,16 @@ import (
 	sq "github.com/elgris/sqrl"
 	"github.com/lib/pq"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/app"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"gopkg.daemonl.com/sqrlx"
 )
 
-func (d *Deployer) migrateData(ctx context.Context, stackOutputs []types.Output, template *app.BuiltApplication, rotateExisting bool) error {
+func (d *Deployer) migrateData(ctx context.Context, stackOutputs []types.Output, template Application, rotateExisting bool) error {
 
-	for _, db := range template.PostgresDatabases {
+	for _, db := range template.PostgresDatabases() {
 		ctx := log.WithFields(ctx, map[string]interface{}{
-			"database":    db.Databse.Name,
-			"serverGroup": db.Postgres.ServerGroup,
+			"database":    db.Database.Name,
+			"serverGroup": db.Database.GetPostgres().ServerGroup,
 		})
 		log.Debug(ctx, "Upsert Database")
 		var migrationTaskARN string
@@ -173,16 +173,17 @@ func (d *Deployer) rootPostgresCredentials(ctx context.Context, serverGroup stri
 	return secretVal, nil
 }
 
-func (d *Deployer) fixPostgresOwnership(ctx context.Context, spec *app.PostgresDefinition) error {
+func (d *Deployer) fixPostgresOwnership(ctx context.Context, spec *deployer_pb.PostgresDatabase) error {
 
 	log.Info(ctx, "Fix object ownership")
-	dbName := spec.Databse.Name
-	if spec.Postgres.DbName != "" {
-		dbName = spec.Postgres.DbName
+	pgSpec := spec.Database.GetPostgres()
+	dbName := spec.Database.Name
+	if pgSpec.DbName != "" {
+		dbName = pgSpec.DbName
 	}
 	ownerName := dbName
 
-	rootSecret, err := d.rootPostgresCredentials(ctx, spec.Postgres.ServerGroup)
+	rootSecret, err := d.rootPostgresCredentials(ctx, pgSpec.ServerGroup)
 	if err != nil {
 		return err
 	}
@@ -287,9 +288,10 @@ func (d *Deployer) fixPostgresOwnership(ctx context.Context, spec *app.PostgresD
 	return nil
 }
 
-func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *app.PostgresDefinition, secretARN string, rotateExisting bool) error {
+func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *deployer_pb.PostgresDatabase, secretARN string, rotateExisting bool) error {
 
-	rootSecret, err := d.rootPostgresCredentials(ctx, spec.Postgres.ServerGroup)
+	pgSpec := spec.Database.GetPostgres()
+	rootSecret, err := d.rootPostgresCredentials(ctx, pgSpec.ServerGroup)
 	if err != nil {
 		return err
 	}
@@ -316,9 +318,9 @@ func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *app.Postgre
 
 	var count int
 
-	dbName := spec.Databse.Name
-	if spec.Postgres.DbName != "" {
-		dbName = spec.Postgres.DbName
+	dbName := spec.Database.Name
+	if pgSpec.DbName != "" {
+		dbName = pgSpec.DbName
 	}
 
 	err = db.SelectRow(ctx, sq.
@@ -335,7 +337,7 @@ func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *app.Postgre
 	}).Debug("Found DBs")
 
 	if count > 1 {
-		return fmt.Errorf("more than one DB matched %s:%s", spec.Postgres.ServerGroup, dbName)
+		return fmt.Errorf("more than one DB matched %s:%s", pgSpec.ServerGroup, dbName)
 	} else if count == 0 {
 		_, err = db.ExecRaw(ctx, fmt.Sprintf(`CREATE ROLE %s`, dbName))
 		if err != nil {
@@ -366,9 +368,9 @@ func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *app.Postgre
 		return nil
 	}
 
-	if len(spec.Postgres.DbExtensions) > 0 {
+	if len(pgSpec.DbExtensions) > 0 {
 		log.WithFields(ctx, map[string]interface{}{
-			"count": len(spec.Postgres.DbExtensions),
+			"count": len(pgSpec.DbExtensions),
 		}).Debug("Adding Extensions")
 		if err := func() error {
 			superuserURL := rootSecret.buildURLForDB(dbName)
@@ -378,7 +380,7 @@ func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *app.Postgre
 			}
 			defer superuserConn.Close()
 
-			for _, ext := range spec.Postgres.DbExtensions {
+			for _, ext := range pgSpec.DbExtensions {
 				if !reSafeExtensionName.MatchString(ext) {
 					return fmt.Errorf("unsafe extension name: %s", ext)
 				}
@@ -426,7 +428,7 @@ func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *app.Postgre
 
 	log.WithFields(ctx, map[string]interface{}{
 		"newUsername": newSecret.Username,
-		"secretName":  spec.Secret.Resource.Name,
+		"secretARN":   secretARN,
 	}).Debug("Storing New User Credentials")
 
 	clients, err := d.Clients(ctx)
@@ -440,7 +442,7 @@ func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *app.Postgre
 		SecretString: aws.String(string(jsonBytes)),
 	})
 	if err != nil {
-		return fmt.Errorf("Storing new secret value (%s) failed. The user was still created: %w", spec.Secret.Name(), err)
+		return fmt.Errorf("Storing new secret value (%s) failed. The user was still created: %w", secretARN, err)
 	}
 
 	return nil

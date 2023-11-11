@@ -12,6 +12,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/github"
 	"github.com/pentops/o5-deploy-aws/protoread"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
 	"google.golang.org/grpc"
@@ -70,6 +71,14 @@ func do(ctx context.Context, cfg envConfig) error {
 		envDeployer, err := deployer.NewDeployer(env, awsConfig)
 		if err != nil {
 			return err
+		}
+
+		envDeployer.EventCallback = func(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
+			log.WithFields(ctx, map[string]interface{}{
+				"deploymentId": event.DeploymentId,
+				"event":        event.Event,
+			}).Info("Deployment Event")
+			return nil
 		}
 
 		environmentDeployers[env.FullName] = envDeployer

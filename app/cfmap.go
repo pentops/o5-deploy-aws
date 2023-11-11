@@ -11,6 +11,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/s3"
 	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -48,7 +49,7 @@ type DatabaseReference struct {
 
 func BuildApplication(app *application_pb.Application, versionTag string) (*Application, error) {
 
-	stackTemplate := NewApplication(app.Name)
+	stackTemplate := NewApplication(app.Name, versionTag)
 
 	for _, key := range []string{
 		ECSClusterParameter,
@@ -62,15 +63,22 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		MetaDeployAssumeRoleParameter,
 		JWKSParameter,
 	} {
-		parameter := &Parameter{
-			Name:   key,
-			Type:   "String",
-			Source: ParameterSourceWellKnown,
+		parameter := &deployer_pb.Parameter{
+			Name: key,
+			Type: "String",
+			Source: &deployer_pb.ParameterSourceType{
+				Type: &deployer_pb.ParameterSourceType_WellKnown_{
+					WellKnown: &deployer_pb.ParameterSourceType_WellKnown{},
+				},
+			},
 		}
 		switch key {
 		case VersionTagParameter:
-			parameter.Default = String(versionTag)
-			parameter.Source = ParameterSourceDefault
+			parameter.Source.Type = &deployer_pb.ParameterSourceType_Static_{
+				Static: &deployer_pb.ParameterSourceType_Static{
+					Value: versionTag,
+				},
+			}
 		case VPCParameter:
 			parameter.Type = "AWS::EC2::VPC::Id"
 		}
@@ -142,7 +150,6 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 			def := &PostgresDefinition{
 				Databse:  database,
 				Postgres: dbType.Postgres,
-				Secret:   secret,
 			}
 
 			secretName := fmt.Sprintf("DatabaseSecret%s", CleanParameterName(database.Name))

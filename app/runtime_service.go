@@ -11,6 +11,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/sns"
 	"github.com/awslabs/goformation/v7/cloudformation/sqs"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 )
 
 type RuntimeService struct {
@@ -63,10 +64,6 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 	}
 
 	addLogs(runtimeSidecar, globals.appName)
-
-	defs = append(defs, &ContainerDefinition{
-		Container: runtimeSidecar,
-	})
 
 	taskDefinition := NewResource(runtime.Name, &ecs.TaskDefinition{
 		Family:                  String(fmt.Sprintf("%s_%s", globals.appName, runtime.Name)),
@@ -130,10 +127,14 @@ func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
 func (rs *RuntimeService) Apply(template *Application) {
 
 	desiredCountParameter := fmt.Sprintf("DesiredCount%s", rs.Name)
-	template.AddParameter(&Parameter{
-		Name:   desiredCountParameter,
-		Type:   "Number",
-		Source: ParameterSourceDesiredCount,
+	template.AddParameter(&deployer_pb.Parameter{
+		Name: desiredCountParameter,
+		Type: "Number",
+		Source: &deployer_pb.ParameterSourceType{
+			Type: &deployer_pb.ParameterSourceType_DesiredCount_{
+				DesiredCount: &deployer_pb.ParameterSourceType_DesiredCount{},
+			},
+		},
 	})
 
 	if rs.Service.Overrides == nil {
@@ -191,11 +192,16 @@ func (rs *RuntimeService) Apply(template *Application) {
 			})
 			if sub.EnvName != nil {
 				envSNSParamName := CleanParameterName(*sub.EnvName, "SNSPrefix")
-				template.AddParameter(&Parameter{
-					Name:   envSNSParamName,
-					Type:   "String",
-					Source: ParameterSourceCrossEnvSNS,
-					Args:   []interface{}{*sub.EnvName},
+				template.AddParameter(&deployer_pb.Parameter{
+					Name: envSNSParamName,
+					Type: "String",
+					Source: &deployer_pb.ParameterSourceType{
+						Type: &deployer_pb.ParameterSourceType_CrossEnvSns_{
+							CrossEnvSns: &deployer_pb.ParameterSourceType_CrossEnvSns{
+								EnvName: *sub.EnvName,
+							},
+						},
+					},
 				})
 				snsTopicARN = cloudformation.Join("", []string{
 					cloudformation.Ref(envSNSParamName),
@@ -235,25 +241,29 @@ func (rs *RuntimeService) Apply(template *Application) {
 		}))
 	}
 
-	ingressEndpoints := make([]string, 0, len(rs.ingressEndpoints))
-	for endpoint := range rs.ingressEndpoints {
-		ingressEndpoints = append(ingressEndpoints, endpoint)
-	}
-	rs.IngressContainer.Environment = append(rs.IngressContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-		Name:  String("SERVICE_ENDPOINT"),
-		Value: String(strings.Join(ingressEndpoints, ",")),
-	}, ecs.TaskDefinition_KeyValuePair{
-		Name:  String("AWS_REGION"),
-		Value: String(cloudformation.Ref(AWSRegionParameter)),
-	}, ecs.TaskDefinition_KeyValuePair{
-		Name:  String("JWKS"),
-		Value: String(cloudformation.Ref(JWKSParameter)),
-	})
-	if ingressNeedsPublicPort {
+	if len(rs.ingressEndpoints) > 0 {
+		ingressEndpoints := make([]string, 0, len(rs.ingressEndpoints))
+		for endpoint := range rs.ingressEndpoints {
+			ingressEndpoints = append(ingressEndpoints, endpoint)
+		}
 		rs.IngressContainer.Environment = append(rs.IngressContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  String("PUBLIC_PORT"),
-			Value: String("8080"),
+			Name:  String("SERVICE_ENDPOINT"),
+			Value: String(strings.Join(ingressEndpoints, ",")),
+		}, ecs.TaskDefinition_KeyValuePair{
+			Name:  String("AWS_REGION"),
+			Value: String(cloudformation.Ref(AWSRegionParameter)),
+		}, ecs.TaskDefinition_KeyValuePair{
+			Name:  String("JWKS"),
+			Value: String(cloudformation.Ref(JWKSParameter)),
 		})
+		if ingressNeedsPublicPort {
+			rs.IngressContainer.Environment = append(rs.IngressContainer.Environment, ecs.TaskDefinition_KeyValuePair{
+				Name:  String("PUBLIC_PORT"),
+				Value: String("8080"),
+			})
+		}
+	} else {
+		rs.IngressContainer = nil
 	}
 
 	// Not sure who thought it would be a good idea to not use pointers here...
@@ -264,6 +274,11 @@ func (rs *RuntimeService) Apply(template *Application) {
 			template.parameters[param.Name] = param
 		}
 	}
+
+	if rs.IngressContainer != nil {
+		defs = append(defs, *rs.IngressContainer)
+	}
+
 	rs.TaskDefinition.Resource.ContainerDefinitions = defs
 
 	template.AddResource(rs.TaskDefinition)
@@ -343,10 +358,15 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 
 	var container *ecs.TaskDefinition_ContainerDefinition
 
-	for _, search := range rs.Containers {
-		if search.Container.Name == targetContainer {
-			container = search.Container
-			break
+	if targetContainer == O5SidecarContainerName {
+		container = rs.IngressContainer
+	} else {
+
+		for _, search := range rs.Containers {
+			if search.Container.Name == targetContainer {
+				container = search.Container
+				break
+			}
 		}
 	}
 

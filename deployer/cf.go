@@ -12,12 +12,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/smithy-go"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/app"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 )
 
 type stackParameters struct {
 	name               string
-	template           *app.BuiltApplication
+	template           Application
 	scale              int
 	previousParameters []types.Parameter
 }
@@ -121,8 +121,8 @@ var stackStatusRollingBack = []types.StackStatus{
 	types.StackStatusUpdateRollbackCompleteCleanupInProgress,
 }
 
-var stackStatusRolledBack = []types.StackStatus{
-	types.StackStatusUpdateRollbackComplete,
+var stackStatusCreateFailed = []types.StackStatus{
+	types.StackStatusRollbackComplete,
 }
 
 var stackStatusComplete = []types.StackStatus{
@@ -141,16 +141,27 @@ var stackStatusesTerminal = []types.StackStatus{
 	types.StackStatusImportRollbackInProgress,
 	types.StackStatusImportRollbackFailed,
 	types.StackStatusImportRollbackComplete,
+	types.StackStatusUpdateRollbackComplete,
 }
 
-func (cf *CFWrapper) WaitForSuccess(ctx context.Context, stackName string, phaseLabel string) error {
-	_, err := cf.waitForSuccess(ctx, stackName, phaseLabel)
+type waiterCallback func(ctx context.Context, stackStatus StackStatus) error
+
+type StackStatus struct {
+	StatusName  types.StackStatus
+	SummaryType deployer_pb.StackLifecycle
+	IsOK        bool
+	Stable      bool
+}
+
+func (cf *CFWrapper) WaitForSuccess(ctx context.Context, stackName string, callback waiterCallback) error {
+	_, err := cf.waitForSuccess(ctx, stackName, callback)
 	return err
 }
 
-func (cf *CFWrapper) waitForSuccess(ctx context.Context, stackName string, phaseLabel string) (*types.Stack, error) {
+func (cf *CFWrapper) waitForSuccess(ctx context.Context, stackName string, callback waiterCallback) (*types.Stack, error) {
 	var remoteStack *types.Stack
 	var err error
+	var lastStatus types.StackStatus
 	for {
 		remoteStack, err = cf.getOneStack(ctx, stackName)
 		if err != nil {
@@ -160,46 +171,86 @@ func (cf *CFWrapper) waitForSuccess(ctx context.Context, stackName string, phase
 			return nil, fmt.Errorf("missing stack %s", stackName)
 		}
 
-		log.WithFields(ctx, map[string]interface{}{
-			"currentStatus": remoteStack.StackStatus,
-			"phase":         phaseLabel,
-		}).Debug("Waiting for stack to be stable")
-
-		for _, status := range stackStatusesTerminal {
-			if remoteStack.StackStatus == status {
-				return nil, fmt.Errorf("stack %s, phase %s, is in terminal status %s", stackName, phaseLabel, remoteStack.StackStatus)
+		if lastStatus != remoteStack.StackStatus {
+			summary, err := summarizeStackStatus(remoteStack.StackStatus)
+			if err != nil {
+				return nil, err
 			}
-		}
 
-		for _, status := range stackStatusComplete {
-			if remoteStack.StackStatus == status {
-				log.WithFields(ctx, map[string]interface{}{
-					"currentStatus": remoteStack.StackStatus,
-					"phase":         phaseLabel,
-				}).Debug("Stack is complete")
+			if err := callback(ctx, summary); err != nil {
+				return nil, err
+			}
+
+			if !summary.IsOK {
+				return nil, fmt.Errorf("stack %s is NOT OK in status %s", stackName, remoteStack.StackStatus)
+			}
+
+			if summary.Stable {
+				if summary.SummaryType == deployer_pb.StackLifecycle_CREATE_FAILED {
+					return nil, nil
+				}
 				return remoteStack, nil
 			}
 		}
 
-		for _, status := range stackStatusRolledBack {
-			if remoteStack.StackStatus == status {
-				log.WithFields(ctx, map[string]interface{}{
-					"currentStatus": remoteStack.StackStatus,
-					"phase":         phaseLabel,
-				}).Debug("Stack is rolled back")
-				return nil, nil
-			}
-		}
-
-		for _, status := range stackStatusRollingBack {
-			if remoteStack.StackStatus == status {
-				return nil, fmt.Errorf("stack %s, phase %s, is in status %s", stackName, phaseLabel, remoteStack.StackStatus)
-			}
-		}
-
+		lastStatus = remoteStack.StackStatus
 		time.Sleep(time.Second)
 
 	}
+}
+
+func summarizeStackStatus(stackStatus types.StackStatus) (StackStatus, error) {
+
+	out := StackStatus{
+		StatusName: stackStatus,
+	}
+
+	for _, status := range stackStatusesTerminal {
+		if stackStatus == status {
+			out.SummaryType = deployer_pb.StackLifecycle_TERMINAL
+			out.IsOK = false
+			out.Stable = true
+			return out, nil
+		}
+	}
+
+	for _, status := range stackStatusComplete {
+		if stackStatus == status {
+			out.SummaryType = deployer_pb.StackLifecycle_COMPLETE
+			out.IsOK = true
+			out.Stable = true
+			return out, nil
+		}
+	}
+
+	for _, status := range stackStatusCreateFailed {
+		if stackStatus == status {
+			out.SummaryType = deployer_pb.StackLifecycle_CREATE_FAILED
+			out.IsOK = false
+			out.Stable = true
+			return out, nil
+		}
+	}
+
+	for _, status := range stackStatusRollingBack {
+		if stackStatus == status {
+			out.SummaryType = deployer_pb.StackLifecycle_ROLLING_BACK
+			out.IsOK = false
+			out.Stable = false
+			return out, nil
+		}
+	}
+
+	for _, status := range stackStatusProgress {
+		if stackStatus == status {
+			out.SummaryType = deployer_pb.StackLifecycle_PROGRESS
+			out.IsOK = true
+			out.Stable = false
+			return out, nil
+		}
+	}
+
+	return StackStatus{}, fmt.Errorf("unknown stack status %s", stackStatus)
 }
 
 func (cf *CFWrapper) deleteStack(ctx context.Context, name string) error {
@@ -211,14 +262,14 @@ func (cf *CFWrapper) deleteStack(ctx context.Context, name string) error {
 }
 
 type StackArgs struct {
-	Template   *app.BuiltApplication
+	Template   Application //*app.BuiltApplication
 	Parameters []types.Parameter
 	Name       string
 }
 
 func (cf *CFWrapper) createCloudformationStack(ctx context.Context, args StackArgs) error {
 
-	jsonStack, err := args.Template.Template.JSON()
+	jsonStack, err := args.Template.TemplateJSON()
 	if err != nil {
 		return err
 	}
@@ -240,7 +291,7 @@ func (cf *CFWrapper) createCloudformationStack(ctx context.Context, args StackAr
 
 func (cf *CFWrapper) updateCloudformationStack(ctx context.Context, args StackArgs) error {
 
-	jsonStack, err := args.Template.Template.JSON()
+	jsonStack, err := args.Template.TemplateJSON()
 	if err != nil {
 		return err
 	}

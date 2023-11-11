@@ -34,7 +34,7 @@ func TestBasicMap(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	template := out.BuildTemplate()
+	template := out.Build().Template
 	yy, err := template.YAML()
 	if err != nil {
 		t.Fatal(err.Error())

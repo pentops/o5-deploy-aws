@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
-	cfsecretsmanager "github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/tidwall/sjson"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -48,16 +48,38 @@ func CleanParameterName(unsafes ...string) string {
 
 type BuiltApplication struct {
 	Template          *cloudformation.Template
-	Parameters        map[string]*Parameter
-	PostgresDatabases []*PostgresDefinition
+	parameters        []*deployer_pb.Parameter
+	postgresDatabases []*PostgresDefinition
 	SNSTopics         []*SNSTopic
 	Name              string
+	Version           string
+}
+
+func (ba *BuiltApplication) TemplateJSON() ([]byte, error) {
+	return ba.Template.JSON()
+}
+
+func (ba *BuiltApplication) PostgresDatabases() []*deployer_pb.PostgresDatabase {
+	out := make([]*deployer_pb.PostgresDatabase, len(ba.postgresDatabases))
+	for idx, db := range ba.postgresDatabases {
+		out[idx] = &deployer_pb.PostgresDatabase{
+			MigrationTaskOutputName: db.MigrationTaskOutputName,
+			Database:                db.Databse,
+			SecretOutputName:        db.SecretOutputName,
+		}
+	}
+	return out
+}
+
+func (ba *BuiltApplication) Parameters() []*deployer_pb.Parameter {
+	return ba.parameters
 }
 
 type Application struct {
 	appName           string
+	version           string
 	postgresDatabases []*PostgresDefinition
-	parameters        map[string]*Parameter
+	parameters        map[string]*deployer_pb.Parameter
 	resources         map[string]IResource
 	outputs           map[string]*Output
 	snsTopics         map[string]*SNSTopic
@@ -68,18 +90,18 @@ type SNSTopic struct {
 }
 
 type PostgresDefinition struct {
-	Secret                  *Resource[*cfsecretsmanager.Secret]
 	Databse                 *application_pb.Database
 	Postgres                *application_pb.Database_Postgres
 	MigrationTaskOutputName *string
 	SecretOutputName        *string
 }
 
-func NewApplication(name string) *Application {
+func NewApplication(name, version string) *Application {
 
 	return &Application{
 		appName:    name,
-		parameters: map[string]*Parameter{},
+		version:    version,
+		parameters: map[string]*deployer_pb.Parameter{},
 		resources:  map[string]IResource{},
 		outputs:    map[string]*Output{},
 		snsTopics:  map[string]*SNSTopic{},
@@ -92,7 +114,7 @@ func (ss *Application) AppName() string {
 
 func (ss *Application) Build() *BuiltApplication {
 	template := cloudformation.NewTemplate()
-	parameters := map[string]*Parameter{}
+	parameters := map[string]*deployer_pb.Parameter{}
 
 	for _, param := range ss.parameters {
 		parameters[param.Name] = param
@@ -109,9 +131,8 @@ func (ss *Application) Build() *BuiltApplication {
 		mapped := cloudformation.Parameter{
 			Type: param.Type,
 		}
-
-		if param.Default != nil {
-			mapped.Default = param.Default
+		if static := param.Source.GetStatic(); static != nil {
+			mapped.Default = static.Value
 		}
 		if param.Description != "" {
 			mapped.Description = String(param.Description)
@@ -131,12 +152,18 @@ func (ss *Application) Build() *BuiltApplication {
 		snsToipcs = append(snsToipcs, topic)
 	}
 
+	parameterSlice := make([]*deployer_pb.Parameter, 0, len(parameters))
+	for _, param := range parameters {
+		parameterSlice = append(parameterSlice, param)
+	}
+
 	return &BuiltApplication{
 		Template:          template,
-		Parameters:        parameters,
-		PostgresDatabases: ss.postgresDatabases,
+		parameters:        parameterSlice,
+		postgresDatabases: ss.postgresDatabases,
 		SNSTopics:         snsToipcs,
 		Name:              ss.appName,
+		Version:           ss.version,
 	}
 }
 
@@ -150,15 +177,12 @@ func (ss *Application) AddResource(resource IResource) {
 	ss.resources[resource.Name()] = resource
 }
 
-func (ss *Application) AddParameter(param *Parameter) {
+func (ss *Application) AddParameter(param *deployer_pb.Parameter) {
 	if param.Name == "" {
 		panic("No Name")
 	}
 	if param.Type == "" {
 		panic("No Type")
-	}
-	if param.Source == ParameterSourceDefault && param.Default == nil {
-		panic("No Default")
 	}
 	ss.parameters[param.Name] = param
 }
@@ -170,7 +194,7 @@ func (ss *Application) AddOutput(output *Output) {
 func (ss *Application) Parameter(name string) *string {
 	_, ok := ss.parameters[name]
 	if !ok {
-		ss.AddParameter(&Parameter{
+		ss.AddParameter(&deployer_pb.Parameter{
 			Name: name,
 			Type: "String",
 		})
@@ -184,38 +208,15 @@ type IResource interface {
 	GetAtt(name string) string
 	Name() string
 	DependsOn(IResource)
-	Parameters() []*Parameter
+	Parameters() []*deployer_pb.Parameter
 }
 
 type Resource[T cloudformation.Resource] struct {
 	name         string
 	Resource     T
 	Overrides    map[string]string
-	parameters   []*Parameter
+	parameters   []*deployer_pb.Parameter
 	dependencies []IResource
-}
-
-type ParameterSource int
-
-const (
-	ParameterSourceDefault ParameterSource = iota
-	ParameterSourceWellKnown
-	ParameterSourceRulePriority
-	ParameterSourceDesiredCount
-	ParameterSourceCrossEnvSNS
-	ParameterSourceEnvVar
-)
-
-type Parameter struct {
-	Name        string
-	Type        string
-	Description string
-	Default     *string
-
-	// This should probably be a method interface but struggling with the structure
-	// between the two packages
-	Source ParameterSource
-	Args   []interface{}
 }
 
 type Output struct {
@@ -246,7 +247,7 @@ func (rr *Resource[T]) DependsOn(b IResource) {
 	rr.dependencies = append(rr.dependencies, b)
 }
 
-func (rr Resource[T]) Parameters() []*Parameter {
+func (rr Resource[T]) Parameters() []*deployer_pb.Parameter {
 	return rr.parameters
 }
 
