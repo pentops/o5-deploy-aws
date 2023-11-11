@@ -22,45 +22,54 @@ import (
 	"gopkg.daemonl.com/sqrlx"
 )
 
-func (d *Deployer) migrateData(ctx context.Context, stackOutputs []types.Output, template Application, rotateExisting bool) error {
+func (d *Deployer) migrateData(ctx context.Context, stackOutputs []types.Output, deployment *deployer_pb.DeploymentState, migration *deployer_pb.DatabaseMigrationState) error {
 
-	for _, db := range template.PostgresDatabases() {
-		ctx := log.WithFields(ctx, map[string]interface{}{
-			"database":    db.Database.Name,
-			"serverGroup": db.Database.GetPostgres().ServerGroup,
-		})
-		log.Debug(ctx, "Upsert Database")
-		var migrationTaskARN string
-		var secretARN string
-		for _, output := range stackOutputs {
-			if *db.MigrationTaskOutputName == *output.OutputKey {
-				migrationTaskARN = *output.OutputValue
-			}
-			if *db.SecretOutputName == *output.OutputKey {
-				secretARN = *output.OutputValue
-			}
+	var db *deployer_pb.PostgresDatabase
+	for _, search := range deployment.Spec.Databases {
+		if search.Database.Name == migration.DbName {
+			db = search
+			break
+		}
+	}
+
+	if db == nil {
+		return fmt.Errorf("no database found with name %s", migration.DbName)
+	}
+
+	ctx = log.WithFields(ctx, map[string]interface{}{
+		"database":    db.Database.Name,
+		"serverGroup": db.Database.GetPostgres().ServerGroup,
+	})
+	log.Debug(ctx, "Upsert Database")
+	var migrationTaskARN string
+	var secretARN string
+	for _, output := range stackOutputs {
+		if *db.MigrationTaskOutputName == *output.OutputKey {
+			migrationTaskARN = *output.OutputValue
+		}
+		if *db.SecretOutputName == *output.OutputKey {
+			secretARN = *output.OutputValue
+		}
+	}
+
+	if err := d.upsertPostgresDatabase(ctx, db, secretARN, migration.RotateCredentials); err != nil {
+		return err
+	}
+
+	if db.MigrationTaskOutputName != nil {
+
+		if migrationTaskARN == "" {
+			return fmt.Errorf("migration task output %q not found", *db.MigrationTaskOutputName)
 		}
 
-		if err := d.upsertPostgresDatabase(ctx, db, secretARN, rotateExisting); err != nil {
+		if err := d.runMigrationTask(ctx, migrationTaskARN); err != nil {
 			return err
 		}
 
-		if db.MigrationTaskOutputName != nil {
-
-			if migrationTaskARN == "" {
-				return fmt.Errorf("migration task output %q not found", *db.MigrationTaskOutputName)
-			}
-
-			if err := d.runMigrationTask(ctx, migrationTaskARN); err != nil {
-				return err
-			}
-
-			// This runs both before and after migration
-			if err := d.fixPostgresOwnership(ctx, db); err != nil {
-				return err
-			}
+		// This runs both before and after migration
+		if err := d.fixPostgresOwnership(ctx, db); err != nil {
+			return err
 		}
-
 	}
 
 	return nil

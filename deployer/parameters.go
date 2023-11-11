@@ -72,6 +72,8 @@ func resolveParameter(ctx context.Context, param *deployer_pb.Parameter, resolve
 	default:
 		return nil, fmt.Errorf("unknown parameter source (%v) %s", param.Source, param.Name)
 	}
+
+	fmt.Printf("PARAM %s = %s\n", *parameter.ParameterKey, *parameter.ParameterValue)
 	return parameter, nil
 }
 
@@ -144,10 +146,10 @@ func (d *Deployer) applyInitialParameters(ctx context.Context, stack stackParame
 
 	mappedPreviousParameters := make(map[string]string, len(stack.previousParameters))
 	for _, param := range stack.previousParameters {
-		mappedPreviousParameters[*param.ParameterKey] = *param.ParameterValue
+		mappedPreviousParameters[param.Name] = param.Value
 	}
 
-	stackParameters := stack.template.Parameters()
+	stackParameters := stack.parameters
 	parameters := make([]types.Parameter, 0, len(stackParameters))
 
 	takenPriorities, err := d.loadTakenPriorities(ctx)

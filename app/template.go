@@ -49,8 +49,8 @@ func CleanParameterName(unsafes ...string) string {
 type BuiltApplication struct {
 	Template          *cloudformation.Template
 	parameters        []*deployer_pb.Parameter
-	postgresDatabases []*PostgresDefinition
-	SNSTopics         []*SNSTopic
+	postgresDatabases []*deployer_pb.PostgresDatabase
+	SNSTopics         []*deployer_pb.SNSTopic
 	Name              string
 	Version           string
 }
@@ -60,15 +60,7 @@ func (ba *BuiltApplication) TemplateJSON() ([]byte, error) {
 }
 
 func (ba *BuiltApplication) PostgresDatabases() []*deployer_pb.PostgresDatabase {
-	out := make([]*deployer_pb.PostgresDatabase, len(ba.postgresDatabases))
-	for idx, db := range ba.postgresDatabases {
-		out[idx] = &deployer_pb.PostgresDatabase{
-			MigrationTaskOutputName: db.MigrationTaskOutputName,
-			Database:                db.Databse,
-			SecretOutputName:        db.SecretOutputName,
-		}
-	}
-	return out
+	return ba.postgresDatabases
 }
 
 func (ba *BuiltApplication) Parameters() []*deployer_pb.Parameter {
@@ -147,9 +139,11 @@ func (ss *Application) Build() *BuiltApplication {
 			Value:       output.Value,
 		}
 	}
-	snsToipcs := []*SNSTopic{}
+	snsToipcs := []*deployer_pb.SNSTopic{}
 	for _, topic := range ss.snsTopics {
-		snsToipcs = append(snsToipcs, topic)
+		snsToipcs = append(snsToipcs, &deployer_pb.SNSTopic{
+			Name: topic.Name,
+		})
 	}
 
 	parameterSlice := make([]*deployer_pb.Parameter, 0, len(parameters))
@@ -157,10 +151,19 @@ func (ss *Application) Build() *BuiltApplication {
 		parameterSlice = append(parameterSlice, param)
 	}
 
+	dbOut := make([]*deployer_pb.PostgresDatabase, len(ss.postgresDatabases))
+	for idx, db := range ss.postgresDatabases {
+		dbOut[idx] = &deployer_pb.PostgresDatabase{
+			MigrationTaskOutputName: db.MigrationTaskOutputName,
+			Database:                db.Databse,
+			SecretOutputName:        db.SecretOutputName,
+		}
+	}
+
 	return &BuiltApplication{
 		Template:          template,
 		parameters:        parameterSlice,
-		postgresDatabases: ss.postgresDatabases,
+		postgresDatabases: dbOut,
 		SNSTopics:         snsToipcs,
 		Name:              ss.appName,
 		Version:           ss.version,

@@ -16,10 +16,9 @@ import (
 )
 
 type stackParameters struct {
-	name               string
-	template           Application
+	parameters         []*deployer_pb.Parameter
 	scale              int
-	previousParameters []types.Parameter
+	previousParameters []*deployer_pb.AWSParameter
 }
 
 type CFWrapper struct {
@@ -151,6 +150,7 @@ type StackStatus struct {
 	SummaryType deployer_pb.StackLifecycle
 	IsOK        bool
 	Stable      bool
+	Parameters  []*deployer_pb.AWSParameter
 }
 
 func (cf *CFWrapper) WaitForSuccess(ctx context.Context, stackName string, callback waiterCallback) error {
@@ -172,7 +172,7 @@ func (cf *CFWrapper) waitForSuccess(ctx context.Context, stackName string, callb
 		}
 
 		if lastStatus != remoteStack.StackStatus {
-			summary, err := summarizeStackStatus(remoteStack.StackStatus)
+			summary, err := summarizeStackStatus(remoteStack)
 			if err != nil {
 				return nil, err
 			}
@@ -199,14 +199,23 @@ func (cf *CFWrapper) waitForSuccess(ctx context.Context, stackName string, callb
 	}
 }
 
-func summarizeStackStatus(stackStatus types.StackStatus) (StackStatus, error) {
+func summarizeStackStatus(stack *types.Stack) (StackStatus, error) {
+
+	parameters := make([]*deployer_pb.AWSParameter, len(stack.Parameters))
+	for idx, param := range stack.Parameters {
+		parameters[idx] = &deployer_pb.AWSParameter{
+			Name:  *param.ParameterKey,
+			Value: *param.ParameterValue,
+		}
+	}
 
 	out := StackStatus{
-		StatusName: stackStatus,
+		StatusName: stack.StackStatus,
+		Parameters: parameters,
 	}
 
 	for _, status := range stackStatusesTerminal {
-		if stackStatus == status {
+		if stack.StackStatus == status {
 			out.SummaryType = deployer_pb.StackLifecycle_TERMINAL
 			out.IsOK = false
 			out.Stable = true
@@ -215,7 +224,7 @@ func summarizeStackStatus(stackStatus types.StackStatus) (StackStatus, error) {
 	}
 
 	for _, status := range stackStatusComplete {
-		if stackStatus == status {
+		if stack.StackStatus == status {
 			out.SummaryType = deployer_pb.StackLifecycle_COMPLETE
 			out.IsOK = true
 			out.Stable = true
@@ -224,7 +233,7 @@ func summarizeStackStatus(stackStatus types.StackStatus) (StackStatus, error) {
 	}
 
 	for _, status := range stackStatusCreateFailed {
-		if stackStatus == status {
+		if stack.StackStatus == status {
 			out.SummaryType = deployer_pb.StackLifecycle_CREATE_FAILED
 			out.IsOK = false
 			out.Stable = true
@@ -233,7 +242,7 @@ func summarizeStackStatus(stackStatus types.StackStatus) (StackStatus, error) {
 	}
 
 	for _, status := range stackStatusRollingBack {
-		if stackStatus == status {
+		if stack.StackStatus == status {
 			out.SummaryType = deployer_pb.StackLifecycle_ROLLING_BACK
 			out.IsOK = false
 			out.Stable = false
@@ -242,7 +251,7 @@ func summarizeStackStatus(stackStatus types.StackStatus) (StackStatus, error) {
 	}
 
 	for _, status := range stackStatusProgress {
-		if stackStatus == status {
+		if stack.StackStatus == status {
 			out.SummaryType = deployer_pb.StackLifecycle_PROGRESS
 			out.IsOK = true
 			out.Stable = false
@@ -250,7 +259,7 @@ func summarizeStackStatus(stackStatus types.StackStatus) (StackStatus, error) {
 		}
 	}
 
-	return StackStatus{}, fmt.Errorf("unknown stack status %s", stackStatus)
+	return StackStatus{}, fmt.Errorf("unknown stack status %s", stack.StackStatus)
 }
 
 func (cf *CFWrapper) deleteStack(ctx context.Context, name string) error {
@@ -262,22 +271,16 @@ func (cf *CFWrapper) deleteStack(ctx context.Context, name string) error {
 }
 
 type StackArgs struct {
-	Template   Application //*app.BuiltApplication
+	Template   *deployer_pb.DeploymentState
 	Parameters []types.Parameter
-	Name       string
 }
 
-func (cf *CFWrapper) createCloudformationStack(ctx context.Context, args StackArgs) error {
+func (cf *CFWrapper) createCloudformationStack(ctx context.Context, deployment *deployer_pb.DeploymentState, parameters []types.Parameter) error {
 
-	jsonStack, err := args.Template.TemplateJSON()
-	if err != nil {
-		return err
-	}
-
-	_, err = cf.client.CreateStack(ctx, &cloudformation.CreateStackInput{
-		StackName:    aws.String(args.Name),
-		TemplateBody: aws.String(string(jsonStack)),
-		Parameters:   args.Parameters,
+	_, err := cf.client.CreateStack(ctx, &cloudformation.CreateStackInput{
+		StackName:   aws.String(deployment.StackName),
+		TemplateURL: aws.String(deployment.Spec.TemplateUrl),
+		Parameters:  parameters,
 		Capabilities: []types.Capability{
 			types.CapabilityCapabilityNamedIam,
 		},
@@ -289,16 +292,12 @@ func (cf *CFWrapper) createCloudformationStack(ctx context.Context, args StackAr
 	return nil
 }
 
-func (cf *CFWrapper) updateCloudformationStack(ctx context.Context, args StackArgs) error {
+func (cf *CFWrapper) updateCloudformationStack(ctx context.Context, deployment *deployer_pb.DeploymentState, parameters []types.Parameter) error {
 
-	jsonStack, err := args.Template.TemplateJSON()
-	if err != nil {
-		return err
-	}
-	_, err = cf.client.UpdateStack(ctx, &cloudformation.UpdateStackInput{
-		StackName:    aws.String(args.Name),
-		TemplateBody: aws.String(string(jsonStack)),
-		Parameters:   args.Parameters,
+	_, err := cf.client.UpdateStack(ctx, &cloudformation.UpdateStackInput{
+		StackName:   aws.String(deployment.StackName),
+		TemplateURL: aws.String(deployment.Spec.TemplateUrl),
+		Parameters:  parameters,
 		Capabilities: []types.Capability{
 			types.CapabilityCapabilityNamedIam,
 		},

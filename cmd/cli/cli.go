@@ -100,10 +100,11 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		return err
 	}
 
-	deployer.EventCallback = func(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
+	deployer.EventCallback = func(ctx context.Context, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
 		log.WithFields(ctx, map[string]interface{}{
 			"deploymentId": event.DeploymentId,
 			"event":        event.Event,
+			"state":        deployment.Status.ShortString(),
 		}).Info("Deployment Event")
 		return nil
 	}

@@ -1,6 +1,7 @@
 package deployer
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -24,6 +25,8 @@ import (
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -73,7 +76,7 @@ type ClientBuilder interface {
 	GetConfig(ctx context.Context, assumeRole string) (*DeployerClients, error)
 }
 
-type EventCallback func(ctx context.Context, event *deployer_pb.DeploymentEvent) error
+type EventCallback func(ctx context.Context, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error
 
 type Deployer struct {
 	Environment   *environment_pb.Environment
@@ -82,6 +85,7 @@ type Deployer struct {
 	clientCache   *DeployerClients
 	awsConfig     aws.Config
 	EventCallback EventCallback
+	eg            errgroup.Group
 
 	deployments map[string]*deployer_pb.DeploymentState
 }
@@ -107,6 +111,7 @@ func NewDeployer(environment *environment_pb.Environment, awsConfig aws.Config) 
 		AWS:         awsTarget,
 		awsConfig:   awsConfig,
 		deployments: map[string]*deployer_pb.DeploymentState{},
+		eg:          errgroup.Group{},
 	}, nil
 }
 
@@ -117,11 +122,23 @@ func (d *Deployer) getDeployment(ctx context.Context, id string) (*deployer_pb.D
 	return nil, fmt.Errorf("no deployment found with id %s", id)
 }
 
-func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
-	if d.EventCallback != nil {
-		return d.EventCallback(ctx, event)
+func newEvent(d *deployer_pb.DeploymentState, event deployer_pb.IsDeploymentEventType_Type) *deployer_pb.DeploymentEvent {
+	return &deployer_pb.DeploymentEvent{
+		DeploymentId: d.DeploymentId,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+		Event: &deployer_pb.DeploymentEventType{
+			Type: event,
+		},
 	}
-	return nil
+}
+
+func (d *Deployer) AsyncEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) {
+	d.eg.Go(func() error {
+		return d.RegisterEvent(ctx, event)
+	})
 }
 
 func (d *Deployer) Clients(ctx context.Context) (*DeployerClients, error) {
@@ -163,18 +180,6 @@ func (d *Deployer) Clients(ctx context.Context) (*DeployerClients, error) {
 
 }
 
-type Deployment struct {
-	ID        string
-	StackName string
-	App       Application //*app.BuiltApplication
-}
-
-type Application interface {
-	TemplateJSON() ([]byte, error)
-	PostgresDatabases() []*deployer_pb.PostgresDatabase
-	Parameters() []*deployer_pb.Parameter
-}
-
 func (d *Deployer) Deploy(ctx context.Context, app *app.BuiltApplication, cancelUpdates bool) error {
 	stackName := fmt.Sprintf("%s-%s", d.Environment.FullName, app.Name)
 	ctx = log.WithFields(ctx, map[string]interface{}{
@@ -182,46 +187,111 @@ func (d *Deployer) Deploy(ctx context.Context, app *app.BuiltApplication, cancel
 		"environment": d.Environment.FullName,
 	})
 
-	deployment := &Deployment{
-		ID:        uuid.NewString(),
-		StackName: stackName,
-		App:       app,
+	clients, err := d.Clients(ctx)
+	if err != nil {
+		return err
 	}
 
-	d.deployments[deployment.ID] = &deployer_pb.DeploymentState{
-		DeploymentId: deployment.ID,
+	deploymentID := uuid.NewString()
+
+	templateJSON, err := app.TemplateJSON()
+	if err != nil {
+		return err
+	}
+
+	templateKey := fmt.Sprintf("%s/%s/%s.json", d.Environment.FullName, stackName, deploymentID)
+	_, err = clients.S3.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(d.AWS.ScratchBucket),
+		Key:    aws.String(templateKey),
+		Body:   bytes.NewReader(templateJSON),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	templateURL := fmt.Sprintf("https://s3.us-east-1.amazonaws.com/%s/%s", d.AWS.ScratchBucket, templateKey)
+
+	deployment := &deployer_pb.DeploymentState{
+		DeploymentId: deploymentID,
 		Status:       deployer_pb.DeploymentStatus_LOCKED,
+		StackName:    stackName,
 		Spec: &deployer_pb.DeploymentSpec{
 			AppName:         app.Name,
 			Version:         app.Version,
 			EnvironmentName: d.Environment.FullName,
+			TemplateUrl:     templateURL,
+			Databases:       app.PostgresDatabases(),
+			Parameters:      app.Parameters(),
+			CancelUpdates:   cancelUpdates,
+			SnsTopics:       app.SNSTopics,
 		},
 	}
 
-	if err := d.RegisterEvent(ctx, &deployer_pb.DeploymentEvent{
-		DeploymentId: deployment.ID,
-		Metadata: &deployer_pb.EventMetadata{
-			EventId:   uuid.NewString(),
-			Timestamp: timestamppb.Now(),
-		},
-		Event: &deployer_pb.DeploymentEventType{
-			Type: &deployer_pb.DeploymentEventType_Triggered_{
-				Triggered: &deployer_pb.DeploymentEventType_Triggered{
-					Spec: &deployer_pb.DeploymentSpec{
-						AppName:         app.Name,
-						Version:         app.Version,
-						EnvironmentName: d.Environment.FullName,
-					},
-				},
+	d.deployments[deploymentID] = deployment
+
+	if err := d.RegisterEvent(ctx, newEvent(deployment, &deployer_pb.DeploymentEventType_Triggered_{
+		Triggered: &deployer_pb.DeploymentEventType_Triggered{
+			Spec: &deployer_pb.DeploymentSpec{
+				AppName:         app.Name,
+				Version:         app.Version,
+				EnvironmentName: d.Environment.FullName,
 			},
 		},
-	}); err != nil {
+	})); err != nil {
 		return err
 	}
 
-	if err := d.upsertSNSTopics(ctx, app.SNSTopics); err != nil {
-		return err
+	// TODO: Wait for lock.
+
+	d.eg.Go(func() error {
+		return d.RegisterEvent(ctx, newEvent(deployment, &deployer_pb.DeploymentEventType_GotLock_{
+			GotLock: &deployer_pb.DeploymentEventType_GotLock{},
+		}))
+	})
+
+	return d.eg.Wait()
+}
+
+func (d *Deployer) eventGotLock(ctx context.Context, deployment *deployer_pb.DeploymentState) (*deployer_pb.DeploymentEvent, error) {
+
+	clients, err := d.Clients(ctx)
+	if err != nil {
+		return nil, err
 	}
+
+	if err := d.upsertSNSTopics(ctx, deployment.Spec.SnsTopics); err != nil {
+		return nil, err
+	}
+
+	cf := &CFWrapper{
+		client: clients.CloudFormation,
+	}
+
+	remoteStack, err := cf.getOneStack(ctx, deployment.StackName)
+	if err != nil {
+		return nil, err
+	}
+
+	if remoteStack == nil {
+		return newEvent(deployment, &deployer_pb.DeploymentEventType_StackCreate_{
+			StackCreate: &deployer_pb.DeploymentEventType_StackCreate{},
+		}), nil
+	}
+
+	// TODO: This is not an event
+	if deployment.Spec.CancelUpdates && remoteStack.StackStatus == types.StackStatusUpdateInProgress {
+		if err := cf.cancelUpdate(ctx, deployment.StackName); err != nil {
+			return nil, err
+		}
+	}
+
+	return newEvent(deployment, &deployer_pb.DeploymentEventType_StackWait_{
+		StackWait: &deployer_pb.DeploymentEventType_StackWait{},
+	}), nil
+}
+
+func (d *Deployer) runStackWait(ctx context.Context, deployment *deployer_pb.DeploymentState) error {
 
 	clients, err := d.Clients(ctx)
 	if err != nil {
@@ -232,30 +302,15 @@ func (d *Deployer) Deploy(ctx context.Context, app *app.BuiltApplication, cancel
 		client: clients.CloudFormation,
 	}
 
-	remoteStack, err := cf.getOneStack(ctx, stackName)
+	_, err = cf.waitForSuccess(ctx, deployment.StackName, d.waitStatusCallback(deployment))
 	if err != nil {
 		return err
 	}
 
-	if remoteStack == nil {
-		return d.createNewDeployment(ctx, deployment)
-	}
-
-	if cancelUpdates && remoteStack.StackStatus == types.StackStatusUpdateInProgress {
-		if err := cf.cancelUpdate(ctx, stackName); err != nil {
-			return err
-		}
-	}
-
-	remoteStackStable, err := cf.waitForStack(ctx, stackName)
-	if err != nil {
-		return err
-	}
-
-	return d.updateDeployment(ctx, deployment, remoteStackStable.Parameters)
+	return nil
 }
 
-func (d *Deployer) upsertSNSTopics(ctx context.Context, topics []*app.SNSTopic) error {
+func (d *Deployer) upsertSNSTopics(ctx context.Context, topics []*deployer_pb.SNSTopic) error {
 	clients, err := d.Clients(ctx)
 	if err != nil {
 		return err
@@ -274,67 +329,11 @@ func (d *Deployer) upsertSNSTopics(ctx context.Context, topics []*app.SNSTopic) 
 	return nil
 }
 
-func (d *Deployer) createNewDeployment(ctx context.Context, deployment *Deployment) error {
-
-	clients, err := d.Clients(ctx)
-	if err != nil {
-		return err
-	}
-
-	initialParameters, err := d.applyInitialParameters(ctx, stackParameters{
-		name:     deployment.StackName,
-		template: deployment.App,
-		scale:    0,
-	})
-	if err != nil {
-		return err
-	}
-
-	cf := &CFWrapper{
-		client: clients.CloudFormation,
-	}
-
-	// Create, scale 0
-	log.Info(ctx, "Create with scale 0")
-	if err := cf.createCloudformationStack(ctx, StackArgs{
-		Parameters: initialParameters,
-		Template:   deployment.App,
-		Name:       deployment.StackName,
-	}); err != nil {
-		return err
-	}
-
-	lastState, err := cf.waitForSuccess(ctx, deployment.StackName, d.waitStatusCallback(deployment, "stack create"))
-	if err != nil {
-		return err
-	}
-
-	// Migrate
-	log.Info(ctx, "Migrate Database")
-	if err := d.migrateData(ctx, lastState.Outputs, deployment.App, true); err != nil {
-		return err
-	}
-
-	// Scale Up
-	log.Info(ctx, "Scale Up")
-	if err := cf.setScale(ctx, deployment.StackName, 1); err != nil {
-		return err
-	}
-	if err != nil {
-		return err
-	}
-
-	if err := cf.WaitForSuccess(ctx, deployment.StackName, d.waitStatusCallback(deployment, "scale up")); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (d *Deployer) waitStatusCallback(deployment *Deployment, phaseLabel string) waiterCallback {
+func (d *Deployer) waitStatusCallback(deployment *deployer_pb.DeploymentState) waiterCallback {
 	return func(ctx context.Context, stackStatus StackStatus) error {
-		return d.RegisterEvent(ctx, &deployer_pb.DeploymentEvent{
-			DeploymentId: deployment.ID,
+
+		d.AsyncEvent(ctx, &deployer_pb.DeploymentEvent{
+			DeploymentId: deployment.DeploymentId,
 			Metadata: &deployer_pb.EventMetadata{
 				EventId:   uuid.NewString(),
 				Timestamp: timestamppb.Now(),
@@ -348,12 +347,21 @@ func (d *Deployer) waitStatusCallback(deployment *Deployment, phaseLabel string)
 				},
 			},
 		})
+		return nil
 	}
 }
 
-func (d *Deployer) updateDeployment(ctx context.Context, deployment *Deployment, previous []types.Parameter) error {
+func (d *Deployer) createNewDeployment(ctx context.Context, deployment *deployer_pb.DeploymentState) error {
 
 	clients, err := d.Clients(ctx)
+	if err != nil {
+		return err
+	}
+
+	initialParameters, err := d.applyInitialParameters(ctx, stackParameters{
+		parameters: deployment.Spec.Parameters,
+		scale:      0,
+	})
 	if err != nil {
 		return err
 	}
@@ -362,90 +370,125 @@ func (d *Deployer) updateDeployment(ctx context.Context, deployment *Deployment,
 		client: clients.CloudFormation,
 	}
 
-	// Scale Down
-	log.Info(ctx, "Trigger: Scale Down")
-	if err := d.RegisterEvent(ctx, &deployer_pb.DeploymentEvent{
-		DeploymentId: deployment.ID,
-		Metadata: &deployer_pb.EventMetadata{
-			EventId:   uuid.NewString(),
-			Timestamp: timestamppb.Now(),
-		},
-		Event: &deployer_pb.DeploymentEventType{
-			Type: &deployer_pb.DeploymentEventType_StackTrigger_{
-				StackTrigger: &deployer_pb.DeploymentEventType_StackTrigger{
-					Phase: "scale down",
-				},
-			},
-		},
-	}); err != nil {
+	// Create, scale 0
+	log.Info(ctx, "Create with scale 0")
+	if err := cf.createCloudformationStack(ctx, deployment, initialParameters); err != nil {
 		return err
 	}
 
-	if err := cf.setScale(ctx, deployment.StackName, 0); err != nil {
+	_, err = cf.waitForSuccess(ctx, deployment.StackName, d.waitStatusCallback(deployment))
+	if err != nil {
 		return err
 	}
 
-	if err := cf.WaitForSuccess(ctx, deployment.StackName, d.waitStatusCallback(deployment, "scale down")); err != nil {
+	return nil
+}
+
+func (d *Deployer) eventStackScale(ctx context.Context, deployment *deployer_pb.DeploymentState, scale int) error {
+
+	clients, err := d.Clients(ctx)
+	if err != nil {
+		return err
+	}
+	cf := &CFWrapper{
+		client: clients.CloudFormation,
+	}
+
+	if err := cf.setScale(ctx, deployment.StackName, scale); err != nil {
 		return err
 	}
 
-	// Update, Keep Scale 0
-	if err := d.RegisterEvent(ctx, &deployer_pb.DeploymentEvent{
-		DeploymentId: deployment.ID,
-		Metadata: &deployer_pb.EventMetadata{
-			EventId:   uuid.NewString(),
-			Timestamp: timestamppb.Now(),
-		},
-		Event: &deployer_pb.DeploymentEventType{
-			Type: &deployer_pb.DeploymentEventType_StackTrigger_{
-				StackTrigger: &deployer_pb.DeploymentEventType_StackTrigger{
-					Phase: "update",
-				},
-			},
-		},
-	}); err != nil {
+	if err := cf.WaitForSuccess(ctx, deployment.StackName, d.waitStatusCallback(deployment)); err != nil {
 		return err
 	}
 
-	log.Info(ctx, "Update Pre Migrate")
+	return nil
+}
+
+func (d *Deployer) migrateInfra(ctx context.Context, deployment *deployer_pb.DeploymentState) error {
+
+	clients, err := d.Clients(ctx)
+	if err != nil {
+		return err
+	}
+	cf := &CFWrapper{
+		client: clients.CloudFormation,
+	}
+
+	stack, err := cf.getOneStack(ctx, deployment.StackName)
+	if err != nil {
+		return err
+	}
+
+	stackStatus, err := summarizeStackStatus(stack)
+	if err != nil {
+		return err
+	}
+
 	initialParameters, err := d.applyInitialParameters(ctx, stackParameters{
-		previousParameters: previous,
-		name:               deployment.StackName,
-		template:           deployment.App,
+		previousParameters: stackStatus.Parameters,
+		parameters:         deployment.Spec.Parameters,
 		scale:              0,
 	})
 	if err != nil {
 		return err
 	}
 
-	if err := cf.updateCloudformationStack(ctx, StackArgs{
-		Template:   deployment.App,
-		Parameters: initialParameters,
-		Name:       deployment.StackName,
-	}); err != nil {
+	if err := cf.updateCloudformationStack(ctx, deployment, initialParameters); err != nil {
 		return err
 	}
 
-	lastState, err := cf.waitForSuccess(ctx, deployment.StackName, d.waitStatusCallback(deployment, "update"))
+	_, err = cf.waitForSuccess(ctx, deployment.StackName, d.waitStatusCallback(deployment))
 	if err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func (d *Deployer) runMigration(ctx context.Context, deployment *deployer_pb.DeploymentState, migration *deployer_pb.DatabaseMigrationState) error {
+
+	clients, err := d.Clients(ctx)
+	if err != nil {
+		return err
+	}
+	cf := &CFWrapper{
+		client: clients.CloudFormation,
+	}
+
+	stack, err := cf.getOneStack(ctx, deployment.StackName)
+	if err != nil {
+		return err
+	}
+
+	d.AsyncEvent(ctx, newEvent(deployment, &deployer_pb.DeploymentEventType_DbMigrateStatus{
+		DbMigrateStatus: &deployer_pb.DeploymentEventType_DBMigrateStatus{
+			DbName:      migration.DbName,
+			MigrationId: migration.MigrationId,
+			Status:      deployer_pb.DatabaseMigrationStatus_PENDING,
+		},
+	}))
+
 	// Migrate
-	log.Info(ctx, "Data Migrate")
-	if err := d.migrateData(ctx, lastState.Outputs, deployment.App, d.RotateSecrets); err != nil {
+	if err := d.migrateData(ctx, stack.Outputs, deployment, migration); err != nil {
+		d.AsyncEvent(ctx, newEvent(deployment, &deployer_pb.DeploymentEventType_DbMigrateStatus{
+			DbMigrateStatus: &deployer_pb.DeploymentEventType_DBMigrateStatus{
+				DbName:      migration.DbName,
+				MigrationId: migration.MigrationId,
+				Status:      deployer_pb.DatabaseMigrationStatus_FAILED,
+				Error:       proto.String(err.Error()),
+			},
+		}))
 		return err
 	}
 
-	// Scale Up
-	log.Info(ctx, "Scale Up")
-	if err := cf.setScale(ctx, deployment.StackName, 1); err != nil {
-		return err
-	}
-
-	if err := cf.WaitForSuccess(ctx, deployment.StackName, d.waitStatusCallback(deployment, "scale up")); err != nil {
-		return err
-	}
+	d.AsyncEvent(ctx, newEvent(deployment, &deployer_pb.DeploymentEventType_DbMigrateStatus{
+		DbMigrateStatus: &deployer_pb.DeploymentEventType_DBMigrateStatus{
+			DbName:      migration.DbName,
+			MigrationId: migration.MigrationId,
+			Status:      deployer_pb.DatabaseMigrationStatus_COMPLETED,
+		},
+	}))
 
 	return nil
 }
