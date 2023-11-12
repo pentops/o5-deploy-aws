@@ -3,11 +3,10 @@ package deployer
 import (
 	"context"
 	"fmt"
-	"time"
 
-	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
+	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"golang.org/x/sync/errgroup"
@@ -23,31 +22,30 @@ type LocalStateStore struct {
 	deployments map[string]*deployer_pb.DeploymentState
 	eg          errgroup.Group
 
-	AWSRunner *AWSRunner
+	AWSRunner *awsinfra.AWSRunner
 
 	DeployerEvent func(ctx context.Context, deployment *deployer_pb.DeploymentEvent) error
 }
 
-func NewLocalStateStore(clientSet ClientBuilder) *LocalStateStore {
+func NewLocalStateStore(clientSet awsinfra.ClientBuilder) *LocalStateStore {
 
-	return &LocalStateStore{
+	lss := &LocalStateStore{
 		stackMap:    map[string]string{},
 		deployments: map[string]*deployer_pb.DeploymentState{},
 		eg:          errgroup.Group{},
-		AWSRunner: &AWSRunner{
-			Clients: clientSet,
-		},
 	}
+
+	lss.AWSRunner = &awsinfra.AWSRunner{
+		Clients:        clientSet,
+		MessageHandler: lss,
+	}
+	return lss
 }
 
-func (lss *LocalStateStore) handleInfraEvent(ctx context.Context, msg proto.Message) error {
+func (lss *LocalStateStore) PublishEvent(ctx context.Context, msg proto.Message) error {
 
 	switch msg := msg.(type) {
 	case *deployer_tpb.StackStatusChangedMessage:
-		lifecycle, err := stackLifecycle(types.StackStatus(msg.Status))
-		if err != nil {
-			return err
-		}
 
 		deploymentId, ok := lss.stackMap[msg.StackName]
 		if !ok {
@@ -63,8 +61,9 @@ func (lss *LocalStateStore) handleInfraEvent(ctx context.Context, msg proto.Mess
 			Event: &deployer_pb.DeploymentEventType{
 				Type: &deployer_pb.DeploymentEventType_StackStatus_{
 					StackStatus: &deployer_pb.DeploymentEventType_StackStatus{
-						Lifecycle:  lifecycle,
-						FullStatus: msg.Status,
+						Lifecycle:   msg.Lifecycle,
+						FullStatus:  msg.Status,
+						StackOutput: msg.Outputs,
 					},
 				},
 			},
@@ -142,7 +141,7 @@ func (lss *LocalStateStore) QueueSideEffect(ctx context.Context, msg proto.Messa
 
 		case *deployer_tpb.RunDatabaseMigrationMessage:
 
-			if err := lss.handleInfraEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
+			if err := lss.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
 				MigrationId:  msg.MigrationId,
 				DeploymentId: msg.DeploymentId,
 				Status:       deployer_pb.DatabaseMigrationStatus_PENDING,
@@ -155,7 +154,7 @@ func (lss *LocalStateStore) QueueSideEffect(ctx context.Context, msg proto.Messa
 			log.Debug(ctx, "RunDatabaseMigration is complete")
 			if migrateErr != nil {
 				log.WithError(ctx, migrateErr).Error("RunDatabaseMigration")
-				if err := lss.handleInfraEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
+				if err := lss.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
 					MigrationId:  msg.MigrationId,
 					DeploymentId: msg.DeploymentId,
 					Status:       deployer_pb.DatabaseMigrationStatus_FAILED,
@@ -166,7 +165,7 @@ func (lss *LocalStateStore) QueueSideEffect(ctx context.Context, msg proto.Messa
 				return migrateErr
 			}
 
-			if err := lss.handleInfraEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
+			if err := lss.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
 				DeploymentId: msg.DeploymentId,
 				MigrationId:  msg.MigrationId,
 				Status:       deployer_pb.DatabaseMigrationStatus_COMPLETED,
@@ -195,6 +194,13 @@ func (lss *LocalStateStore) ChainNextEvent(ctx context.Context, evt *deployer_pb
 		return lss.DeployerEvent(ctx, evt)
 	})
 
+	return nil
+}
+
+func (lss *LocalStateStore) PollStack(ctx context.Context, stackName string) error {
+	lss.eg.Go(func() error {
+		return lss.AWSRunner.PollStack(ctx, stackName)
+	})
 	return nil
 }
 
@@ -230,55 +236,4 @@ func (lss *LocalStateStore) GetDeployment(ctx context.Context, id string) (*depl
 
 func (lss *LocalStateStore) Wait() error {
 	return lss.eg.Wait()
-}
-
-func (lss *LocalStateStore) PollStack(ctx context.Context, stackName string) error {
-
-	ctx = log.WithField(ctx, "stackName", stackName)
-
-	log.Debug(ctx, "PollStack Begin")
-
-	lss.eg.Go(func() error {
-		var lastStatus types.StackStatus
-		for {
-			remoteStack, err := lss.AWSRunner.getOneStack(ctx, stackName)
-			if err != nil {
-				return err
-			}
-			if remoteStack == nil {
-				return fmt.Errorf("missing stack %s", stackName)
-			}
-
-			if lastStatus == remoteStack.StackStatus {
-				time.Sleep(5 * time.Second)
-				continue
-			}
-
-			lastStatus = remoteStack.StackStatus
-
-			log.WithFields(ctx, map[string]interface{}{
-				"stackStatus": remoteStack.StackStatus,
-			}).Debug("PollStack Result")
-
-			if err := lss.handleInfraEvent(ctx, &deployer_tpb.StackStatusChangedMessage{
-				StackName: *remoteStack.StackName,
-				Status:    string(remoteStack.StackStatus),
-			}); err != nil {
-				return err
-			}
-
-			summary, err := summarizeStackStatus(remoteStack)
-			if err != nil {
-				return err
-			}
-
-			if summary.Stable {
-				break
-			}
-		}
-
-		return nil
-	})
-
-	return nil
 }

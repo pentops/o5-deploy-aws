@@ -1,31 +1,34 @@
-package deployer
+package awsinfra
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/smithy-go"
+	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type stackParameters struct {
-	parameters         []*deployer_pb.Parameter
-	scale              int
-	previousParameters []*deployer_pb.AWSParameter
-}
-
 type AWSRunner struct {
 	Clients ClientBuilder
-
 	*deployer_tpb.UnimplementedAWSCommandTopicServer
+	MessageHandler interface {
+		PublishEvent(context.Context, proto.Message) error
+	}
+}
+
+func (cf *AWSRunner) eventOut(ctx context.Context, msg proto.Message) error {
+	return cf.MessageHandler.PublishEvent(ctx, msg)
 }
 
 func (cf *AWSRunner) getClient(ctx context.Context) (CloudFormationAPI, error) {
@@ -68,9 +71,66 @@ func (cf *AWSRunner) getOneStack(ctx context.Context, stackName string) (*types.
 	return &remoteStack, nil
 }
 
-func (cf *AWSRunner) CreateNewStack(ctx context.Context, msg *deployer_tpb.CreateNewStackMessage) (*emptypb.Empty, error) {
+func (cf *AWSRunner) StabalizeStack(ctx context.Context, msg *deployer_tpb.StabalizeStackMessage) (*emptypb.Empty, error) {
+	remoteStack, err := cf.getOneStack(ctx, msg.StackName)
+	if err != nil {
+		return nil, err
+	}
 
-	//deployment *deployer_pb.DeploymentState, parameters []types.Parameter) error {
+	if remoteStack == nil {
+		err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
+			StackName: msg.StackName,
+			Status:    "MISSING",
+			Lifecycle: deployer_pb.StackLifecycle_MISSING,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		return &emptypb.Empty{}, nil
+	}
+
+	lifecycle, err := stackLifecycle(remoteStack.StackStatus)
+	if err != nil {
+		return nil, err
+	}
+
+	if remoteStack.StackStatus == types.StackStatusRollbackComplete {
+		err := cf.eventOut(ctx, &deployer_tpb.DeleteStackMessage{
+			StackName: msg.StackName,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		return &emptypb.Empty{}, nil
+
+	}
+
+	needsCancel := msg.CancelUpdate && remoteStack.StackStatus == types.StackStatusUpdateInProgress
+	if needsCancel {
+		err := cf.eventOut(ctx, &deployer_tpb.CancelStackUpdateMessage{
+			StackName: msg.StackName,
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	err = cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
+		StackName: msg.StackName,
+		Status:    string(remoteStack.StackStatus),
+		Lifecycle: lifecycle,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
+
+}
+
+func (cf *AWSRunner) CreateNewStack(ctx context.Context, msg *deployer_tpb.CreateNewStackMessage) (*emptypb.Empty, error) {
 	client, err := cf.getClient(ctx)
 	if err != nil {
 		return nil, err
@@ -267,7 +327,7 @@ type StackStatus struct {
 	SummaryType deployer_pb.StackLifecycle
 	IsOK        bool
 	Stable      bool
-	Parameters  []*deployer_pb.AWSParameter
+	Parameters  []*deployer_pb.KeyValue
 }
 
 func stackLifecycle(remoteStatus types.StackStatus) (deployer_pb.StackLifecycle, error) {
@@ -311,9 +371,9 @@ func summarizeStackStatus(stack *types.Stack) (StackStatus, error) {
 		return StackStatus{}, err
 	}
 
-	parameters := make([]*deployer_pb.AWSParameter, len(stack.Parameters))
+	parameters := make([]*deployer_pb.KeyValue, len(stack.Parameters))
 	for idx, param := range stack.Parameters {
-		parameters[idx] = &deployer_pb.AWSParameter{
+		parameters[idx] = &deployer_pb.KeyValue{
 			Name:  *param.ParameterKey,
 			Value: *param.ParameterValue,
 		}
@@ -365,4 +425,61 @@ func isNoUpdatesError(err error) bool {
 	}
 
 	return opError.ErrorCode() == "ValidationError" && opError.ErrorMessage() == "No updates are to be performed."
+}
+
+func (cf *AWSRunner) PollStack(ctx context.Context, stackName string) error {
+
+	ctx = log.WithField(ctx, "stackName", stackName)
+
+	log.Debug(ctx, "PollStack Begin")
+
+	var lastStatus types.StackStatus
+	for {
+		remoteStack, err := cf.getOneStack(ctx, stackName)
+		if err != nil {
+			return err
+		}
+		if remoteStack == nil {
+			return fmt.Errorf("missing stack %s", stackName)
+		}
+
+		if lastStatus == remoteStack.StackStatus {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
+		lastStatus = remoteStack.StackStatus
+
+		log.WithFields(ctx, map[string]interface{}{
+			"stackStatus": remoteStack.StackStatus,
+		}).Debug("PollStack Result")
+
+		outputs := make([]*deployer_pb.KeyValue, len(remoteStack.Outputs))
+		for i, output := range remoteStack.Outputs {
+			outputs[i] = &deployer_pb.KeyValue{
+				Name:  *output.OutputKey,
+				Value: *output.OutputValue,
+			}
+		}
+
+		summary, err := summarizeStackStatus(remoteStack)
+		if err != nil {
+			return err
+		}
+
+		if err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
+			StackName: *remoteStack.StackName,
+			Status:    string(remoteStack.StackStatus),
+			Outputs:   outputs,
+			Lifecycle: summary.SummaryType,
+		}); err != nil {
+			return err
+		}
+
+		if summary.Stable {
+			break
+		}
+	}
+
+	return nil
 }

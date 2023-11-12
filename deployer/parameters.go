@@ -15,17 +15,54 @@ import (
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
 
-type ParameterResolver interface {
-	WellKnownParameter(name string) (string, bool)
-	CustomEnvVar(name string) (string, bool)
-	NextAvailableListenerRulePriority(group application_pb.RouteGroup) (int, error)
-	CrossEnvSNSPrefix(envName string) (string, error)
-	DesiredCount() int
+type VariableParameters struct {
+	DesiredCount int
 }
 
-func resolveParameter(ctx context.Context, param *deployer_pb.Parameter, resolver ParameterResolver) (*deployer_pb.AWSParameter, error) {
+type ParameterResolver interface {
+	ResolveParameter(param *deployer_pb.Parameter, variabla VariableParameters) (*deployer_pb.KeyValue, error)
+}
 
-	parameter := &deployer_pb.AWSParameter{
+func (d *Deployer) BuildParameterResolver(ctx context.Context) (*deployerResolver, error) {
+
+	takenPriorities, err := d.loadTakenPriorities(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	hostHeader := "*.*"
+	if d.AWS.HostHeader != nil {
+		hostHeader = *d.AWS.HostHeader
+	}
+
+	crossEnvSNS := map[string]string{}
+
+	for _, envLink := range d.AWS.EnvironmentLinks {
+		crossEnvSNS[envLink.FullName] = envLink.SnsPrefix
+	}
+
+	dr := &deployerResolver{
+		takenPriorities: takenPriorities,
+		wellKnown: map[string]string{
+			app.ListenerARNParameter:          d.AWS.ListenerArn,
+			app.HostHeaderParameter:           hostHeader,
+			app.ECSClusterParameter:           d.AWS.EcsClusterName,
+			app.ECSRepoParameter:              d.AWS.EcsRepo,
+			app.ECSTaskExecutionRoleParameter: d.AWS.EcsTaskExecutionRole,
+			app.EnvNameParameter:              d.Environment.FullName,
+			app.VPCParameter:                  d.AWS.VpcId,
+			app.MetaDeployAssumeRoleParameter: strings.Join(d.AWS.O5DeployerGrantRoles, ","),
+			app.JWKSParameter:                 strings.Join(d.Environment.TrustJwks, ","),
+		},
+		custom:              d.Environment.Vars,
+		crossEnvSNSPrefixes: crossEnvSNS,
+	}
+	return dr, nil
+}
+
+func (rr *deployerResolver) ResolveParameter(param *deployer_pb.Parameter, variable VariableParameters) (*deployer_pb.KeyValue, error) {
+
+	parameter := &deployer_pb.KeyValue{
 		Name: param.Name,
 	}
 	switch ps := param.Source.Type.(type) {
@@ -33,7 +70,7 @@ func resolveParameter(ctx context.Context, param *deployer_pb.Parameter, resolve
 		parameter.Value = ps.Static.Value
 
 	case *deployer_pb.ParameterSourceType_WellKnown_:
-		value, ok := resolver.WellKnownParameter(param.Name)
+		value, ok := rr.WellKnownParameter(param.Name)
 		if !ok {
 			return nil, fmt.Errorf("unknown well known parameter: %s", param.Name)
 		}
@@ -41,7 +78,7 @@ func resolveParameter(ctx context.Context, param *deployer_pb.Parameter, resolve
 
 	case *deployer_pb.ParameterSourceType_RulePriority_:
 		group := ps.RulePriority.RouteGroup
-		priority, err := resolver.NextAvailableListenerRulePriority(group)
+		priority, err := rr.NextAvailableListenerRulePriority(group)
 		if err != nil {
 			return nil, err
 		}
@@ -49,11 +86,11 @@ func resolveParameter(ctx context.Context, param *deployer_pb.Parameter, resolve
 		parameter.Value = fmt.Sprintf("%d", priority)
 
 	case *deployer_pb.ParameterSourceType_DesiredCount_:
-		parameter.Value = fmt.Sprintf("%d", resolver.DesiredCount())
+		parameter.Value = fmt.Sprintf("%d", variable.DesiredCount)
 
 	case *deployer_pb.ParameterSourceType_CrossEnvSns_:
 		envName := ps.CrossEnvSns.EnvName
-		topicPrefix, err := resolver.CrossEnvSNSPrefix(envName)
+		topicPrefix, err := rr.CrossEnvSNSPrefix(envName)
 		if err != nil {
 			return nil, err
 		}
@@ -62,7 +99,7 @@ func resolveParameter(ctx context.Context, param *deployer_pb.Parameter, resolve
 
 	case *deployer_pb.ParameterSourceType_EnvVar_:
 		key := ps.EnvVar.Name
-		val, ok := resolver.CustomEnvVar(key)
+		val, ok := rr.CustomEnvVar(key)
 		if !ok {
 			return nil, fmt.Errorf("unknown env var: %s", key)
 		}
@@ -79,12 +116,7 @@ type deployerResolver struct {
 	takenPriorities     map[int]bool
 	wellKnown           map[string]string
 	custom              []*environment_pb.CustomVariable
-	desiredCount        int
 	crossEnvSNSPrefixes map[string]string
-}
-
-func (dr *deployerResolver) DesiredCount() int {
-	return dr.desiredCount
 }
 
 func (dr *deployerResolver) CustomEnvVar(name string) (string, bool) {
@@ -139,62 +171,6 @@ func (dr *deployerResolver) WellKnownParameter(name string) (string, bool) {
 	val, ok := dr.wellKnown[name]
 	return val, ok
 }
-
-func (d *Deployer) applyInitialParameters(ctx context.Context, stack stackParameters) ([]*deployer_pb.AWSParameter, error) {
-
-	mappedPreviousParameters := make(map[string]string, len(stack.previousParameters))
-	for _, param := range stack.previousParameters {
-		mappedPreviousParameters[param.Name] = param.Value
-	}
-
-	stackParameters := stack.parameters
-	parameters := make([]*deployer_pb.AWSParameter, 0, len(stackParameters))
-
-	takenPriorities, err := d.loadTakenPriorities(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	hostHeader := "*.*"
-	if d.AWS.HostHeader != nil {
-		hostHeader = *d.AWS.HostHeader
-	}
-
-	crossEnvSNS := map[string]string{}
-
-	for _, envLink := range d.AWS.EnvironmentLinks {
-		crossEnvSNS[envLink.FullName] = envLink.SnsPrefix
-	}
-
-	dr := &deployerResolver{
-		takenPriorities: takenPriorities,
-		wellKnown: map[string]string{
-			app.ListenerARNParameter:          d.AWS.ListenerArn,
-			app.HostHeaderParameter:           hostHeader,
-			app.ECSClusterParameter:           d.AWS.EcsClusterName,
-			app.ECSRepoParameter:              d.AWS.EcsRepo,
-			app.ECSTaskExecutionRoleParameter: d.AWS.EcsTaskExecutionRole,
-			app.EnvNameParameter:              d.Environment.FullName,
-			app.VPCParameter:                  d.AWS.VpcId,
-			app.MetaDeployAssumeRoleParameter: strings.Join(d.AWS.O5DeployerGrantRoles, ","),
-			app.JWKSParameter:                 strings.Join(d.Environment.TrustJwks, ","),
-		},
-		custom:              d.Environment.Vars,
-		desiredCount:        stack.scale,
-		crossEnvSNSPrefixes: crossEnvSNS,
-	}
-
-	for _, param := range stackParameters {
-		parameter, err := resolveParameter(ctx, param, dr)
-		if err != nil {
-			return nil, fmt.Errorf("parameter '%s': %w", param.Name, err)
-		}
-		parameters = append(parameters, parameter)
-	}
-
-	return parameters, nil
-}
-
 func (d *Deployer) loadTakenPriorities(ctx context.Context) (map[int]bool, error) {
 	clients, err := d.Clients.Clients(ctx)
 	if err != nil {

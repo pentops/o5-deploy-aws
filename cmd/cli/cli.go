@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/pentops/o5-deploy-aws/app"
+	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-go/application/v1/application_pb"
@@ -99,7 +100,7 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		return fmt.Errorf("AWS Deployer requires the type of environment provider to be AWS")
 	}
 
-	clientSet := &deployer.ClientSet{
+	clientSet := &awsinfra.ClientSet{
 		AssumeRoleARN: awsTarget.O5DeployerAssumeRole,
 		AWSConfig:     awsConfig,
 	}

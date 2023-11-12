@@ -9,9 +9,175 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+type TransitionSpec[Event deployer_pb.IsDeploymentEventTypeWrappedType] struct {
+	FromStatus  []deployer_pb.DeploymentStatus
+	EventFilter func(Event) bool
+	Transition  func(context.Context, TransitionBaton, *deployer_pb.DeploymentState, Event) error
+}
+
+func (ts TransitionSpec[Event]) RunTransition(ctx context.Context, tb TransitionBaton, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
+
+	asType, ok := event.Event.Get().(Event)
+	if !ok {
+		return fmt.Errorf("unexpected event type: %T", event.Event.Get())
+	}
+
+	return ts.Transition(ctx, tb, deployment, asType)
+}
+
+func (ts TransitionSpec[Event]) Matches(deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) bool {
+	got := event.Event.Get()
+	if got == nil {
+		return false
+	}
+	asType, ok := got.(Event)
+	if !ok {
+		return false
+	}
+	didMatch := false
+	for _, fromStatus := range ts.FromStatus {
+		if fromStatus == deployment.Status {
+			didMatch = true
+			break
+		}
+	}
+	if !didMatch {
+		return false
+	}
+
+	if ts.EventFilter != nil && !ts.EventFilter(asType) {
+		return false
+	}
+	return true
+}
+
+type ITransitionSpec interface {
+	Matches(*deployer_pb.DeploymentState, *deployer_pb.DeploymentEvent) bool
+	RunTransition(context.Context, TransitionBaton, *deployer_pb.DeploymentState, *deployer_pb.DeploymentEvent) error
+}
+
+type TransitionBaton interface {
+	ChainEvent(*deployer_pb.DeploymentEvent)
+	SideEffect(proto.Message)
+
+	ResolveParameters([]*deployer_pb.Parameter, VariableParameters) ([]*deployer_pb.KeyValue, error)
+
+	buildMigrationRequest(ctx context.Context, deployment *deployer_pb.DeploymentState, migration *deployer_pb.DatabaseMigrationState) (*deployer_tpb.RunDatabaseMigrationMessage, error)
+}
+
+type transitionData struct {
+	sideEffects []proto.Message
+	chainEvents []*deployer_pb.DeploymentEvent
+
+	parameterResolver ParameterResolver
+	env               *environment_pb.Environment
+}
+
+func newEvent(d *deployer_pb.DeploymentState, event deployer_pb.IsDeploymentEventType_Type) *deployer_pb.DeploymentEvent {
+	return &deployer_pb.DeploymentEvent{
+		DeploymentId: d.DeploymentId,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+		Event: &deployer_pb.DeploymentEventType{
+			Type: event,
+		},
+	}
+}
+
+func (td *transitionData) buildMigrationRequest(ctx context.Context, deployment *deployer_pb.DeploymentState, migration *deployer_pb.DatabaseMigrationState) (*deployer_tpb.RunDatabaseMigrationMessage, error) {
+
+	var db *deployer_pb.PostgresDatabase
+	for _, search := range deployment.Spec.Databases {
+		if search.Database.Name == migration.DbName {
+			db = search
+			break
+		}
+	}
+
+	if db == nil {
+		return nil, fmt.Errorf("no database found with name %s", migration.DbName)
+	}
+
+	ctx = log.WithFields(ctx, map[string]interface{}{
+		"database":    db.Database.Name,
+		"serverGroup": db.Database.GetPostgres().ServerGroup,
+	})
+	log.Debug(ctx, "Upsert Database")
+	var migrationTaskARN string
+	var secretARN string
+	for _, output := range deployment.StackOutput {
+		if *db.MigrationTaskOutputName == output.Name {
+			migrationTaskARN = output.Value
+		}
+		if *db.SecretOutputName == output.Name {
+			secretARN = output.Value
+		}
+	}
+
+	awsEnv := td.env.GetAws()
+	var secretName string
+	for _, host := range awsEnv.RdsHosts {
+		if host.ServerGroup == db.Database.GetPostgres().ServerGroup {
+			secretName = host.SecretName
+			break
+		}
+	}
+	if secretName == "" {
+		return nil, fmt.Errorf("no host found for server group %q", db.Database.GetPostgres().ServerGroup)
+	}
+
+	return &deployer_tpb.RunDatabaseMigrationMessage{
+		MigrationId:       migration.MigrationId,
+		DeploymentId:      deployment.DeploymentId,
+		MigrationTaskArn:  migrationTaskARN,
+		SecretArn:         secretARN,
+		Database:          db,
+		RotateCredentials: migration.RotateCredentials,
+		EcsClusterName:    awsEnv.EcsClusterName,
+		RootSecretName:    secretName,
+	}, nil
+
+}
+
+func (td *transitionData) ResolveParameters(stackParameters []*deployer_pb.Parameter, variables VariableParameters) ([]*deployer_pb.KeyValue, error) {
+
+	parameters := make([]*deployer_pb.KeyValue, 0, len(stackParameters))
+
+	for _, param := range stackParameters {
+		parameter, err := td.parameterResolver.ResolveParameter(param, variables)
+		if err != nil {
+			return nil, fmt.Errorf("parameter '%s': %w", param.Name, err)
+		}
+		parameters = append(parameters, parameter)
+	}
+
+	return parameters, nil
+}
+
+func (td *transitionData) ChainEvent(event *deployer_pb.DeploymentEvent) {
+	td.chainEvents = append(td.chainEvents, event)
+}
+
+func (td *transitionData) SideEffect(msg proto.Message) {
+	td.sideEffects = append(td.sideEffects, msg)
+}
+
+func (d *Deployer) findTransition(ctx context.Context, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) ITransitionSpec {
+	for _, search := range transitions {
+		if search.Matches(deployment, event) {
+			return search
+		}
+	}
+	return nil
+}
 
 func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
 
@@ -31,200 +197,34 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 	})
 	log.Debug(ctx, "Beign Deployment Event")
 
-	var nextEvent *deployer_pb.DeploymentEvent
-	var sideEffects []proto.Message
+	// TODO: This is a heavy operation, but also needs to run
+	// just-in-time, so we should only run it when the event
+	// requires it.
+	deployerResolver, err := d.BuildParameterResolver(ctx)
+	if err != nil {
+		return err
+	}
 
-	switch et := event.Event.Type.(type) {
+	transition := &transitionData{
+		parameterResolver: deployerResolver,
+		env:               d.Environment,
+	}
 
-	case *deployer_pb.DeploymentEventType_Triggered_:
-		deployment.Status = deployer_pb.DeploymentStatus_QUEUED
-		deployment.Spec = et.Triggered.Spec
-		deployment.StackName = fmt.Sprintf("%s-%s", d.Environment.FullName, et.Triggered.Spec.AppName)
+	typeKey, ok := event.Event.TypeKey()
+	if !ok {
+		return fmt.Errorf("unknown event type: %T", event.Event)
+	}
 
-		// TODO: Wait for lock from DB, for now just pretend
-		nextEvent = newEvent(deployment, &deployer_pb.DeploymentEventType_GotLock_{
-			GotLock: &deployer_pb.DeploymentEventType_GotLock{},
-		})
+	spec := d.findTransition(ctx, deployment, event)
+	if spec == nil {
+		return fmt.Errorf("no transition found for status %s -> %s",
+			deployment.Status.ShortString(),
+			typeKey,
+		)
+	}
 
-	case *deployer_pb.DeploymentEventType_GotLock_:
-		deployment.Status = deployer_pb.DeploymentStatus_LOCKED
-
-		nextEvent, err = d.eventGotLock(ctx, deployment)
-		if err != nil {
-			return err
-		}
-
-	case *deployer_pb.DeploymentEventType_StackWait_:
-		deployment.Status = deployer_pb.DeploymentStatus_WAITING
-		if et.StackWait.CancelUpdates {
-			sideEffects = append(sideEffects, &deployer_tpb.CancelStackUpdateMessage{
-				StackName: deployment.StackName,
-			})
-		}
-
-	case *deployer_pb.DeploymentEventType_StackCreate_:
-		deployment.Status = deployer_pb.DeploymentStatus_CREATING
-
-		// TODO: This event makes network calls
-		msg, err := d.createNewDeployment(ctx, deployment)
-		if err != nil {
-			return err
-		}
-		sideEffects = append(sideEffects, msg)
-
-	case *deployer_pb.DeploymentEventType_StackStatus_:
-		switch et.StackStatus.Lifecycle {
-		case deployer_pb.StackLifecycle_COMPLETE:
-			switch deployment.Status {
-			case deployer_pb.DeploymentStatus_WAITING:
-				deployment.Status = deployer_pb.DeploymentStatus_AVAILABLE
-
-				nextEvent = newEvent(deployment, &deployer_pb.DeploymentEventType_StackScale_{
-					StackScale: &deployer_pb.DeploymentEventType_StackScale{
-						DesiredCount: int32(0),
-					},
-				})
-
-			case deployer_pb.DeploymentStatus_SCALING_DOWN:
-				deployment.Status = deployer_pb.DeploymentStatus_SCALED_DOWN
-
-				nextEvent = newEvent(deployment, &deployer_pb.DeploymentEventType_StackTrigger_{
-					StackTrigger: &deployer_pb.DeploymentEventType_StackTrigger{
-						Phase: "update",
-					},
-				})
-
-			case deployer_pb.DeploymentStatus_INFRA_MIGRATE:
-				deployment.Status = deployer_pb.DeploymentStatus_INFRA_MIGRATED
-
-				nextEvent = newEvent(deployment, &deployer_pb.DeploymentEventType_MigrateData_{
-					MigrateData: &deployer_pb.DeploymentEventType_MigrateData{},
-				})
-
-			case deployer_pb.DeploymentStatus_SCALING_UP:
-				deployment.Status = deployer_pb.DeploymentStatus_SCALED_UP
-				nextEvent = newEvent(deployment, &deployer_pb.DeploymentEventType_Done_{
-					Done: &deployer_pb.DeploymentEventType_Done{},
-				})
-
-			default:
-				return fmt.Errorf("unexpected stack status event: %s", deployment.Status)
-			}
-		case deployer_pb.StackLifecycle_TERMINAL:
-			return fmt.Errorf("stack failed: %s", et.StackStatus.FullStatus)
-
-		case deployer_pb.StackLifecycle_PROGRESS:
-			// Just log it
-
-		case deployer_pb.StackLifecycle_CREATE_FAILED:
-			return fmt.Errorf("stack failed: %s", et.StackStatus.FullStatus)
-
-		case deployer_pb.StackLifecycle_ROLLING_BACK:
-			return fmt.Errorf("stack failed: %s", et.StackStatus.FullStatus)
-
-		default:
-			return fmt.Errorf("unexpected stack lifecycle: %s", et.StackStatus.Lifecycle)
-		}
-
-	case *deployer_pb.DeploymentEventType_MigrateData_:
-		deployment.Status = deployer_pb.DeploymentStatus_DB_MIGRATING
-		deployment.DataMigrations = make([]*deployer_pb.DatabaseMigrationState, len(deployment.Spec.Databases))
-		for i, db := range deployment.Spec.Databases {
-			migration := &deployer_pb.DatabaseMigrationState{
-				MigrationId:       uuid.NewString(),
-				DbName:            db.Database.Name,
-				Status:            deployer_pb.DatabaseMigrationStatus_PENDING,
-				RotateCredentials: d.RotateSecrets,
-			}
-			deployment.DataMigrations[i] = migration
-
-			migrationMsg, err := d.buildMigrationRequest(ctx, deployment, migration)
-			if err != nil {
-				return err
-			}
-			sideEffects = append(sideEffects, migrationMsg)
-		}
-
-		if len(deployment.DataMigrations) == 0 {
-			nextEvent = newEvent(deployment, &deployer_pb.DeploymentEventType_DataMigrated_{
-				DataMigrated: &deployer_pb.DeploymentEventType_DataMigrated{},
-			})
-
-		}
-
-	case *deployer_pb.DeploymentEventType_DbMigrateStatus:
-		anyPending := false
-		anyFailed := false
-		for _, migration := range deployment.DataMigrations {
-			if migration.MigrationId == et.DbMigrateStatus.MigrationId {
-				migration.Status = et.DbMigrateStatus.Status
-				switch migration.Status {
-				case deployer_pb.DatabaseMigrationStatus_COMPLETED:
-					// OK
-				case deployer_pb.DatabaseMigrationStatus_PENDING,
-					deployer_pb.DatabaseMigrationStatus_RUNNING,
-					deployer_pb.DatabaseMigrationStatus_CLEANUP:
-					anyPending = true
-				case deployer_pb.DatabaseMigrationStatus_FAILED:
-					anyFailed = true
-				default:
-					return fmt.Errorf("unexpected migration status: %s", migration.Status)
-				}
-			}
-		}
-
-		if anyFailed {
-			return fmt.Errorf("migration failed, not handled")
-		}
-
-		if !anyPending {
-			nextEvent = newEvent(deployment, &deployer_pb.DeploymentEventType_DataMigrated_{
-				DataMigrated: &deployer_pb.DeploymentEventType_DataMigrated{},
-			})
-		}
-
-	case *deployer_pb.DeploymentEventType_DataMigrated_:
-		deployment.Status = deployer_pb.DeploymentStatus_DB_MIGRATED
-		nextEvent = newEvent(deployment, &deployer_pb.DeploymentEventType_StackScale_{
-			StackScale: &deployer_pb.DeploymentEventType_StackScale{
-				DesiredCount: int32(1),
-			},
-		})
-
-	case *deployer_pb.DeploymentEventType_StackScale_:
-		switch deployment.Status {
-		case deployer_pb.DeploymentStatus_AVAILABLE:
-			deployment.Status = deployer_pb.DeploymentStatus_SCALING_DOWN
-
-		case deployer_pb.DeploymentStatus_DB_MIGRATED:
-			deployment.Status = deployer_pb.DeploymentStatus_SCALING_UP
-		}
-
-		sideEffects = append(sideEffects, &deployer_tpb.ScaleStackMessage{
-			StackName:    deployment.StackName,
-			DesiredCount: et.StackScale.DesiredCount,
-		})
-
-	case *deployer_pb.DeploymentEventType_StackTrigger_:
-		switch deployment.Status {
-		case deployer_pb.DeploymentStatus_SCALED_DOWN:
-			deployment.Status = deployer_pb.DeploymentStatus_INFRA_MIGRATE
-
-			msg, err := d.buildUpdateStackRequest(ctx, deployment)
-			if err != nil {
-				return err
-			}
-			sideEffects = append(sideEffects, msg)
-
-		default:
-			return fmt.Errorf("unexpected stack trigger event: %s", deployment.Status)
-		}
-
-	case *deployer_pb.DeploymentEventType_Done_:
-		deployment.Status = deployer_pb.DeploymentStatus_DONE
-
-	default:
-		return fmt.Errorf("unknown event type: %T", et)
+	if err := spec.RunTransition(ctx, transition, deployment, event); err != nil {
+		return err
 	}
 
 	if err := d.storage.StoreDeploymentEvent(ctx, deployment, event); err != nil {
@@ -235,13 +235,13 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 		"stateAfter": deployment.Status.ShortString(),
 	}).Info("Deployment Event Handled")
 
-	for _, se := range sideEffects {
+	for _, se := range transition.sideEffects {
 		if err := d.storage.QueueSideEffect(ctx, se); err != nil {
 			return err
 		}
 	}
 
-	if nextEvent != nil {
+	for _, nextEvent := range transition.chainEvents {
 		if err := d.storage.ChainNextEvent(ctx, nextEvent); err != nil {
 			return err
 		}
