@@ -2,38 +2,49 @@ package deployer
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"fmt"
 
-	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"google.golang.org/protobuf/encoding/protojson"
-	"gopkg.daemonl.com/sqrlx"
+	"google.golang.org/protobuf/proto"
 )
 
 func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
 
-	deployment, err := d.getDeployment(ctx, event.DeploymentId)
-	if err != nil {
+	deployment, err := d.storage.GetDeployment(ctx, event.DeploymentId)
+	if errors.Is(err, DeploymentNotFoundError) {
+		deployment = &deployer_pb.DeploymentState{
+			DeploymentId: event.DeploymentId,
+		}
+	} else if err != nil {
 		return err
 	}
 
-	log.WithFields(ctx, map[string]interface{}{
+	ctx = log.WithFields(ctx, map[string]interface{}{
 		"deploymentId": event.DeploymentId,
-		"event":        event.Event,
-		"state":        deployment.Status.ShortString(),
-	}).Debug("Beign Deployment Event")
+		"event":        protojson.Format(event.Event),
+		"stateBefore":  deployment.Status.ShortString(),
+	})
+	log.Debug(ctx, "Beign Deployment Event")
 
 	var nextEvent *deployer_pb.DeploymentEvent
-	type sideEffect func() error
-	var sideEffects []sideEffect
+	var sideEffects []proto.Message
 
 	switch et := event.Event.Type.(type) {
 
 	case *deployer_pb.DeploymentEventType_Triggered_:
 		deployment.Status = deployer_pb.DeploymentStatus_QUEUED
+		deployment.Spec = et.Triggered.Spec
+		deployment.StackName = fmt.Sprintf("%s-%s", d.Environment.FullName, et.Triggered.Spec.AppName)
+
+		// TODO: Wait for lock from DB, for now just pretend
+		nextEvent = newEvent(deployment, &deployer_pb.DeploymentEventType_GotLock_{
+			GotLock: &deployer_pb.DeploymentEventType_GotLock{},
+		})
 
 	case *deployer_pb.DeploymentEventType_GotLock_:
 		deployment.Status = deployer_pb.DeploymentStatus_LOCKED
@@ -45,15 +56,21 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 
 	case *deployer_pb.DeploymentEventType_StackWait_:
 		deployment.Status = deployer_pb.DeploymentStatus_WAITING
-		sideEffects = []sideEffect{func() error {
-			return d.runStackWait(ctx, deployment)
-		}}
+		if et.StackWait.CancelUpdates {
+			sideEffects = append(sideEffects, &deployer_tpb.CancelStackUpdateMessage{
+				StackName: deployment.StackName,
+			})
+		}
 
 	case *deployer_pb.DeploymentEventType_StackCreate_:
 		deployment.Status = deployer_pb.DeploymentStatus_CREATING
-		sideEffects = []sideEffect{func() error {
-			return d.createNewDeployment(ctx, deployment)
-		}}
+
+		// TODO: This event makes network calls
+		msg, err := d.createNewDeployment(ctx, deployment)
+		if err != nil {
+			return err
+		}
+		sideEffects = append(sideEffects, msg)
 
 	case *deployer_pb.DeploymentEventType_StackStatus_:
 		switch et.StackStatus.Lifecycle {
@@ -121,10 +138,11 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 			}
 			deployment.DataMigrations[i] = migration
 
-			sideEffects = append(sideEffects, func() error {
-				return d.runMigration(ctx, deployment, migration)
-			})
-
+			migrationMsg, err := d.buildMigrationRequest(ctx, deployment, migration)
+			if err != nil {
+				return err
+			}
+			sideEffects = append(sideEffects, migrationMsg)
 		}
 
 		if len(deployment.DataMigrations) == 0 {
@@ -154,6 +172,7 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 				}
 			}
 		}
+
 		if anyFailed {
 			return fmt.Errorf("migration failed, not handled")
 		}
@@ -181,18 +200,21 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 			deployment.Status = deployer_pb.DeploymentStatus_SCALING_UP
 		}
 
-		sideEffects = []sideEffect{func() error {
-			return d.eventStackScale(ctx, deployment, int(et.StackScale.DesiredCount))
-		}}
+		sideEffects = append(sideEffects, &deployer_tpb.ScaleStackMessage{
+			StackName:    deployment.StackName,
+			DesiredCount: et.StackScale.DesiredCount,
+		})
 
 	case *deployer_pb.DeploymentEventType_StackTrigger_:
 		switch deployment.Status {
 		case deployer_pb.DeploymentStatus_SCALED_DOWN:
 			deployment.Status = deployer_pb.DeploymentStatus_INFRA_MIGRATE
 
-			sideEffects = []sideEffect{func() error {
-				return d.migrateInfra(ctx, deployment)
-			}}
+			msg, err := d.buildUpdateStackRequest(ctx, deployment)
+			if err != nil {
+				return err
+			}
+			sideEffects = append(sideEffects, msg)
 
 		default:
 			return fmt.Errorf("unexpected stack trigger event: %s", deployment.Status)
@@ -205,60 +227,24 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 		return fmt.Errorf("unknown event type: %T", et)
 	}
 
-	deploymentJSON, err := protojson.Marshal(deployment)
-	if err != nil {
-		return err
-	}
-
-	upsertState := sqrlx.Upsert("deployment").
-		Key("id", deployment.DeploymentId).
-		Set("state", deploymentJSON)
-
-	eventJSON, err := protojson.Marshal(event)
-	if err != nil {
-		return err
-	}
-
-	insertEvent := sq.Insert("deployment_event").SetMap(map[string]interface{}{
-		"deployment_id": deployment.DeploymentId,
-		"id":            event.Metadata.EventId,
-		"event":         eventJSON,
-		"timestamp":     event.Metadata.Timestamp.AsTime(),
-	})
-
-	if err := d.db.Transact(ctx, &sqrlx.TxOptions{
-		Isolation: sql.LevelReadCommitted,
-		Retryable: true,
-		ReadOnly:  false,
-	}, func(ctx context.Context, tx sqrlx.Transaction) error {
-
-		_, err := tx.Insert(ctx, upsertState)
-		if err != nil {
-			return err
-		}
-
-		_, err = tx.Insert(ctx, insertEvent)
-		if err != nil {
-			return err
-		}
-
-		return nil
-
-	}); err != nil {
+	if err := d.storage.StoreDeploymentEvent(ctx, deployment, event); err != nil {
 		return err
 	}
 
 	log.WithFields(ctx, map[string]interface{}{
-		"deploymentId": event.DeploymentId,
-		"event":        event.Event,
-	}).Info("Deployment Event")
+		"stateAfter": deployment.Status.ShortString(),
+	}).Info("Deployment Event Handled")
 
 	for _, se := range sideEffects {
-		d.eg.Go(se)
+		if err := d.storage.QueueSideEffect(ctx, se); err != nil {
+			return err
+		}
 	}
 
 	if nextEvent != nil {
-		d.AsyncEvent(ctx, nextEvent)
+		if err := d.storage.ChainNextEvent(ctx, nextEvent); err != nil {
+			return err
+		}
 	}
 
 	return nil

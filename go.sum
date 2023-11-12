@@ -131,6 +131,8 @@ github.com/pentops/genericstate v0.0.0-20231111010630-4bbbdca0d2f5 h1:mf0YSC2MR8
 github.com/pentops/genericstate v0.0.0-20231111010630-4bbbdca0d2f5/go.mod h1:3i2y+Ii0dS9jmkIgZ/wv2/qAK8sZlpyhk6OWSGYKbM8=
 github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576 h1:A/vY7Qiv1S/1mUtacZQVoXicaYiiaSR7PInSUcaMOpA=
 github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576/go.mod h1:UXhrs+VZ6cWZ7b/v8AtuvBZc5nwS5WFHP94JoFrZQA8=
+github.com/pentops/o5-go v0.0.0-20231111221609-d78700cac7f6 h1:0y+iN7O1NyP0qZtHO+u5I6ACggxSKV/vIByALc6I2jM=
+github.com/pentops/o5-go v0.0.0-20231111221609-d78700cac7f6/go.mod h1:YREzbtRQB7StF9H49EBFAzlk0hsD1h2tkMlEb7ybN2U=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

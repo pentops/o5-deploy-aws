@@ -23,7 +23,7 @@ require (
 	github.com/google/uuid v1.3.1
 	github.com/pentops/genericstate v0.0.0-20231111010630-4bbbdca0d2f5
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
-	github.com/pentops/o5-go v0.0.0-20231111005237-61c5dc22d387
+	github.com/pentops/o5-go v0.0.0-20231111221609-d78700cac7f6
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/stretchr/testify v1.8.4
 	github.com/tidwall/sjson v1.2.5

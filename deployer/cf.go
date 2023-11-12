@@ -5,14 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
+	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/smithy-go"
-	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type stackParameters struct {
@@ -21,13 +22,27 @@ type stackParameters struct {
 	previousParameters []*deployer_pb.AWSParameter
 }
 
-type CFWrapper struct {
-	client CloudFormationAPI
+type AWSRunner struct {
+	Clients ClientBuilder
+
+	*deployer_tpb.UnimplementedAWSCommandTopicServer
 }
 
-func (cf *CFWrapper) getOneStack(ctx context.Context, stackName string) (*types.Stack, error) {
+func (cf *AWSRunner) getClient(ctx context.Context) (CloudFormationAPI, error) {
+	clients, err := cf.Clients.Clients(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return clients.CloudFormation, nil
+}
 
-	res, err := cf.client.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
+func (cf *AWSRunner) getOneStack(ctx context.Context, stackName string) (*types.Stack, error) {
+	client, err := cf.getClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := client.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
 		StackName: aws.String(stackName),
 	})
 	if err != nil {
@@ -53,12 +68,159 @@ func (cf *CFWrapper) getOneStack(ctx context.Context, stackName string) (*types.
 	return &remoteStack, nil
 }
 
-func (cf *CFWrapper) cancelUpdate(ctx context.Context, stackName string) error {
-	log.Info(ctx, "Cancel Update")
-	_, err := cf.client.CancelUpdateStack(ctx, &cloudformation.CancelUpdateStackInput{
-		StackName: aws.String(stackName),
+func (cf *AWSRunner) CreateNewStack(ctx context.Context, msg *deployer_tpb.CreateNewStackMessage) (*emptypb.Empty, error) {
+
+	//deployment *deployer_pb.DeploymentState, parameters []types.Parameter) error {
+	client, err := cf.getClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	parameters := make([]types.Parameter, len(msg.Parameters))
+	for idx, param := range msg.Parameters {
+		parameters[idx] = types.Parameter{
+			ParameterKey:   aws.String(param.Name),
+			ParameterValue: aws.String(param.Value),
+		}
+	}
+
+	_, err = client.CreateStack(ctx, &cloudformation.CreateStackInput{
+		StackName:   aws.String(msg.StackName),
+		TemplateURL: aws.String(msg.TemplateUrl),
+		Parameters:  parameters,
+		Capabilities: []types.Capability{
+			types.CapabilityCapabilityNamedIam,
+		},
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+func (cf *AWSRunner) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateStackMessage) (*emptypb.Empty, error) {
+
+	client, err := cf.getClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	parameters := make([]types.Parameter, len(msg.Parameters))
+	for idx, param := range msg.Parameters {
+		parameters[idx] = types.Parameter{
+			ParameterKey:   aws.String(param.Name),
+			ParameterValue: aws.String(param.Value),
+		}
+	}
+
+	_, err = client.UpdateStack(ctx, &cloudformation.UpdateStackInput{
+		StackName:   aws.String(msg.StackName),
+		TemplateURL: aws.String(msg.TemplateUrl),
+		Parameters:  parameters,
+		Capabilities: []types.Capability{
+			types.CapabilityCapabilityNamedIam,
+		},
+	})
+	if err != nil {
+		// TODO: This will throw of the waiter, as no event is being performed
+		if !isNoUpdatesError(err) {
+			return nil, fmt.Errorf("updateCFStack: %w", err)
+		}
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+func (cf *AWSRunner) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStackMessage) (*emptypb.Empty, error) {
+
+	current, err := cf.getOneStack(ctx, msg.StackName)
+	if err != nil {
+		return nil, err
+	}
+
+	parameters := make([]types.Parameter, len(current.Parameters))
+	for idx, param := range current.Parameters {
+		if strings.HasPrefix(*param.ParameterKey, "DesiredCount") {
+			parameters[idx] = types.Parameter{
+				ParameterKey:   param.ParameterKey,
+				ParameterValue: aws.String(fmt.Sprintf("%d", msg.DesiredCount)),
+			}
+
+		} else {
+			parameters[idx] = types.Parameter{
+				UsePreviousValue: aws.Bool(true),
+				ParameterKey:     param.ParameterKey,
+			}
+		}
+
+	}
+
+	client, err := cf.getClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = client.UpdateStack(ctx, &cloudformation.UpdateStackInput{
+		StackName:           aws.String(msg.StackName),
+		UsePreviousTemplate: aws.Bool(true),
+		Parameters:          parameters,
+		Capabilities: []types.Capability{
+			types.CapabilityCapabilityNamedIam,
+		},
+	})
+	if err != nil {
+		// TODO: This will throw of the waiter, as no event is being performed
+		if !isNoUpdatesError(err) {
+			return nil, fmt.Errorf("setScale: %w", err)
+		}
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+func (cf *AWSRunner) CancelStackUpdate(ctx context.Context, evt *deployer_tpb.CancelStackUpdateMessage) (*emptypb.Empty, error) {
+	client, err := cf.getClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = client.CancelUpdateStack(ctx, &cloudformation.CancelUpdateStackInput{
+		StackName: aws.String(evt.StackName),
+	})
+	return &emptypb.Empty{}, err
+}
+
+func (cf *AWSRunner) DeleteStack(ctx context.Context, evt *deployer_tpb.DeleteStackMessage) (*emptypb.Empty, error) {
+	client, err := cf.getClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = client.DeleteStack(ctx, &cloudformation.DeleteStackInput{
+		StackName: aws.String(evt.StackName),
+	})
+
+	return nil, err
+}
+
+func (cf *AWSRunner) UpsertSNSTopics(ctx context.Context, evt *deployer_tpb.UpsertSNSTopicsMessage) (*emptypb.Empty, error) {
+	clients, err := cf.Clients.Clients(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	snsClient := clients.SNS
+
+	for _, topic := range evt.TopicNames {
+		_, err := snsClient.CreateTopic(ctx, &sns.CreateTopicInput{
+			Name: aws.String(fmt.Sprintf("%s-%s", evt.EnvironmentName, topic)),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("creating sns topic %s: %w", topic, err)
+		}
+	}
+	return &emptypb.Empty{}, nil
 }
 
 var stackStatusProgress = []types.StackStatus{
@@ -100,8 +262,6 @@ var stackStatusesTerminal = []types.StackStatus{
 	types.StackStatusUpdateRollbackComplete,
 }
 
-type waiterCallback func(ctx context.Context, stackStatus StackStatus) error
-
 type StackStatus struct {
 	StatusName  types.StackStatus
 	SummaryType deployer_pb.StackLifecycle
@@ -110,53 +270,46 @@ type StackStatus struct {
 	Parameters  []*deployer_pb.AWSParameter
 }
 
-func (cf *CFWrapper) WaitForSuccess(ctx context.Context, stackName string, callback waiterCallback) error {
-	_, err := cf.waitForSuccess(ctx, stackName, callback)
-	return err
-}
-
-func (cf *CFWrapper) waitForSuccess(ctx context.Context, stackName string, callback waiterCallback) (*types.Stack, error) {
-	var remoteStack *types.Stack
-	var err error
-	var lastStatus types.StackStatus
-	for {
-		remoteStack, err = cf.getOneStack(ctx, stackName)
-		if err != nil {
-			return nil, err
+func stackLifecycle(remoteStatus types.StackStatus) (deployer_pb.StackLifecycle, error) {
+	for _, status := range stackStatusesTerminal {
+		if remoteStatus == status {
+			return deployer_pb.StackLifecycle_TERMINAL, nil
 		}
-		if remoteStack == nil {
-			return nil, fmt.Errorf("missing stack %s", stackName)
-		}
-
-		if lastStatus != remoteStack.StackStatus {
-			summary, err := summarizeStackStatus(remoteStack)
-			if err != nil {
-				return nil, err
-			}
-
-			if err := callback(ctx, summary); err != nil {
-				return nil, err
-			}
-
-			if !summary.IsOK {
-				return nil, fmt.Errorf("stack %s is NOT OK in status %s", stackName, remoteStack.StackStatus)
-			}
-
-			if summary.Stable {
-				if summary.SummaryType == deployer_pb.StackLifecycle_CREATE_FAILED {
-					return nil, nil
-				}
-				return remoteStack, nil
-			}
-		}
-
-		lastStatus = remoteStack.StackStatus
-		time.Sleep(time.Second)
-
 	}
-}
 
+	for _, status := range stackStatusComplete {
+		if remoteStatus == status {
+			return deployer_pb.StackLifecycle_COMPLETE, nil
+		}
+	}
+
+	for _, status := range stackStatusCreateFailed {
+		if remoteStatus == status {
+			return deployer_pb.StackLifecycle_CREATE_FAILED, nil
+		}
+	}
+
+	for _, status := range stackStatusRollingBack {
+		if remoteStatus == status {
+			return deployer_pb.StackLifecycle_ROLLING_BACK, nil
+		}
+	}
+
+	for _, status := range stackStatusProgress {
+		if remoteStatus == status {
+			return deployer_pb.StackLifecycle_PROGRESS, nil
+		}
+	}
+
+	return deployer_pb.StackLifecycle_UNSPECIFIED, fmt.Errorf("unknown stack status %s", remoteStatus)
+
+}
 func summarizeStackStatus(stack *types.Stack) (StackStatus, error) {
+
+	lifecycle, err := stackLifecycle(stack.StackStatus)
+	if err != nil {
+		return StackStatus{}, err
+	}
 
 	parameters := make([]*deployer_pb.AWSParameter, len(stack.Parameters))
 	for idx, param := range stack.Parameters {
@@ -171,141 +324,38 @@ func summarizeStackStatus(stack *types.Stack) (StackStatus, error) {
 		Parameters: parameters,
 	}
 
-	for _, status := range stackStatusesTerminal {
-		if stack.StackStatus == status {
-			out.SummaryType = deployer_pb.StackLifecycle_TERMINAL
-			out.IsOK = false
-			out.Stable = true
-			return out, nil
-		}
+	switch lifecycle {
+
+	case deployer_pb.StackLifecycle_COMPLETE:
+		out.IsOK = true
+		out.Stable = true
+
+	case deployer_pb.StackLifecycle_TERMINAL:
+		out.IsOK = false
+		out.Stable = true
+
+	case deployer_pb.StackLifecycle_CREATE_FAILED:
+		out.IsOK = false
+		out.Stable = true
+
+	case deployer_pb.StackLifecycle_ROLLING_BACK:
+		out.IsOK = false
+		out.Stable = false
+
+	case deployer_pb.StackLifecycle_PROGRESS:
+		out.IsOK = true
+		out.Stable = false
+
+	default:
+		return StackStatus{}, fmt.Errorf("unknown stack lifecycle: %s", lifecycle)
 	}
 
-	for _, status := range stackStatusComplete {
-		if stack.StackStatus == status {
-			out.SummaryType = deployer_pb.StackLifecycle_COMPLETE
-			out.IsOK = true
-			out.Stable = true
-			return out, nil
-		}
-	}
-
-	for _, status := range stackStatusCreateFailed {
-		if stack.StackStatus == status {
-			out.SummaryType = deployer_pb.StackLifecycle_CREATE_FAILED
-			out.IsOK = false
-			out.Stable = true
-			return out, nil
-		}
-	}
-
-	for _, status := range stackStatusRollingBack {
-		if stack.StackStatus == status {
-			out.SummaryType = deployer_pb.StackLifecycle_ROLLING_BACK
-			out.IsOK = false
-			out.Stable = false
-			return out, nil
-		}
-	}
-
-	for _, status := range stackStatusProgress {
-		if stack.StackStatus == status {
-			out.SummaryType = deployer_pb.StackLifecycle_PROGRESS
-			out.IsOK = true
-			out.Stable = false
-			return out, nil
-		}
-	}
-
-	return StackStatus{}, fmt.Errorf("unknown stack status %s", stack.StackStatus)
-}
-
-func (cf *CFWrapper) deleteStack(ctx context.Context, name string) error {
-	_, err := cf.client.DeleteStack(ctx, &cloudformation.DeleteStackInput{
-		StackName: aws.String(name),
-	})
-
-	return err
+	return out, nil
 }
 
 type StackArgs struct {
 	Template   *deployer_pb.DeploymentState
 	Parameters []types.Parameter
-}
-
-func (cf *CFWrapper) createCloudformationStack(ctx context.Context, deployment *deployer_pb.DeploymentState, parameters []types.Parameter) error {
-
-	_, err := cf.client.CreateStack(ctx, &cloudformation.CreateStackInput{
-		StackName:   aws.String(deployment.StackName),
-		TemplateURL: aws.String(deployment.Spec.TemplateUrl),
-		Parameters:  parameters,
-		Capabilities: []types.Capability{
-			types.CapabilityCapabilityNamedIam,
-		},
-	})
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (cf *CFWrapper) updateCloudformationStack(ctx context.Context, deployment *deployer_pb.DeploymentState, parameters []types.Parameter) error {
-
-	_, err := cf.client.UpdateStack(ctx, &cloudformation.UpdateStackInput{
-		StackName:   aws.String(deployment.StackName),
-		TemplateURL: aws.String(deployment.Spec.TemplateUrl),
-		Parameters:  parameters,
-		Capabilities: []types.Capability{
-			types.CapabilityCapabilityNamedIam,
-		},
-	})
-	if err != nil {
-		if !isNoUpdatesError(err) {
-			return fmt.Errorf("updateCFStack: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func (cf *CFWrapper) setScale(ctx context.Context, stackName string, desiredCount int) error {
-	current, err := cf.getOneStack(ctx, stackName)
-	if err != nil {
-		return err
-	}
-
-	parameters := make([]types.Parameter, len(current.Parameters))
-	for idx, param := range current.Parameters {
-		if strings.HasPrefix(*param.ParameterKey, "DesiredCount") {
-			parameters[idx] = types.Parameter{
-				ParameterKey:   param.ParameterKey,
-				ParameterValue: aws.String(fmt.Sprintf("%d", desiredCount)),
-			}
-
-		} else {
-			parameters[idx] = types.Parameter{
-				UsePreviousValue: aws.Bool(true),
-				ParameterKey:     param.ParameterKey,
-			}
-		}
-
-	}
-
-	_, err = cf.client.UpdateStack(ctx, &cloudformation.UpdateStackInput{
-		StackName:           aws.String(stackName),
-		UsePreviousTemplate: aws.Bool(true),
-		Parameters:          parameters,
-		Capabilities: []types.Capability{
-			types.CapabilityCapabilityNamedIam,
-		},
-	})
-	if err != nil {
-		if !isNoUpdatesError(err) {
-			return fmt.Errorf("setScale: %w", err)
-		}
-	}
-
-	return nil
 }
 
 func isNoUpdatesError(err error) bool {

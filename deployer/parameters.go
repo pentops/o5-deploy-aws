@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-go/application/v1/application_pb"
@@ -24,21 +23,21 @@ type ParameterResolver interface {
 	DesiredCount() int
 }
 
-func resolveParameter(ctx context.Context, param *deployer_pb.Parameter, resolver ParameterResolver) (*types.Parameter, error) {
+func resolveParameter(ctx context.Context, param *deployer_pb.Parameter, resolver ParameterResolver) (*deployer_pb.AWSParameter, error) {
 
-	parameter := &types.Parameter{
-		ParameterKey: aws.String(param.Name),
+	parameter := &deployer_pb.AWSParameter{
+		Name: param.Name,
 	}
 	switch ps := param.Source.Type.(type) {
 	case *deployer_pb.ParameterSourceType_Static_:
-		parameter.ParameterValue = aws.String(ps.Static.Value)
+		parameter.Value = ps.Static.Value
 
 	case *deployer_pb.ParameterSourceType_WellKnown_:
 		value, ok := resolver.WellKnownParameter(param.Name)
 		if !ok {
 			return nil, fmt.Errorf("unknown well known parameter: %s", param.Name)
 		}
-		parameter.ParameterValue = aws.String(value)
+		parameter.Value = value
 
 	case *deployer_pb.ParameterSourceType_RulePriority_:
 		group := ps.RulePriority.RouteGroup
@@ -47,10 +46,10 @@ func resolveParameter(ctx context.Context, param *deployer_pb.Parameter, resolve
 			return nil, err
 		}
 
-		parameter.ParameterValue = aws.String(fmt.Sprintf("%d", priority))
+		parameter.Value = fmt.Sprintf("%d", priority)
 
 	case *deployer_pb.ParameterSourceType_DesiredCount_:
-		parameter.ParameterValue = app.Stringf("%d", resolver.DesiredCount())
+		parameter.Value = fmt.Sprintf("%d", resolver.DesiredCount())
 
 	case *deployer_pb.ParameterSourceType_CrossEnvSns_:
 		envName := ps.CrossEnvSns.EnvName
@@ -59,7 +58,7 @@ func resolveParameter(ctx context.Context, param *deployer_pb.Parameter, resolve
 			return nil, err
 		}
 
-		parameter.ParameterValue = aws.String(topicPrefix)
+		parameter.Value = topicPrefix
 
 	case *deployer_pb.ParameterSourceType_EnvVar_:
 		key := ps.EnvVar.Name
@@ -67,13 +66,12 @@ func resolveParameter(ctx context.Context, param *deployer_pb.Parameter, resolve
 		if !ok {
 			return nil, fmt.Errorf("unknown env var: %s", key)
 		}
-		parameter.ParameterValue = aws.String(val)
+		parameter.Value = val
 
 	default:
 		return nil, fmt.Errorf("unknown parameter source (%v) %s", param.Source, param.Name)
 	}
 
-	fmt.Printf("PARAM %s = %s\n", *parameter.ParameterKey, *parameter.ParameterValue)
 	return parameter, nil
 }
 
@@ -142,7 +140,7 @@ func (dr *deployerResolver) WellKnownParameter(name string) (string, bool) {
 	return val, ok
 }
 
-func (d *Deployer) applyInitialParameters(ctx context.Context, stack stackParameters) ([]types.Parameter, error) {
+func (d *Deployer) applyInitialParameters(ctx context.Context, stack stackParameters) ([]*deployer_pb.AWSParameter, error) {
 
 	mappedPreviousParameters := make(map[string]string, len(stack.previousParameters))
 	for _, param := range stack.previousParameters {
@@ -150,7 +148,7 @@ func (d *Deployer) applyInitialParameters(ctx context.Context, stack stackParame
 	}
 
 	stackParameters := stack.parameters
-	parameters := make([]types.Parameter, 0, len(stackParameters))
+	parameters := make([]*deployer_pb.AWSParameter, 0, len(stackParameters))
 
 	takenPriorities, err := d.loadTakenPriorities(ctx)
 	if err != nil {
@@ -191,14 +189,14 @@ func (d *Deployer) applyInitialParameters(ctx context.Context, stack stackParame
 		if err != nil {
 			return nil, fmt.Errorf("parameter '%s': %w", param.Name, err)
 		}
-		parameters = append(parameters, *parameter)
+		parameters = append(parameters, parameter)
 	}
 
 	return parameters, nil
 }
 
 func (d *Deployer) loadTakenPriorities(ctx context.Context) (map[int]bool, error) {
-	clients, err := d.Clients(ctx)
+	clients, err := d.Clients.Clients(ctx)
 	if err != nil {
 		return nil, err
 	}

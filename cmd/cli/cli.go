@@ -11,8 +11,8 @@ import (
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/protoread"
-	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
 
@@ -94,14 +94,28 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		return err
 	}
 
-	db, err := service.OpenDatabase(ctx)
+	awsTarget := env.GetAws()
+	if awsTarget == nil {
+		return fmt.Errorf("AWS Deployer requires the type of environment provider to be AWS")
+	}
+
+	clientSet := &deployer.ClientSet{
+		AssumeRoleARN: awsTarget.O5DeployerAssumeRole,
+		AWSConfig:     awsConfig,
+	}
+
+	stateStore := deployer.NewLocalStateStore(clientSet)
 	if err != nil {
 		return err
 	}
 
-	deployer, err := deployer.NewDeployer(db, env, awsConfig)
+	deployer, err := deployer.NewDeployer(stateStore, env, clientSet)
 	if err != nil {
 		return err
+	}
+
+	stateStore.DeployerEvent = func(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
+		return deployer.RegisterEvent(ctx, event)
 	}
 
 	deployer.RotateSecrets = flagConfig.rotateSecrets
@@ -110,5 +124,5 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		return fmt.Errorf("deploy: %w", err)
 	}
 
-	return nil
+	return stateStore.Wait()
 }
