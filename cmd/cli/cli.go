@@ -118,8 +118,13 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 
 	deploymentManager.RotateSecrets = flagConfig.rotateSecrets
 
-	deployer.RegisterDeployerHandlers(eventLoop, deploymentManager)
-	deployer.RegisterLocalHandlers(eventLoop, stateStore)
+	if err := deployer.RegisterDeployerHandlers(eventLoop, deploymentManager); err != nil {
+		return err
+	}
+
+	if err := deployer.RegisterLocalHandlers(eventLoop, stateStore); err != nil {
+		return err
+	}
 
 	if err := deploymentManager.BeginDeployment(ctx, built, flagConfig.cancelUpdate); err != nil {
 		return fmt.Errorf("deploy: %w", err)

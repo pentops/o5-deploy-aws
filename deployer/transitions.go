@@ -284,6 +284,7 @@ var transitions = []ITransitionSpec{
 			return fmt.Errorf("stack failed: %s", event.FullStatus)
 		},
 	},
+	// InfraMigrated --> DBMigrating : MigrateData
 	TransitionSpec[*deployer_pb.DeploymentEventType_MigrateData]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_INFRA_MIGRATED,
@@ -320,6 +321,12 @@ var transitions = []ITransitionSpec{
 			return nil
 		},
 	},
+	// Transition contains business logic.
+	// When any migration is still pending, it will not transition
+	// When all migrations are complete, if any failed, will transition to
+	// failed
+	// When all migrations are complete, and none failed, will transition to
+	// DataMigrated
 	TransitionSpec[*deployer_pb.DeploymentEventType_DBMigrateStatus]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_DB_MIGRATING,
@@ -351,15 +358,22 @@ var transitions = []ITransitionSpec{
 				}
 			}
 
-			if anyFailed {
-				return fmt.Errorf("migration failed, not handled")
+			if anyPending {
+				return nil
 			}
 
-			if !anyPending {
-				tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_DataMigrated_{
-					DataMigrated: &deployer_pb.DeploymentEventType_DataMigrated{},
+			if anyFailed {
+				tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_Error_{
+					Error: &deployer_pb.DeploymentEventType_Error{
+						Error: "database migration failed",
+					},
 				}))
+				return nil
 			}
+
+			tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_DataMigrated_{
+				DataMigrated: &deployer_pb.DeploymentEventType_DataMigrated{},
+			}))
 
 			return nil
 		},

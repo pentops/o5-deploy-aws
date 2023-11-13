@@ -25,12 +25,12 @@ type Deployer struct {
 	AWS           *environment_pb.AWS
 	RotateSecrets bool
 	Clients       awsinfra.ClientBuilder
-	storage       DeployerStateStore
+	storage       DeployerStorage
 
 	*deployer_tpb.UnimplementedDeployerTopicServer
 }
 
-func NewDeployer(storage DeployerStateStore, environment *environment_pb.Environment, clientSet awsinfra.ClientBuilder) (*Deployer, error) {
+func NewDeployer(storage DeployerStorage, environment *environment_pb.Environment, clientSet awsinfra.ClientBuilder) (*Deployer, error) {
 
 	validator, err := protovalidate.New()
 	if err != nil {
@@ -97,9 +97,11 @@ func (d *Deployer) BeginDeployment(ctx context.Context, app *app.BuiltApplicatio
 		RotateCredentials: d.RotateSecrets,
 	}
 
-	return d.storage.PublishEvent(ctx, &deployer_tpb.TriggerDeploymentMessage{
-		DeploymentId: deploymentID,
-		Spec:         spec,
+	return d.storage.Transact(ctx, func(ctx context.Context, tx TransitionTransaction) error {
+		return tx.PublishEvent(ctx, &deployer_tpb.TriggerDeploymentMessage{
+			DeploymentId: deploymentID,
+			Spec:         spec,
+		})
 	})
 }
 
@@ -156,17 +158,22 @@ func (dd *Deployer) StackStatusChanged(ctx context.Context, msg *deployer_tpb.St
 
 func (dd *Deployer) MigrationStatusChanged(ctx context.Context, msg *deployer_tpb.MigrationStatusChangedMessage) (*emptypb.Empty, error) {
 
-	deployment, err := dd.storage.GetDeployment(ctx, msg.DeploymentId)
-	if err != nil {
-		return nil, err
-	}
-
-	event := newEvent(deployment, &deployer_pb.DeploymentEventType_DbMigrateStatus{
-		DbMigrateStatus: &deployer_pb.DeploymentEventType_DBMigrateStatus{
-			MigrationId: msg.MigrationId,
-			Status:      msg.Status,
+	event := &deployer_pb.DeploymentEvent{
+		DeploymentId: msg.DeploymentId,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
 		},
-	})
+
+		Event: &deployer_pb.DeploymentEventType{
+			Type: &deployer_pb.DeploymentEventType_DbMigrateStatus{
+				DbMigrateStatus: &deployer_pb.DeploymentEventType_DBMigrateStatus{
+					MigrationId: msg.MigrationId,
+					Status:      msg.Status,
+				},
+			},
+		},
+	}
 	return &emptypb.Empty{}, dd.RegisterEvent(ctx, event)
 
 }

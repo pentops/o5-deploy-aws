@@ -217,6 +217,11 @@ func NewLocalStateStore(clientSet awsinfra.ClientBuilder, eventLoop *LocalEventL
 	return lss
 }
 
+func (lss *LocalStateStore) Transact(ctx context.Context, fn func(context.Context, TransitionTransaction) error) error {
+	// Local state doesn't need a transaction as it doesn't have a database
+	return fn(ctx, lss)
+}
+
 func (lss *LocalStateStore) PublishEvent(ctx context.Context, msg proto.Message) error {
 	return lss.eventLoop.PublishEvent(ctx, msg)
 }

@@ -14,10 +14,14 @@ import (
 
 var DeploymentNotFoundError = fmt.Errorf("deployment not found")
 
-type DeployerStateStore interface {
+type DeployerStorage interface {
+	Transact(context.Context, func(context.Context, TransitionTransaction) error) error
+	GetDeploymentForStack(ctx context.Context, stackName string) (*deployer_pb.DeploymentState, error)
+}
+
+type TransitionTransaction interface {
 	StoreDeploymentEvent(ctx context.Context, state *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error
 	GetDeployment(ctx context.Context, id string) (*deployer_pb.DeploymentState, error)
-	GetDeploymentForStack(ctx context.Context, stackName string) (*deployer_pb.DeploymentState, error)
 
 	PublishEvent(ctx context.Context, msg proto.Message) error
 }

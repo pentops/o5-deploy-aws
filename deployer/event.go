@@ -190,22 +190,6 @@ func (d *Deployer) findTransition(ctx context.Context, deployment *deployer_pb.D
 
 func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
 
-	deployment, err := d.storage.GetDeployment(ctx, event.DeploymentId)
-	if errors.Is(err, DeploymentNotFoundError) {
-		deployment = &deployer_pb.DeploymentState{
-			DeploymentId: event.DeploymentId,
-		}
-	} else if err != nil {
-		return err
-	}
-
-	ctx = log.WithFields(ctx, map[string]interface{}{
-		"deploymentId": event.DeploymentId,
-		"event":        protojson.Format(event.Event),
-		"stateBefore":  deployment.Status.ShortString(),
-	})
-	log.Debug(ctx, "Beign Deployment Event")
-
 	// TODO: This is a heavy operation, but also needs to run
 	// just-in-time, so we should only run it when the event
 	// requires it.
@@ -214,52 +198,86 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 		return err
 	}
 
-	transition := &transitionData{
-		parameterResolver: deployerResolver,
-		env:               d.Environment,
-	}
+	runTransition := func(ctx context.Context, tx TransitionTransaction, transition TransitionBaton, event *deployer_pb.DeploymentEvent) error {
+		ctx = log.WithFields(ctx, map[string]interface{}{
+			"deploymentId": event.DeploymentId,
+			"event":        protojson.Format(event.Event),
+		})
+		log.Debug(ctx, "Beign Deployment Event")
 
-	typeKey, ok := event.Event.TypeKey()
-	if !ok {
-		return fmt.Errorf("unknown event type: %T", event.Event)
-	}
-	// TODO: This by generation and annotation
-	if stackStatus := event.Event.GetStackStatus(); stackStatus != nil {
-		typeKey = deployer_pb.DeploymentEventTypeKey(fmt.Sprintf("%s.%s", typeKey, stackStatus.Lifecycle.ShortString()))
-	}
-
-	spec := d.findTransition(ctx, deployment, event)
-	if spec == nil {
-		return fmt.Errorf("no transition found for status %s -> %s",
-			deployment.Status.ShortString(),
-			typeKey,
-		)
-	}
-
-	if err := spec.RunTransition(ctx, transition, deployment, event); err != nil {
-		return err
-	}
-
-	if err := d.storage.StoreDeploymentEvent(ctx, deployment, event); err != nil {
-		return err
-	}
-
-	log.WithFields(ctx, map[string]interface{}{
-		"stateAfter": deployment.Status.ShortString(),
-	}).Info("Deployment Event Handled")
-
-	for _, se := range transition.sideEffects {
-		if err := d.storage.PublishEvent(ctx, se); err != nil {
+		deployment, err := tx.GetDeployment(ctx, event.DeploymentId)
+		if errors.Is(err, DeploymentNotFoundError) {
+			deployment = &deployer_pb.DeploymentState{
+				DeploymentId: event.DeploymentId,
+			}
+		} else if err != nil {
 			return err
 		}
-	}
 
-	for _, nextEvent := range transition.chainEvents {
-		// Chains the event inside the current handler
-		if err := d.RegisterEvent(ctx, nextEvent); err != nil {
+		ctx = log.WithFields(ctx, map[string]interface{}{
+			"stateBefore": deployment.Status.ShortString(),
+		})
+
+		spec := d.findTransition(ctx, deployment, event)
+		if spec == nil {
+			typeKey, ok := event.Event.TypeKey()
+			if !ok {
+				return fmt.Errorf("unknown event type: %T", event.Event)
+			}
+			// TODO: This by generation and annotation
+			if stackStatus := event.Event.GetStackStatus(); stackStatus != nil {
+				typeKey = deployer_pb.DeploymentEventTypeKey(fmt.Sprintf("%s.%s", typeKey, stackStatus.Lifecycle.ShortString()))
+			}
+			return fmt.Errorf("no transition found for status %s -> %s",
+				deployment.Status.ShortString(),
+				typeKey,
+			)
+		}
+
+		if err := spec.RunTransition(ctx, transition, deployment, event); err != nil {
 			return err
 		}
+
+		if err := tx.StoreDeploymentEvent(ctx, deployment, event); err != nil {
+			return err
+		}
+
+		log.WithFields(ctx, map[string]interface{}{
+			"stateAfter": deployment.Status.ShortString(),
+		}).Info("Deployment Event Handled")
+
+		return nil
 	}
 
-	return nil
+	return d.storage.Transact(ctx, func(ctx context.Context, tx TransitionTransaction) error {
+		// Recursive function, so that the event and all chained events are
+		// handled atomically.
+		// TODO: No need to re-fetch the current state between chained events.
+		var runOne func(event *deployer_pb.DeploymentEvent) error
+		runOne = func(innerEvent *deployer_pb.DeploymentEvent) error {
+			baton := &transitionData{
+				parameterResolver: deployerResolver,
+				env:               d.Environment,
+			}
+			if err := runTransition(ctx, tx, baton, innerEvent); err != nil {
+				return err
+			}
+
+			for _, se := range baton.sideEffects {
+				if err := tx.PublishEvent(ctx, se); err != nil {
+					return err
+				}
+			}
+
+			for _, nextEvent := range baton.chainEvents {
+				if err := runOne(nextEvent); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+
+		return runOne(event)
+
+	})
 }
