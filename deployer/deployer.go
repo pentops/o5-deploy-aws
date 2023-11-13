@@ -14,7 +14,10 @@ import (
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
+	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type Deployer struct {
@@ -23,6 +26,8 @@ type Deployer struct {
 	RotateSecrets bool
 	Clients       awsinfra.ClientBuilder
 	storage       DeployerStateStore
+
+	*deployer_tpb.UnimplementedDeployerTopicServer
 }
 
 func NewDeployer(storage DeployerStateStore, environment *environment_pb.Environment, clientSet awsinfra.ClientBuilder) (*Deployer, error) {
@@ -49,7 +54,7 @@ func NewDeployer(storage DeployerStateStore, environment *environment_pb.Environ
 	}, nil
 }
 
-func (d *Deployer) Deploy(ctx context.Context, app *app.BuiltApplication, cancelUpdates bool) error {
+func (d *Deployer) BeginDeployment(ctx context.Context, app *app.BuiltApplication, cancelUpdates bool) error {
 	ctx = log.WithFields(ctx, map[string]interface{}{
 		"appName":     app.Name,
 		"environment": d.Environment.FullName,
@@ -80,27 +85,88 @@ func (d *Deployer) Deploy(ctx context.Context, app *app.BuiltApplication, cancel
 
 	templateURL := fmt.Sprintf("https://s3.us-east-1.amazonaws.com/%s/%s", d.AWS.ScratchBucket, templateKey)
 
-	deployment := &deployer_pb.DeploymentState{
-		DeploymentId: deploymentID,
+	spec := &deployer_pb.DeploymentSpec{
+		AppName:           app.Name,
+		Version:           app.Version,
+		EnvironmentName:   d.Environment.FullName,
+		TemplateUrl:       templateURL,
+		Databases:         app.PostgresDatabases(),
+		Parameters:        app.Parameters(),
+		CancelUpdates:     cancelUpdates,
+		SnsTopics:         app.SNSTopics,
+		RotateCredentials: d.RotateSecrets,
 	}
 
-	if err := d.RegisterEvent(ctx, newEvent(deployment, &deployer_pb.DeploymentEventType_Triggered_{
-		Triggered: &deployer_pb.DeploymentEventType_Triggered{
-			Spec: &deployer_pb.DeploymentSpec{
-				AppName:           app.Name,
-				Version:           app.Version,
-				EnvironmentName:   d.Environment.FullName,
-				TemplateUrl:       templateURL,
-				Databases:         app.PostgresDatabases(),
-				Parameters:        app.Parameters(),
-				CancelUpdates:     cancelUpdates,
-				SnsTopics:         app.SNSTopics,
-				RotateCredentials: d.RotateSecrets,
+	return d.storage.PublishEvent(ctx, &deployer_tpb.TriggerDeploymentMessage{
+		DeploymentId: deploymentID,
+		Spec:         spec,
+	})
+}
+
+func (dd *Deployer) TriggerDeployment(ctx context.Context, msg *deployer_tpb.TriggerDeploymentMessage) (*emptypb.Empty, error) {
+
+	deploymentEvent := &deployer_pb.DeploymentEvent{
+		DeploymentId: msg.DeploymentId,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+		Event: &deployer_pb.DeploymentEventType{
+			Type: &deployer_pb.DeploymentEventType_Triggered_{
+				Triggered: &deployer_pb.DeploymentEventType_Triggered{
+					Spec: msg.Spec,
+				},
 			},
 		},
-	})); err != nil {
-		return err
 	}
 
-	return nil
+	if err := dd.RegisterEvent(ctx, deploymentEvent); err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+func (dd *Deployer) StackStatusChanged(ctx context.Context, msg *deployer_tpb.StackStatusChangedMessage) (*emptypb.Empty, error) {
+
+	deployment, err := dd.storage.GetDeploymentForStack(ctx, msg.StackName)
+	if err != nil {
+		return nil, err
+	}
+
+	event := &deployer_pb.DeploymentEvent{
+		DeploymentId: deployment.DeploymentId,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+		Event: &deployer_pb.DeploymentEventType{
+			Type: &deployer_pb.DeploymentEventType_StackStatus_{
+				StackStatus: &deployer_pb.DeploymentEventType_StackStatus{
+					Lifecycle:   msg.Lifecycle,
+					FullStatus:  msg.Status,
+					StackOutput: msg.Outputs,
+				},
+			},
+		},
+	}
+	return &emptypb.Empty{}, dd.RegisterEvent(ctx, event)
+
+}
+
+func (dd *Deployer) MigrationStatusChanged(ctx context.Context, msg *deployer_tpb.MigrationStatusChangedMessage) (*emptypb.Empty, error) {
+
+	deployment, err := dd.storage.GetDeployment(ctx, msg.DeploymentId)
+	if err != nil {
+		return nil, err
+	}
+
+	event := newEvent(deployment, &deployer_pb.DeploymentEventType_DbMigrateStatus{
+		DbMigrateStatus: &deployer_pb.DeploymentEventType_DBMigrateStatus{
+			MigrationId: msg.MigrationId,
+			Status:      msg.Status,
+		},
+	})
+	return &emptypb.Empty{}, dd.RegisterEvent(ctx, event)
+
 }

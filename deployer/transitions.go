@@ -176,6 +176,7 @@ var transitions = []ITransitionSpec{
 			event *deployer_pb.DeploymentEventType_StackStatus,
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_SCALED_DOWN
+			deployment.StackOutput = event.StackOutput
 
 			tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_StackTrigger_{
 				StackTrigger: &deployer_pb.DeploymentEventType_StackTrigger{
@@ -200,6 +201,7 @@ var transitions = []ITransitionSpec{
 			event *deployer_pb.DeploymentEventType_StackStatus,
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_INFRA_MIGRATED
+			deployment.StackOutput = event.StackOutput
 
 			tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_MigrateData_{
 				MigrateData: &deployer_pb.DeploymentEventType_MigrateData{},
@@ -223,17 +225,15 @@ var transitions = []ITransitionSpec{
 			event *deployer_pb.DeploymentEventType_StackStatus,
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_SCALED_UP
+			deployment.StackOutput = event.StackOutput
+
 			tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_Done_{
 				Done: &deployer_pb.DeploymentEventType_Done{},
 			}))
 			return nil
 		},
 	},
-	// Waiting --> Failed : StackStatus.Failed
-	// Creating --> Failed : StackStatus.Failed
-	// ScalingUp --> Failed : StackStatus.Failed
-	// ScalingDown --> Failed : StackStatus.Failed
-	// InfraMigrate --> Failed : StackStatus.Failed
+	// Any Waiting --> Any Waiting : StackStatus.Progress
 	TransitionSpec[*deployer_pb.DeploymentEventType_StackStatus]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_WAITING,
@@ -255,6 +255,11 @@ var transitions = []ITransitionSpec{
 			return nil
 		},
 	},
+	// Waiting --> Failed : StackStatus.Failed
+	// Creating --> Failed : StackStatus.Failed
+	// ScalingUp --> Failed : StackStatus.Failed
+	// ScalingDown --> Failed : StackStatus.Failed
+	// InfraMigrate --> Failed : StackStatus.Failed
 	TransitionSpec[*deployer_pb.DeploymentEventType_StackStatus]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_WAITING,
@@ -274,6 +279,8 @@ var transitions = []ITransitionSpec{
 			event *deployer_pb.DeploymentEventType_StackStatus,
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_FAILED
+			deployment.StackOutput = event.StackOutput
+
 			return fmt.Errorf("stack failed: %s", event.FullStatus)
 		},
 	},

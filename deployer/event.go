@@ -122,6 +122,15 @@ func (td *transitionData) buildMigrationRequest(ctx context.Context, deployment 
 		}
 	}
 
+	if db.MigrationTaskOutputName != nil {
+		if migrationTaskARN == "" {
+			return nil, fmt.Errorf("no migration task found for database %s", db.Database.Name)
+		}
+		if secretARN == "" {
+			return nil, fmt.Errorf("no migration secret found for database %s", db.Database.Name)
+		}
+	}
+
 	awsEnv := td.env.GetAws()
 	var secretName string
 	for _, host := range awsEnv.RdsHosts {
@@ -214,6 +223,10 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 	if !ok {
 		return fmt.Errorf("unknown event type: %T", event.Event)
 	}
+	// TODO: This by generation and annotation
+	if stackStatus := event.Event.GetStackStatus(); stackStatus != nil {
+		typeKey = deployer_pb.DeploymentEventTypeKey(fmt.Sprintf("%s.%s", typeKey, stackStatus.Lifecycle.ShortString()))
+	}
 
 	spec := d.findTransition(ctx, deployment, event)
 	if spec == nil {
@@ -236,13 +249,14 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 	}).Info("Deployment Event Handled")
 
 	for _, se := range transition.sideEffects {
-		if err := d.storage.QueueSideEffect(ctx, se); err != nil {
+		if err := d.storage.PublishEvent(ctx, se); err != nil {
 			return err
 		}
 	}
 
 	for _, nextEvent := range transition.chainEvents {
-		if err := d.storage.ChainNextEvent(ctx, nextEvent); err != nil {
+		// Chains the event inside the current handler
+		if err := d.RegisterEvent(ctx, nextEvent); err != nil {
 			return err
 		}
 	}

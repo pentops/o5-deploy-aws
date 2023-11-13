@@ -380,8 +380,9 @@ func summarizeStackStatus(stack *types.Stack) (StackStatus, error) {
 	}
 
 	out := StackStatus{
-		StatusName: stack.StackStatus,
-		Parameters: parameters,
+		StatusName:  stack.StackStatus,
+		Parameters:  parameters,
+		SummaryType: lifecycle,
 	}
 
 	switch lifecycle {
@@ -450,10 +451,6 @@ func (cf *AWSRunner) PollStack(ctx context.Context, stackName string) error {
 
 		lastStatus = remoteStack.StackStatus
 
-		log.WithFields(ctx, map[string]interface{}{
-			"stackStatus": remoteStack.StackStatus,
-		}).Debug("PollStack Result")
-
 		outputs := make([]*deployer_pb.KeyValue, len(remoteStack.Outputs))
 		for i, output := range remoteStack.Outputs {
 			outputs[i] = &deployer_pb.KeyValue{
@@ -466,6 +463,11 @@ func (cf *AWSRunner) PollStack(ctx context.Context, stackName string) error {
 		if err != nil {
 			return err
 		}
+
+		log.WithFields(ctx, map[string]interface{}{
+			"lifecycle":   summary.SummaryType.ShortString(),
+			"stackStatus": remoteStack.StackStatus,
+		}).Debug("PollStack Result")
 
 		if err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
 			StackName: *remoteStack.StackName,

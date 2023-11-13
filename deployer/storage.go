@@ -17,9 +17,9 @@ var DeploymentNotFoundError = fmt.Errorf("deployment not found")
 type DeployerStateStore interface {
 	StoreDeploymentEvent(ctx context.Context, state *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error
 	GetDeployment(ctx context.Context, id string) (*deployer_pb.DeploymentState, error)
+	GetDeploymentForStack(ctx context.Context, stackName string) (*deployer_pb.DeploymentState, error)
 
-	QueueSideEffect(ctx context.Context, msg proto.Message) error
-	ChainNextEvent(ctx context.Context, evt *deployer_pb.DeploymentEvent) error
+	PublishEvent(ctx context.Context, msg proto.Message) error
 }
 
 type PostgresStateStore struct {

@@ -4,144 +4,157 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// LocalStateStore wires back the events to the deployer, rather than relying on
-// an event bus and database
-type LocalStateStore struct {
-	stackMap map[string]string // stackName -> deploymentId
-
-	deployments map[string]*deployer_pb.DeploymentState
-	eg          errgroup.Group
-
-	AWSRunner *awsinfra.AWSRunner
-
-	DeployerEvent func(ctx context.Context, deployment *deployer_pb.DeploymentEvent) error
+type LocalEventLoop struct {
+	eg       errgroup.Group
+	handlers map[string]func(context.Context, proto.Message) error
 }
 
-func NewLocalStateStore(clientSet awsinfra.ClientBuilder) *LocalStateStore {
-
-	lss := &LocalStateStore{
-		stackMap:    map[string]string{},
-		deployments: map[string]*deployer_pb.DeploymentState{},
-		eg:          errgroup.Group{},
+func NewLocalEventLoop() *LocalEventLoop {
+	return &LocalEventLoop{
+		handlers: map[string]func(context.Context, proto.Message) error{},
 	}
-
-	lss.AWSRunner = &awsinfra.AWSRunner{
-		Clients:        clientSet,
-		MessageHandler: lss,
-	}
-	return lss
 }
 
-func (lss *LocalStateStore) PublishEvent(ctx context.Context, msg proto.Message) error {
+func (lel *LocalEventLoop) Wait() error {
+	return lel.eg.Wait()
+}
 
-	switch msg := msg.(type) {
-	case *deployer_tpb.StackStatusChangedMessage:
+func (lel *LocalEventLoop) RegisterHandler(fullName string, handler func(context.Context, proto.Message) error) {
+	lel.handlers[fullName] = handler
+}
 
-		deploymentId, ok := lss.stackMap[msg.StackName]
-		if !ok {
-			return fmt.Errorf("missing deploymentId for stack %s", msg.StackName)
-		}
-
-		event := &deployer_pb.DeploymentEvent{
-			DeploymentId: deploymentId,
-			Metadata: &deployer_pb.EventMetadata{
-				EventId:   uuid.NewString(),
-				Timestamp: timestamppb.Now(),
-			},
-			Event: &deployer_pb.DeploymentEventType{
-				Type: &deployer_pb.DeploymentEventType_StackStatus_{
-					StackStatus: &deployer_pb.DeploymentEventType_StackStatus{
-						Lifecycle:   msg.Lifecycle,
-						FullStatus:  msg.Status,
-						StackOutput: msg.Outputs,
-					},
-				},
-			},
-		}
-		return lss.ChainNextEvent(ctx, event)
-
-	case *deployer_tpb.MigrationStatusChangedMessage:
-
-		deployment, ok := lss.deployments[msg.DeploymentId]
-		if !ok {
-			return fmt.Errorf("missing deployment for migration %s", msg.MigrationId)
-		}
-
-		event := newEvent(deployment, &deployer_pb.DeploymentEventType_DbMigrateStatus{
-			DbMigrateStatus: &deployer_pb.DeploymentEventType_DBMigrateStatus{
-				MigrationId: msg.MigrationId,
-				Status:      msg.Status,
-			},
+func wrapHandler[T proto.Message](handler func(context.Context, T) error) (string, func(context.Context, proto.Message) error) {
+	msg := *new(T)
+	fullName := string(msg.ProtoReflect().Descriptor().FullName())
+	return fullName, func(ctx context.Context, msg proto.Message) error {
+		ctx = log.WithFields(ctx, map[string]interface{}{
+			"inputMessage": msg.ProtoReflect().Descriptor().FullName(),
 		})
-		return lss.ChainNextEvent(ctx, event)
-	default:
-		return fmt.Errorf("unknown infra event message: %T", msg)
+		typed, ok := msg.(T)
+		if !ok {
+			return fmt.Errorf("unexpected message type: %T", msg)
+		}
+		return handler(ctx, typed)
 	}
+}
+
+func (lel *LocalEventLoop) Run(ctx context.Context, store *LocalStateStore) error {
+	return lel.eg.Wait()
+}
+
+func (lel *LocalEventLoop) PublishEvent(ctx context.Context, msg proto.Message) error {
+	msgKey := string(msg.ProtoReflect().Descriptor().FullName())
+	handler, ok := lel.handlers[msgKey]
+	if !ok {
+		return fmt.Errorf("no handler for message %s", msgKey)
+	}
+
+	lel.eg.Go(func() error {
+		handlerContext := log.WithFields(context.Background(), map[string]interface{}{
+			"inputMessage": msg.ProtoReflect().Descriptor().FullName(),
+		})
+
+		return handler(handlerContext, msg)
+	})
+	return nil
+}
+
+func RegisterDeployerHandlers(eventGroup *LocalEventLoop, deployer deployer_tpb.DeployerTopicServer) error {
+
+	eventGroup.RegisterHandler(wrapHandler(
+		func(ctx context.Context, msg *deployer_tpb.StackStatusChangedMessage) error {
+			_, err := deployer.StackStatusChanged(ctx, msg)
+			return err
+		}))
+
+	eventGroup.RegisterHandler(wrapHandler(
+		func(ctx context.Context, msg *deployer_tpb.MigrationStatusChangedMessage) error {
+			_, err := deployer.MigrationStatusChanged(ctx, msg)
+			return err
+		}))
+
+	eventGroup.RegisterHandler(wrapHandler(
+		func(ctx context.Context, msg *deployer_tpb.TriggerDeploymentMessage) error {
+			_, err := deployer.TriggerDeployment(ctx, msg)
+			return err
+		}))
+
+	return nil
 
 }
 
-func (lss *LocalStateStore) QueueSideEffect(ctx context.Context, msg proto.Message) error {
+func RegisterLocalHandlers(eventGroup *LocalEventLoop, lss *LocalStateStore) error {
 
-	ctx = log.WithFields(ctx, map[string]interface{}{
-		"inputMessage": msg.ProtoReflect().Descriptor().FullName(),
-	})
-	log.Debug(ctx, "QueueSideEffect")
-	lss.eg.Go(func() error {
-		defer log.Debug(ctx, "QueueSideEffect Complete")
-
-		switch msg := msg.(type) {
-		case *deployer_tpb.UpdateStackMessage:
+	eventGroup.RegisterHandler(wrapHandler(
+		func(ctx context.Context, msg *deployer_tpb.UpdateStackMessage) error {
 			_, err := lss.AWSRunner.UpdateStack(ctx, msg)
 			if err != nil {
 				return err
 			}
 			return lss.PollStack(ctx, msg.StackName)
+		}))
 
-		case *deployer_tpb.CreateNewStackMessage:
+	eventGroup.RegisterHandler(wrapHandler(
+		func(ctx context.Context, msg *deployer_tpb.CreateNewStackMessage) error {
+
 			_, err := lss.AWSRunner.CreateNewStack(ctx, msg)
 			if err != nil {
 				return err
 			}
 			return lss.PollStack(ctx, msg.StackName)
+		}))
 
-		case *deployer_tpb.DeleteStackMessage:
+	eventGroup.RegisterHandler(wrapHandler(
+		func(ctx context.Context, msg *deployer_tpb.DeleteStackMessage) error {
 			_, err := lss.AWSRunner.DeleteStack(ctx, msg)
 			if err != nil {
 				return err
 			}
 			return lss.PollStack(ctx, msg.StackName)
+		}))
 
-		case *deployer_tpb.ScaleStackMessage:
+	eventGroup.RegisterHandler(wrapHandler(
+		func(ctx context.Context, msg *deployer_tpb.ScaleStackMessage) error {
 			_, err := lss.AWSRunner.ScaleStack(ctx, msg)
 			if err != nil {
 				return err
 			}
 			return lss.PollStack(ctx, msg.StackName)
+		}))
 
-		case *deployer_tpb.CancelStackUpdateMessage:
+	eventGroup.RegisterHandler(wrapHandler(
+		func(ctx context.Context, msg *deployer_tpb.CancelStackUpdateMessage) error {
 			_, err := lss.AWSRunner.CancelStackUpdate(ctx, msg)
 			if err != nil {
 				return err
 			}
 			return lss.PollStack(ctx, msg.StackName)
+		}))
 
-		case *deployer_tpb.UpsertSNSTopicsMessage:
+	eventGroup.RegisterHandler(wrapHandler(
+		func(ctx context.Context, msg *deployer_tpb.UpsertSNSTopicsMessage) error {
 			_, err := lss.AWSRunner.UpsertSNSTopics(ctx, msg)
 			return err
+		}))
 
-		case *deployer_tpb.RunDatabaseMigrationMessage:
+	eventGroup.RegisterHandler(wrapHandler(
+		func(ctx context.Context, msg *deployer_tpb.StabalizeStackMessage) error {
+			_, err := lss.AWSRunner.StabalizeStack(ctx, msg)
+			return err
+		}))
 
-			if err := lss.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
+	eventGroup.RegisterHandler(wrapHandler(
+		func(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
+
+			if err := eventGroup.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
 				MigrationId:  msg.MigrationId,
 				DeploymentId: msg.DeploymentId,
 				Status:       deployer_pb.DatabaseMigrationStatus_PENDING,
@@ -154,7 +167,7 @@ func (lss *LocalStateStore) QueueSideEffect(ctx context.Context, msg proto.Messa
 			log.Debug(ctx, "RunDatabaseMigration is complete")
 			if migrateErr != nil {
 				log.WithError(ctx, migrateErr).Error("RunDatabaseMigration")
-				if err := lss.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
+				if err := eventGroup.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
 					MigrationId:  msg.MigrationId,
 					DeploymentId: msg.DeploymentId,
 					Status:       deployer_pb.DatabaseMigrationStatus_FAILED,
@@ -165,7 +178,7 @@ func (lss *LocalStateStore) QueueSideEffect(ctx context.Context, msg proto.Messa
 				return migrateErr
 			}
 
-			if err := lss.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
+			if err := eventGroup.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
 				DeploymentId: msg.DeploymentId,
 				MigrationId:  msg.MigrationId,
 				Status:       deployer_pb.DatabaseMigrationStatus_COMPLETED,
@@ -175,33 +188,41 @@ func (lss *LocalStateStore) QueueSideEffect(ctx context.Context, msg proto.Messa
 
 			return nil
 
-		default:
-			return fmt.Errorf("unknown side effect message: %T", msg)
-		}
-	})
+		}))
 
 	return nil
-
 }
 
-func (lss *LocalStateStore) ChainNextEvent(ctx context.Context, evt *deployer_pb.DeploymentEvent) error {
-	lss.eg.Go(func() error {
-		ctx := log.WithFields(ctx, map[string]interface{}{
-			"deploymentId": evt.DeploymentId,
-			"eventType":    fmt.Sprintf("%T", evt.Event.Type),
-		})
+// LocalStateStore wires back the events to the deployer, rather than relying on
+// an event bus and database
+type LocalStateStore struct {
+	stackMap map[string]string // stackName -> deploymentId
 
-		return lss.DeployerEvent(ctx, evt)
-	})
+	deployments map[string]*deployer_pb.DeploymentState
 
-	return nil
+	AWSRunner *awsinfra.AWSRunner
+	eventLoop *LocalEventLoop
+}
+
+func NewLocalStateStore(clientSet awsinfra.ClientBuilder, eventLoop *LocalEventLoop) *LocalStateStore {
+	lss := &LocalStateStore{
+		stackMap:    map[string]string{},
+		deployments: map[string]*deployer_pb.DeploymentState{},
+		eventLoop:   eventLoop,
+		AWSRunner: &awsinfra.AWSRunner{
+			Clients:        clientSet,
+			MessageHandler: eventLoop,
+		},
+	}
+	return lss
+}
+
+func (lss *LocalStateStore) PublishEvent(ctx context.Context, msg proto.Message) error {
+	return lss.eventLoop.PublishEvent(ctx, msg)
 }
 
 func (lss *LocalStateStore) PollStack(ctx context.Context, stackName string) error {
-	lss.eg.Go(func() error {
-		return lss.AWSRunner.PollStack(ctx, stackName)
-	})
-	return nil
+	return lss.AWSRunner.PollStack(ctx, stackName)
 }
 
 func (lss *LocalStateStore) StoreDeploymentEvent(ctx context.Context, state *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
@@ -213,14 +234,6 @@ func (lss *LocalStateStore) StoreDeploymentEvent(ctx context.Context, state *dep
 	case *deployer_pb.DeploymentEventType_GotLock_:
 		// Registers THIS deployment as THE deployment for the stack
 		lss.stackMap[state.StackName] = state.DeploymentId
-
-		// Trigger a stack poll. This will run until the stack is stable
-		// Will trigger the current status back once, which is required
-		// for when the stack is already stable before we get the lock
-		err := lss.PollStack(ctx, state.StackName)
-		if err != nil {
-			return err
-		}
 	}
 
 	lss.deployments[state.DeploymentId] = state
@@ -234,6 +247,12 @@ func (lss *LocalStateStore) GetDeployment(ctx context.Context, id string) (*depl
 	return nil, DeploymentNotFoundError
 }
 
-func (lss *LocalStateStore) Wait() error {
-	return lss.eg.Wait()
+func (lss *LocalStateStore) GetDeploymentForStack(ctx context.Context, stackName string) (*deployer_pb.DeploymentState, error) {
+
+	deploymentId, ok := lss.stackMap[stackName]
+	if !ok {
+		return nil, fmt.Errorf("missing deploymentId for stack %s", stackName)
+	}
+
+	return lss.GetDeployment(ctx, deploymentId)
 }

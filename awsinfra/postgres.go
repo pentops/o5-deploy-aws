@@ -29,7 +29,7 @@ func (d *AWSRunner) RunDatabaseMigration(ctx context.Context, msg *deployer_tpb.
 	if msg.Database.MigrationTaskOutputName != nil {
 
 		if msg.MigrationTaskArn == "" {
-			return nil, fmt.Errorf("migration task output %q not found", msg.Database.Database.Name)
+			return nil, fmt.Errorf("stack output '%s' not found, for database %q", *msg.Database.MigrationTaskOutputName, msg.Database.Database.Name)
 		}
 
 		if err := d.runMigrationTask(ctx, msg); err != nil {

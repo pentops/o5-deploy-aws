@@ -13,7 +13,6 @@ import (
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-go/application/v1/application_pb"
-	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
 
@@ -105,25 +104,26 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		AWSConfig:     awsConfig,
 	}
 
-	stateStore := deployer.NewLocalStateStore(clientSet)
+	eventLoop := deployer.NewLocalEventLoop()
+
+	stateStore := deployer.NewLocalStateStore(clientSet, eventLoop)
 	if err != nil {
 		return err
 	}
 
-	deployer, err := deployer.NewDeployer(stateStore, env, clientSet)
+	deploymentManager, err := deployer.NewDeployer(stateStore, env, clientSet)
 	if err != nil {
 		return err
 	}
 
-	stateStore.DeployerEvent = func(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
-		return deployer.RegisterEvent(ctx, event)
-	}
+	deploymentManager.RotateSecrets = flagConfig.rotateSecrets
 
-	deployer.RotateSecrets = flagConfig.rotateSecrets
+	deployer.RegisterDeployerHandlers(eventLoop, deploymentManager)
+	deployer.RegisterLocalHandlers(eventLoop, stateStore)
 
-	if err := deployer.Deploy(ctx, built, flagConfig.cancelUpdate); err != nil {
+	if err := deploymentManager.BeginDeployment(ctx, built, flagConfig.cancelUpdate); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 
-	return stateStore.Wait()
+	return eventLoop.Wait()
 }
