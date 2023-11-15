@@ -3,9 +3,29 @@ name: "o5deploy"
 
 blobstores:
   - name: env-configs
+  - name: cf-templates
 
 secrets:
   - name: github
+
+databases:
+  - name: main
+    postgres:
+      runOutbox: true
+      dbName: o5
+      serverGroup: default
+      dbExtensions:
+        - "uuid-ossp"
+
+      migrateContainer:
+        image:
+          name: o5-deploy-aws
+          registry: ghcr.io/pentops
+        command: [migrate]
+        envVars:
+          - name: "POSTGRES_URL"
+            database:
+              databaseName: main
 
 runtimes:
   - name: main
@@ -13,6 +33,9 @@ runtimes:
     subscriptions:
       - name: "webhook-github"
         envName: "publicweb"
+      - name: "o5-aws-callback"
+      - name: "o5-deployer-input"
+      - name: "o5-aws-command"
 
     containers:
       - name: main
@@ -22,11 +45,25 @@ runtimes:
             registry: ghcr.io/pentops
         command: [serve]
         envVars:
+          - name: POSTGRES_URL
+            database:
+              databaseName: main
+          - name: DEPLOYER_ASSUME_ROLE
+            fromEnv:
+              name: "o5-deployer-assume-role"
+          - name: CALLBACK_ARN
+            fromEnv:
+              name: "o5-deployer-callback-arn"
+
           - name: CONFIG_FILE
             blobstore:
               name: env-configs
               s3_direct: true
               subPath: "config.yaml"
+          - name: CF_TEMPLATES
+            blobstore:
+              name: cf-templates
+              s3_direct: true
           - name: GH_PRIVATE_KEY
             secret:
               secretName: github

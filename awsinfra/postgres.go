@@ -1,4 +1,4 @@
-package deployer
+package awsinfra
 
 import (
 	"context"
@@ -6,78 +6,96 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"regexp"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	sq "github.com/elgris/sqrl"
-	"github.com/lib/pq"
+	"github.com/golang/protobuf/ptypes/empty"
+	_ "github.com/lib/pq"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/app"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"gopkg.daemonl.com/sqrlx"
 )
 
-func (d *Deployer) migrateData(ctx context.Context, stackOutputs []types.Output, template *app.BuiltApplication, rotateExisting bool) error {
+func (d *AWSRunner) RunDatabaseMigration(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) (*emptypb.Empty, error) {
+	if err := d.messageHandler.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
+		MigrationId:  msg.MigrationId,
+		DeploymentId: msg.DeploymentId,
+		Status:       deployer_pb.DatabaseMigrationStatus_PENDING,
+	}); err != nil {
+		return nil, err
+	}
 
-	for _, db := range template.PostgresDatabases {
-		ctx := log.WithFields(ctx, map[string]interface{}{
-			"database":    db.Databse.Name,
-			"serverGroup": db.Postgres.ServerGroup,
-		})
-		log.Debug(ctx, "Upsert Database")
-		var migrationTaskARN string
-		var secretARN string
-		for _, output := range stackOutputs {
-			if *db.MigrationTaskOutputName == *output.OutputKey {
-				migrationTaskARN = *output.OutputValue
-			}
-			if *db.SecretOutputName == *output.OutputKey {
-				secretARN = *output.OutputValue
-			}
+	migrateErr := d.runDatabaseMigration(ctx, msg)
+
+	if migrateErr != nil {
+		log.WithError(ctx, migrateErr).Error("RunDatabaseMigration")
+		if err := d.messageHandler.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
+			MigrationId:  msg.MigrationId,
+			DeploymentId: msg.DeploymentId,
+			Status:       deployer_pb.DatabaseMigrationStatus_FAILED,
+			Error:        proto.String(migrateErr.Error()),
+		}); err != nil {
+			return nil, err
+		}
+		return &empty.Empty{}, nil
+	}
+
+	if err := d.messageHandler.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
+		DeploymentId: msg.DeploymentId,
+		MigrationId:  msg.MigrationId,
+		Status:       deployer_pb.DatabaseMigrationStatus_COMPLETED,
+	}); err != nil {
+		return nil, err
+	}
+
+	return &empty.Empty{}, nil
+
+}
+
+func (d *AWSRunner) runDatabaseMigration(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
+	if err := d.upsertPostgresDatabase(ctx, msg); err != nil {
+		return err
+	}
+
+	if msg.Database.MigrationTaskOutputName != nil {
+
+		if msg.MigrationTaskArn == "" {
+			return fmt.Errorf("stack output '%s' not found, for database %q", *msg.Database.MigrationTaskOutputName, msg.Database.Database.Name)
 		}
 
-		if err := d.upsertPostgresDatabase(ctx, db, secretARN, rotateExisting); err != nil {
+		if err := d.runMigrationTask(ctx, msg); err != nil {
 			return err
 		}
 
-		if db.MigrationTaskOutputName != nil {
-
-			if migrationTaskARN == "" {
-				return fmt.Errorf("migration task output %q not found", *db.MigrationTaskOutputName)
-			}
-
-			if err := d.runMigrationTask(ctx, migrationTaskARN); err != nil {
-				return err
-			}
-
-			// This runs both before and after migration
-			if err := d.fixPostgresOwnership(ctx, db); err != nil {
-				return err
-			}
+		// This runs both before and after migration
+		if err := d.fixPostgresOwnership(ctx, msg); err != nil {
+			return err
 		}
-
 	}
 
 	return nil
 
 }
 
-func (d *Deployer) runMigrationTask(ctx context.Context, taskARN string) error {
+func (d *AWSRunner) runMigrationTask(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
 
-	clients, err := d.Clients(ctx)
+	clients, err := d.Clients.Clients(ctx)
 	if err != nil {
 		return err
 	}
 	ecsClient := clients.ECS
 
 	task, err := ecsClient.RunTask(ctx, &ecs.RunTaskInput{
-		TaskDefinition: aws.String(taskARN),
-		Cluster:        aws.String(d.AWS.EcsClusterName),
+		TaskDefinition: aws.String(msg.MigrationTaskArn),
+		Cluster:        aws.String(msg.EcsClusterName),
 		Count:          aws.Int32(1),
 	})
 	if err != nil {
@@ -87,7 +105,7 @@ func (d *Deployer) runMigrationTask(ctx context.Context, taskARN string) error {
 	for {
 		state, err := ecsClient.DescribeTasks(ctx, &ecs.DescribeTasksInput{
 			Tasks:   []string{*task.Tasks[0].TaskArn},
-			Cluster: aws.String(d.AWS.EcsClusterName),
+			Cluster: aws.String(msg.EcsClusterName),
 		})
 		if err != nil {
 			return err
@@ -139,30 +157,19 @@ func (ss DBSecret) buildURLForDB(dbName string) string {
 	return fmt.Sprintf("postgres://%s:%s@%s:5432/%s", ss.Username, ss.Password, ss.Hostname, dbName)
 }
 
-func (d *Deployer) rootPostgresCredentials(ctx context.Context, serverGroup string) (*DBSecret, error) {
+func (d *AWSRunner) rootPostgresCredentials(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) (*DBSecret, error) {
 	// "/${var.env_name}/global/rds/${var.name}/root" from TF
 
-	clients, err := d.Clients(ctx)
+	clients, err := d.Clients.Clients(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	var secretName string
-	for _, host := range d.AWS.RdsHosts {
-		if host.ServerGroup == serverGroup {
-			secretName = host.SecretName
-			break
-		}
-	}
-	if secretName == "" {
-		return nil, fmt.Errorf("no host found for server group %q", serverGroup)
-	}
-
 	res, err := clients.SecretsManager.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
-		SecretId: aws.String(secretName),
+		SecretId: aws.String(msg.RootSecretName),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", secretName, err)
+		return nil, fmt.Errorf("reading %s: %w", msg.RootSecretName, err)
 	}
 
 	secretVal := &DBSecret{}
@@ -173,16 +180,17 @@ func (d *Deployer) rootPostgresCredentials(ctx context.Context, serverGroup stri
 	return secretVal, nil
 }
 
-func (d *Deployer) fixPostgresOwnership(ctx context.Context, spec *app.PostgresDefinition) error {
+func (d *AWSRunner) fixPostgresOwnership(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
 
 	log.Info(ctx, "Fix object ownership")
-	dbName := spec.Databse.Name
-	if spec.Postgres.DbName != "" {
-		dbName = spec.Postgres.DbName
+	pgSpec := msg.Database.Database.GetPostgres()
+	dbName := msg.Database.Database.Name
+	if pgSpec.DbName != "" {
+		dbName = pgSpec.DbName
 	}
 	ownerName := dbName
 
-	rootSecret, err := d.rootPostgresCredentials(ctx, spec.Postgres.ServerGroup)
+	rootSecret, err := d.rootPostgresCredentials(ctx, msg)
 	if err != nil {
 		return err
 	}
@@ -287,9 +295,13 @@ func (d *Deployer) fixPostgresOwnership(ctx context.Context, spec *app.PostgresD
 	return nil
 }
 
-func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *app.PostgresDefinition, secretARN string, rotateExisting bool) error {
+func (d *AWSRunner) upsertPostgresDatabase(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
 
-	rootSecret, err := d.rootPostgresCredentials(ctx, spec.Postgres.ServerGroup)
+	// spec *deployer_pb.PostgresDatabase, secretARN string, rotateExisting bool) error {
+	//.Database, msg.SecretArn, msg.RotateCredentials); err != nil {
+
+	pgSpec := msg.Database.Database.GetPostgres()
+	rootSecret, err := d.rootPostgresCredentials(ctx, msg)
 	if err != nil {
 		return err
 	}
@@ -316,9 +328,9 @@ func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *app.Postgre
 
 	var count int
 
-	dbName := spec.Databse.Name
-	if spec.Postgres.DbName != "" {
-		dbName = spec.Postgres.DbName
+	dbName := msg.Database.Database.Name
+	if pgSpec.DbName != "" {
+		dbName = pgSpec.DbName
 	}
 
 	err = db.SelectRow(ctx, sq.
@@ -335,16 +347,11 @@ func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *app.Postgre
 	}).Debug("Found DBs")
 
 	if count > 1 {
-		return fmt.Errorf("more than one DB matched %s:%s", spec.Postgres.ServerGroup, dbName)
+		return fmt.Errorf("more than one DB matched %s:%s", pgSpec.ServerGroup, dbName)
 	} else if count == 0 {
 		_, err = db.ExecRaw(ctx, fmt.Sprintf(`CREATE ROLE %s`, dbName))
 		if err != nil {
-			pqErr := pq.Error{}
-			if !errors.As(err, &pqErr) {
-				return err
-			}
-
-			return fmt.Errorf("PQ ERR: %+v", pqErr)
+			return err
 		}
 
 		_, err = db.ExecRaw(ctx, fmt.Sprintf(`GRANT %s TO current_user`, dbName))
@@ -358,17 +365,17 @@ func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *app.Postgre
 		}
 	}
 
-	if err := d.fixPostgresOwnership(ctx, spec); err != nil {
+	if err := d.fixPostgresOwnership(ctx, msg); err != nil {
 		return err
 	}
 
-	if count == 1 && !rotateExisting {
+	if count == 1 && !msg.RotateCredentials {
 		return nil
 	}
 
-	if len(spec.Postgres.DbExtensions) > 0 {
+	if len(pgSpec.DbExtensions) > 0 {
 		log.WithFields(ctx, map[string]interface{}{
-			"count": len(spec.Postgres.DbExtensions),
+			"count": len(pgSpec.DbExtensions),
 		}).Debug("Adding Extensions")
 		if err := func() error {
 			superuserURL := rootSecret.buildURLForDB(dbName)
@@ -378,7 +385,7 @@ func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *app.Postgre
 			}
 			defer superuserConn.Close()
 
-			for _, ext := range spec.Postgres.DbExtensions {
+			for _, ext := range pgSpec.DbExtensions {
 				if !reSafeExtensionName.MatchString(ext) {
 					return fmt.Errorf("unsafe extension name: %s", ext)
 				}
@@ -426,21 +433,21 @@ func (d *Deployer) upsertPostgresDatabase(ctx context.Context, spec *app.Postgre
 
 	log.WithFields(ctx, map[string]interface{}{
 		"newUsername": newSecret.Username,
-		"secretName":  spec.Secret.Resource.Name,
+		"secretARN":   msg.SecretArn,
 	}).Debug("Storing New User Credentials")
 
-	clients, err := d.Clients(ctx)
+	clients, err := d.Clients.Clients(ctx)
 	if err != nil {
 		return err
 	}
 
 	_, err = clients.SecretsManager.UpdateSecret(ctx, &secretsmanager.UpdateSecretInput{
 		// ARN or Name
-		SecretId:     aws.String(secretARN),
+		SecretId:     aws.String(msg.SecretArn),
 		SecretString: aws.String(string(jsonBytes)),
 	})
 	if err != nil {
-		return fmt.Errorf("Storing new secret value (%s) failed. The user was still created: %w", spec.Secret.Name(), err)
+		return fmt.Errorf("Storing new secret value (%s) failed. The user was still created: %w", msg.SecretArn, err)
 	}
 
 	return nil

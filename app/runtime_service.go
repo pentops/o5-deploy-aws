@@ -11,6 +11,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/sns"
 	"github.com/awslabs/goformation/v7/cloudformation/sqs"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 )
 
 type RuntimeService struct {
@@ -30,6 +31,8 @@ type RuntimeService struct {
 	ingressEndpoints map[string]struct{}
 
 	spec *application_pb.Runtime
+
+	outboxDatabases []DatabaseReference
 }
 
 func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*RuntimeService, error) {
@@ -64,10 +67,6 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 
 	addLogs(runtimeSidecar, globals.appName)
 
-	defs = append(defs, &ContainerDefinition{
-		Container: runtimeSidecar,
-	})
-
 	taskDefinition := NewResource(runtime.Name, &ecs.TaskDefinition{
 		Family:                  String(fmt.Sprintf("%s_%s", globals.appName, runtime.Name)),
 		ExecutionRoleArn:        cloudformation.RefPtr(ECSTaskExecutionRoleParameter),
@@ -97,6 +96,15 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		policy.AddMetaDeployPermissions()
 	}
 
+	outboxDatabases := []DatabaseReference{}
+	for _, db := range globals.databases {
+		postgres := db.Definition.GetPostgres()
+		if postgres == nil || !postgres.RunOutbox {
+			continue
+		}
+		outboxDatabases = append(outboxDatabases, db)
+	}
+
 	return &RuntimeService{
 		spec:             runtime,
 		Prefix:           globals.appName,
@@ -108,6 +116,7 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		TargetGroups:     map[string]*Resource[*elbv2.TargetGroup]{},
 		ingressEndpoints: map[string]struct{}{},
 		IngressContainer: runtimeSidecar,
+		outboxDatabases:  outboxDatabases,
 	}, nil
 }
 
@@ -127,13 +136,17 @@ func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
 	}
 }
 
-func (rs *RuntimeService) Apply(template *Application) {
+func (rs *RuntimeService) Apply(template *Application) error {
 
 	desiredCountParameter := fmt.Sprintf("DesiredCount%s", rs.Name)
-	template.AddParameter(&Parameter{
-		Name:   desiredCountParameter,
-		Type:   "Number",
-		Source: ParameterSourceDesiredCount,
+	template.AddParameter(&deployer_pb.Parameter{
+		Name: desiredCountParameter,
+		Type: "Number",
+		Source: &deployer_pb.ParameterSourceType{
+			Type: &deployer_pb.ParameterSourceType_DesiredCount_{
+				DesiredCount: &deployer_pb.ParameterSourceType_DesiredCount{},
+			},
+		},
 	})
 
 	if rs.Service.Overrides == nil {
@@ -191,11 +204,16 @@ func (rs *RuntimeService) Apply(template *Application) {
 			})
 			if sub.EnvName != nil {
 				envSNSParamName := CleanParameterName(*sub.EnvName, "SNSPrefix")
-				template.AddParameter(&Parameter{
-					Name:   envSNSParamName,
-					Type:   "String",
-					Source: ParameterSourceCrossEnvSNS,
-					Args:   []interface{}{*sub.EnvName},
+				template.AddParameter(&deployer_pb.Parameter{
+					Name: envSNSParamName,
+					Type: "String",
+					Source: &deployer_pb.ParameterSourceType{
+						Type: &deployer_pb.ParameterSourceType_CrossEnvSns_{
+							CrossEnvSns: &deployer_pb.ParameterSourceType_CrossEnvSns{
+								EnvName: *sub.EnvName,
+							},
+						},
+					},
 				})
 				snsTopicARN = cloudformation.Join("", []string{
 					cloudformation.Ref(envSNSParamName),
@@ -235,25 +253,45 @@ func (rs *RuntimeService) Apply(template *Application) {
 		}))
 	}
 
-	ingressEndpoints := make([]string, 0, len(rs.ingressEndpoints))
-	for endpoint := range rs.ingressEndpoints {
-		ingressEndpoints = append(ingressEndpoints, endpoint)
-	}
-	rs.IngressContainer.Environment = append(rs.IngressContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-		Name:  String("SERVICE_ENDPOINT"),
-		Value: String(strings.Join(ingressEndpoints, ",")),
-	}, ecs.TaskDefinition_KeyValuePair{
-		Name:  String("AWS_REGION"),
-		Value: String(cloudformation.Ref(AWSRegionParameter)),
-	}, ecs.TaskDefinition_KeyValuePair{
-		Name:  String("JWKS"),
-		Value: String(cloudformation.Ref(JWKSParameter)),
-	})
-	if ingressNeedsPublicPort {
+	needsIngress := false
+	if len(rs.ingressEndpoints) > 0 {
+		needsIngress = true
+		ingressEndpoints := make([]string, 0, len(rs.ingressEndpoints))
+		for endpoint := range rs.ingressEndpoints {
+			ingressEndpoints = append(ingressEndpoints, endpoint)
+		}
 		rs.IngressContainer.Environment = append(rs.IngressContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  String("PUBLIC_PORT"),
-			Value: String("8080"),
+			Name:  String("SERVICE_ENDPOINT"),
+			Value: String(strings.Join(ingressEndpoints, ",")),
+		}, ecs.TaskDefinition_KeyValuePair{
+			Name:  String("AWS_REGION"),
+			Value: String(cloudformation.Ref(AWSRegionParameter)),
+		}, ecs.TaskDefinition_KeyValuePair{
+			Name:  String("JWKS"),
+			Value: String(cloudformation.Ref(JWKSParameter)),
 		})
+		if ingressNeedsPublicPort {
+			rs.IngressContainer.Environment = append(rs.IngressContainer.Environment, ecs.TaskDefinition_KeyValuePair{
+				Name:  String("PUBLIC_PORT"),
+				Value: String("8080"),
+			})
+		}
+	}
+
+	if len(rs.outboxDatabases) > 1 {
+		return fmt.Errorf("only one outbox DB supported")
+	}
+
+	for _, db := range rs.outboxDatabases {
+		needsIngress = true
+		rs.IngressContainer.Secrets = append(rs.IngressContainer.Secrets, ecs.TaskDefinition_Secret{
+			Name:      "POSTGRES_OUTBOX",
+			ValueFrom: db.SecretValueFrom(),
+		})
+	}
+
+	if !needsIngress {
+		rs.IngressContainer = nil
 	}
 
 	// Not sure who thought it would be a good idea to not use pointers here...
@@ -264,6 +302,11 @@ func (rs *RuntimeService) Apply(template *Application) {
 			template.parameters[param.Name] = param
 		}
 	}
+
+	if rs.IngressContainer != nil {
+		defs = append(defs, *rs.IngressContainer)
+	}
+
 	rs.TaskDefinition.Resource.ContainerDefinitions = defs
 
 	template.AddResource(rs.TaskDefinition)
@@ -301,6 +344,7 @@ func (rs *RuntimeService) Apply(template *Application) {
 		template.AddResource(targetGroup)
 	}
 
+	return nil
 }
 
 func (rs *RuntimeService) AddRoutes(ingress *ListenerRuleSet) error {
@@ -343,10 +387,15 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 
 	var container *ecs.TaskDefinition_ContainerDefinition
 
-	for _, search := range rs.Containers {
-		if search.Container.Name == targetContainer {
-			container = search.Container
-			break
+	if targetContainer == O5SidecarContainerName {
+		container = rs.IngressContainer
+	} else {
+
+		for _, search := range rs.Containers {
+			if search.Container.Name == targetContainer {
+				container = search.Container
+				break
+			}
 		}
 	}
 

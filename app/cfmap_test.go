@@ -34,7 +34,7 @@ func TestBasicMap(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	template := out.BuildTemplate()
+	template := out.Build().Template
 	yy, err := template.YAML()
 	if err != nil {
 		t.Fatal(err.Error())
@@ -158,8 +158,8 @@ func TestRuntime(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	if len(rs.Containers) != 2 {
-		t.Fatalf("expected 2 container definition, got %d", len(rs.Containers))
+	if len(rs.Containers) != 1 {
+		t.Fatalf("expected 1 container definition, got %d", len(rs.Containers))
 	}
 
 	{

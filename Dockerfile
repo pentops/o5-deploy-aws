@@ -1,4 +1,4 @@
-FROM golang:1.20 AS builder
+FROM golang:1.21 AS builder
 
 RUN mkdir /src
 WORKDIR /src
@@ -24,5 +24,8 @@ LABEL org.opencontainers.image.source=https://github.com/pentops/o5-deploy-aws
 COPY --from=builder /server /server
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /src/ext/db /migrations
+ENV MIGRATIONS_DIR=/migrations
 
+CMD ["serve"]
 ENTRYPOINT ["/server"]

@@ -9,10 +9,14 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/pentops/o5-deploy-aws/app"
+	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-deploy-aws/deployer"
+	"github.com/pentops/o5-deploy-aws/localrun"
 	"github.com/pentops/o5-deploy-aws/protoread"
+	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
+	"golang.org/x/sync/errgroup"
 )
 
 type flagConfig struct {
@@ -93,16 +97,73 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		return err
 	}
 
-	deployer, err := deployer.NewDeployer(env, awsConfig)
+	awsTarget := env.GetAws()
+	if awsTarget == nil {
+		return fmt.Errorf("AWS Deployer requires the type of environment provider to be AWS")
+	}
+
+	clientSet := &awsinfra.ClientSet{
+		AssumeRoleARN: awsTarget.O5DeployerAssumeRole,
+		AWSConfig:     awsConfig,
+	}
+
+	eventLoop := localrun.NewLocalEventLoop()
+
+	stateStore := localrun.NewLocalStateStore(eventLoop)
+
+	if dbURL := os.Getenv("POSTGRES_URL"); dbURL != "" {
+		db, err := service.OpenDatabase(ctx)
+		if err != nil {
+			return err
+		}
+
+		pgStore, err := deployer.NewPostgresStateStore(db, []*environment_pb.Environment{env})
+		if err != nil {
+			return err
+		}
+
+		stateStore.StoreCallback = pgStore.StoreDeploymentEvent
+	}
+
+	if err := stateStore.AddEnvironment(env); err != nil {
+		return err
+	}
+
+	deploymentManager, err := deployer.NewDeployer(stateStore, awsTarget.ScratchBucket, s3Client)
+
 	if err != nil {
 		return err
 	}
 
-	deployer.RotateSecrets = flagConfig.rotateSecrets
+	deploymentManager.RotateSecrets = flagConfig.rotateSecrets
+	deploymentManager.CancelUpdates = flagConfig.cancelUpdate
 
-	if err := deployer.Deploy(ctx, built, flagConfig.cancelUpdate); err != nil {
+	if err := localrun.RegisterDeployerHandlers(eventLoop, deploymentManager); err != nil {
+		return err
+	}
+
+	awsRunner := awsinfra.NewRunner(clientSet, eventLoop)
+	awsRunner.LocalCLIRun = true
+
+	if err := localrun.RegisterLocalHandlers(eventLoop, awsRunner); err != nil {
+		return err
+	}
+
+	if err := deploymentManager.BeginDeployment(ctx, built, env.FullName); err != nil {
 		return fmt.Errorf("deploy: %w", err)
 	}
 
-	return nil
+	ctx, cancel := context.WithCancel(ctx)
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		return eventLoop.Wait(ctx)
+	})
+	eg.Go(func() error {
+		defer cancel()
+		// Cancel should run even if the Wait function returns no error, this
+		// stops the poller and event loop
+		return stateStore.Wait(ctx)
+	})
+
+	return eg.Wait()
 }

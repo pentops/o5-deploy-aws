@@ -6,11 +6,12 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 )
 
 type ContainerDefinition struct {
 	Container  *ecs.TaskDefinition_ContainerDefinition
-	Parameters map[string]*Parameter
+	Parameters map[string]*deployer_pb.Parameter
 }
 
 func buildContainer(globals globalData, def *application_pb.Container) (*ContainerDefinition, error) {
@@ -30,7 +31,7 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 
 	containerDef := &ContainerDefinition{
 		Container:  container,
-		Parameters: map[string]*Parameter{},
+		Parameters: map[string]*deployer_pb.Parameter{},
 	}
 
 	switch src := def.Source.(type) {
@@ -131,17 +132,9 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 			if !ok {
 				return nil, fmt.Errorf("unknown database: %s", dbName)
 			}
-			jsonKey := "dburl"
-			versionStage := ""
-			versionID := ""
 			container.Secrets = append(container.Secrets, ecs.TaskDefinition_Secret{
-				Name: envVar.Name,
-				ValueFrom: cloudformation.Join(":", []string{
-					dbDef.SecretResource.Ref(),
-					jsonKey,
-					versionStage,
-					versionID,
-				}),
+				Name:      envVar.Name,
+				ValueFrom: dbDef.SecretValueFrom(),
 			})
 
 			continue
@@ -151,11 +144,16 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 		case *application_pb.EnvironmentVariable_FromEnv:
 			varName := varType.FromEnv.Name
 			paramName := fmt.Sprintf("EnvVar%s", CleanParameterName(varName))
-			containerDef.Parameters[paramName] = &Parameter{
-				Name:   paramName,
-				Type:   "String",
-				Source: ParameterSourceEnvVar,
-				Args:   []interface{}{varType.FromEnv.Name},
+			containerDef.Parameters[paramName] = &deployer_pb.Parameter{
+				Name: paramName,
+				Type: "String",
+				Source: &deployer_pb.ParameterSourceType{
+					Type: &deployer_pb.ParameterSourceType_EnvVar_{
+						EnvVar: &deployer_pb.ParameterSourceType_EnvVar{
+							Name: varType.FromEnv.Name,
+						},
+					},
+				},
 			}
 
 			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{

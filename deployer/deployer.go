@@ -1,317 +1,180 @@
 package deployer
 
 import (
+	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"time"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
-	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
-	"github.com/aws/aws-sdk-go-v2/service/ecs"
-	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
-	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
-	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
-	"github.com/aws/aws-sdk-go-v2/service/sns"
-	"github.com/aws/aws-sdk-go-v2/service/sts"
-	protovalidate "github.com/bufbuild/protovalidate-go"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/app"
+	"github.com/pentops/o5-deploy-aws/awsinfra"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
+	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type CloudFormationAPI interface {
-	DescribeStacks(ctx context.Context, params *cloudformation.DescribeStacksInput, optFns ...func(*cloudformation.Options)) (*cloudformation.DescribeStacksOutput, error)
-	CreateStack(ctx context.Context, params *cloudformation.CreateStackInput, optFns ...func(*cloudformation.Options)) (*cloudformation.CreateStackOutput, error)
-	UpdateStack(ctx context.Context, params *cloudformation.UpdateStackInput, optFns ...func(*cloudformation.Options)) (*cloudformation.UpdateStackOutput, error)
-	DeleteStack(ctx context.Context, params *cloudformation.DeleteStackInput, optFns ...func(*cloudformation.Options)) (*cloudformation.DeleteStackOutput, error)
-	CancelUpdateStack(ctx context.Context, params *cloudformation.CancelUpdateStackInput, optFns ...func(*cloudformation.Options)) (*cloudformation.CancelUpdateStackOutput, error)
+type Environment struct {
+	Environment *environment_pb.Environment
+	AWS         *environment_pb.AWS
 }
-
-type ELBV2API interface {
-	DescribeRules(ctx context.Context, params *elbv2.DescribeRulesInput, optFns ...func(*elbv2.Options)) (*elbv2.DescribeRulesOutput, error)
-}
-
-type SecretsManagerAPI interface {
-	GetSecretValue(ctx context.Context, params *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)
-	UpdateSecret(ctx context.Context, params *secretsmanager.UpdateSecretInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.UpdateSecretOutput, error)
-}
-
-type ECSAPI interface {
-	RunTask(ctx context.Context, params *ecs.RunTaskInput, optFns ...func(*ecs.Options)) (*ecs.RunTaskOutput, error)
-
-	// used by the TasksStoppedWaiter
-	ecs.DescribeTasksAPIClient
-}
-
-type SNSAPI interface {
-	CreateTopic(ctx context.Context, params *sns.CreateTopicInput, optsFns ...func(*sns.Options)) (*sns.CreateTopicOutput, error)
-}
-
-type DeployerClients struct {
-	CloudFormation CloudFormationAPI
-	SNS            SNSAPI
-	ELB            ELBV2API
-	SecretsManager SecretsManagerAPI
-	ECS            ECSAPI
-}
-
-type RoleAssumer struct {
-}
-
-type ClientBuilder interface {
-	GetConfig(ctx context.Context, assumeRole string) (*DeployerClients, error)
-}
-
 type Deployer struct {
-	Environment   *environment_pb.Environment
-	AWS           *environment_pb.AWS
 	RotateSecrets bool
-	clientCache   *DeployerClients
-	awsConfig     aws.Config
+	CancelUpdates bool
+
+	s3Client         awsinfra.S3API
+	cfTemplateBucket string
+
+	storage DeployerStorage
+
+	*deployer_tpb.UnimplementedDeployerTopicServer
 }
 
-func NewDeployer(environment *environment_pb.Environment, awsConfig aws.Config) (*Deployer, error) {
-
-	validator, err := protovalidate.New()
-	if err != nil {
-		panic(err)
-	}
-
-	if err := validator.Validate(environment); err != nil {
-		return nil, err
-	}
-
-	awsTarget := environment.GetAws()
-	if awsTarget == nil {
-		return nil, errors.New("AWS Deployer requires the type of environment provider to be AWS")
-	}
-
+func NewDeployer(storage DeployerStorage, cfTemplateBucket string, s3Client awsinfra.S3API) (*Deployer, error) {
+	cfTemplateBucket = strings.TrimPrefix(cfTemplateBucket, "s3://")
 	return &Deployer{
-		Environment: environment,
-		AWS:         awsTarget,
-		awsConfig:   awsConfig,
+		s3Client:         s3Client,
+		storage:          storage,
+		cfTemplateBucket: cfTemplateBucket,
 	}, nil
 }
 
-func (d *Deployer) Clients(ctx context.Context) (*DeployerClients, error) {
-	if d.clientCache != nil {
-		// TODO: Check Expiry
-		return d.clientCache, nil
-	}
-
-	assumer := sts.NewFromConfig(d.awsConfig)
-
-	tempCredentials, err := assumer.AssumeRole(ctx, &sts.AssumeRoleInput{
-		RoleArn:         aws.String(d.AWS.O5DeployerAssumeRole),
-		DurationSeconds: aws.Int32(900),
-		RoleSessionName: aws.String(fmt.Sprintf("o5-deploy-aws-%d", time.Now().Unix())),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to assume role '%s': %w", d.AWS.O5DeployerAssumeRole, err)
-	}
-
-	assumeRoleConfig, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			*tempCredentials.Credentials.AccessKeyId,
-			*tempCredentials.Credentials.SecretAccessKey,
-			*tempCredentials.Credentials.SessionToken),
-		),
-	)
-
-	return &DeployerClients{
-		CloudFormation: cloudformation.NewFromConfig(assumeRoleConfig),
-		SNS:            sns.NewFromConfig(assumeRoleConfig),
-		ELB:            elasticloadbalancingv2.NewFromConfig(assumeRoleConfig),
-		SecretsManager: secretsmanager.NewFromConfig(assumeRoleConfig),
-		ECS:            ecs.NewFromConfig(assumeRoleConfig),
-	}, nil
-
-}
-
-func (d *Deployer) Deploy(ctx context.Context, app *app.BuiltApplication, cancelUpdates bool) error {
-	stackName := fmt.Sprintf("%s-%s", d.Environment.FullName, app.Name)
-	ctx = log.WithFields(ctx, map[string]interface{}{
-		"stackName":   stackName,
-		"environment": d.Environment.FullName,
-	})
-
-	if err := d.upsertSNSTopics(ctx, app.SNSTopics); err != nil {
-		return err
-	}
-
-	clients, err := d.Clients(ctx)
-	if err != nil {
-		return err
-	}
-
-	cf := &CFWrapper{
-		client: clients.CloudFormation,
-	}
-
-	remoteStack, err := cf.getOneStack(ctx, stackName)
-	if err != nil {
-		return err
-	}
-
-	if remoteStack == nil {
-		return d.createNewDeployment(ctx, stackName, app)
-	}
-
-	if cancelUpdates && remoteStack.StackStatus == types.StackStatusUpdateInProgress {
-		if err := cf.cancelUpdate(ctx, stackName); err != nil {
+func (d *Deployer) BeginDeployments(ctx context.Context, app *app.BuiltApplication, envNames []string) error {
+	for _, envName := range envNames {
+		if err := d.BeginDeployment(ctx, app, envName); err != nil {
 			return err
 		}
 	}
-
-	remoteStackStable, err := cf.waitForStack(ctx, stackName)
-	if err != nil {
-		return err
-	}
-
-	return d.updateDeployment(ctx, stackName, app, remoteStackStable.Parameters)
+	return nil
 }
 
-func (d *Deployer) upsertSNSTopics(ctx context.Context, topics []*app.SNSTopic) error {
-	clients, err := d.Clients(ctx)
+func (d *Deployer) BeginDeployment(ctx context.Context, app *app.BuiltApplication, envName string) error {
+
+	ctx = log.WithFields(ctx, map[string]interface{}{
+		"appName":     app.Name,
+		"environment": envName,
+	})
+
+	environment, err := d.storage.GetEnvironment(ctx, envName)
 	if err != nil {
 		return err
 	}
 
-	snsClient := clients.SNS
+	awsEnv := environment.GetAws()
+	if awsEnv == nil {
+		return fmt.Errorf("environment %s is not an AWS environment", envName)
+	}
 
-	for _, topic := range topics {
-		_, err := snsClient.CreateTopic(ctx, &sns.CreateTopicInput{
-			Name: aws.String(fmt.Sprintf("%s-%s", d.Environment.FullName, topic.Name)),
+	deploymentID := uuid.NewString()
+
+	templateJSON, err := app.TemplateJSON()
+	if err != nil {
+		return err
+	}
+
+	templateKey := fmt.Sprintf("%s/%s/%s.json", environment.FullName, app.Name, deploymentID)
+	_, err = d.s3Client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(d.cfTemplateBucket),
+		Key:    aws.String(templateKey),
+		Body:   bytes.NewReader(templateJSON),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	templateURL := fmt.Sprintf("https://s3.us-east-1.amazonaws.com/%s/%s", d.cfTemplateBucket, templateKey)
+
+	spec := &deployer_pb.DeploymentSpec{
+		AppName:         app.Name,
+		Version:         app.Version,
+		EnvironmentName: environment.FullName,
+		TemplateUrl:     templateURL,
+		Databases:       app.PostgresDatabases(),
+		Parameters:      app.Parameters(),
+		SnsTopics:       app.SNSTopics,
+
+		CancelUpdates:     d.CancelUpdates,
+		RotateCredentials: d.RotateSecrets,
+	}
+
+	return d.storage.Transact(ctx, func(ctx context.Context, tx TransitionTransaction) error {
+		return tx.PublishEvent(ctx, &deployer_tpb.TriggerDeploymentMessage{
+			DeploymentId: deploymentID,
+			Spec:         spec,
 		})
-		if err != nil {
-			return fmt.Errorf("creating sns topic %s: %w", topic.Name, err)
-		}
-	}
-	return nil
+	})
 }
 
-func (d *Deployer) createNewDeployment(ctx context.Context, stackName string, app *app.BuiltApplication) error {
+func (dd *Deployer) TriggerDeployment(ctx context.Context, msg *deployer_tpb.TriggerDeploymentMessage) (*emptypb.Empty, error) {
 
-	clients, err := d.Clients(ctx)
-	if err != nil {
-		return err
+	deploymentEvent := &deployer_pb.DeploymentEvent{
+		DeploymentId: msg.DeploymentId,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+		Event: &deployer_pb.DeploymentEventType{
+			Type: &deployer_pb.DeploymentEventType_Triggered_{
+				Triggered: &deployer_pb.DeploymentEventType_Triggered{
+					Spec: msg.Spec,
+				},
+			},
+		},
 	}
 
-	initialParameters, err := d.applyInitialParameters(ctx, stackParameters{
-		name:     stackName,
-		template: app,
-		scale:    0,
-	})
-	if err != nil {
-		return err
+	if err := dd.RegisterEvent(ctx, deploymentEvent); err != nil {
+		return nil, err
 	}
 
-	cf := &CFWrapper{
-		client: clients.CloudFormation,
-	}
-
-	// Create, scale 0
-	log.Info(ctx, "Create with scale 0")
-	if err := cf.createCloudformationStack(ctx, StackArgs{
-		Parameters: initialParameters,
-		Template:   app,
-		Name:       stackName,
-	}); err != nil {
-		return err
-	}
-
-	lastState, err := cf.waitForSuccess(ctx, stackName, "Stack Create")
-	if err != nil {
-		return err
-	}
-
-	// Migrate
-	log.Info(ctx, "Migrate Database")
-	if err := d.migrateData(ctx, lastState.Outputs, app, true); err != nil {
-		return err
-	}
-
-	// Scale Up
-	log.Info(ctx, "Scale Up")
-	if err := cf.setScale(ctx, stackName, 1); err != nil {
-		return err
-	}
-	if err != nil {
-		return err
-	}
-
-	if err := cf.WaitForSuccess(ctx, stackName, "Scale Up"); err != nil {
-		return err
-	}
-
-	return nil
+	return &emptypb.Empty{}, nil
 }
 
-func (d *Deployer) updateDeployment(ctx context.Context, stackName string, app *app.BuiltApplication, previous []types.Parameter) error {
+func (dd *Deployer) StackStatusChanged(ctx context.Context, msg *deployer_tpb.StackStatusChangedMessage) (*emptypb.Empty, error) {
 
-	clients, err := d.Clients(ctx)
-	if err != nil {
-		return err
+	event := &deployer_pb.DeploymentEvent{
+		DeploymentId: msg.StackId.DeploymentId,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+		Event: &deployer_pb.DeploymentEventType{
+			Type: &deployer_pb.DeploymentEventType_StackStatus_{
+				StackStatus: &deployer_pb.DeploymentEventType_StackStatus{
+					Lifecycle:   msg.Lifecycle,
+					FullStatus:  msg.Status,
+					StackOutput: msg.Outputs,
+				},
+			},
+		},
 	}
+	return &emptypb.Empty{}, dd.RegisterEvent(ctx, event)
 
-	cf := &CFWrapper{
-		client: clients.CloudFormation,
+}
+
+func (dd *Deployer) MigrationStatusChanged(ctx context.Context, msg *deployer_tpb.MigrationStatusChangedMessage) (*emptypb.Empty, error) {
+
+	event := &deployer_pb.DeploymentEvent{
+		DeploymentId: msg.DeploymentId,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+
+		Event: &deployer_pb.DeploymentEventType{
+			Type: &deployer_pb.DeploymentEventType_DbMigrateStatus{
+				DbMigrateStatus: &deployer_pb.DeploymentEventType_DBMigrateStatus{
+					MigrationId: msg.MigrationId,
+					Status:      msg.Status,
+				},
+			},
+		},
 	}
+	return &emptypb.Empty{}, dd.RegisterEvent(ctx, event)
 
-	// Scale Down
-	log.Info(ctx, "Scale Down")
-	if err := cf.setScale(ctx, stackName, 0); err != nil {
-		return err
-	}
-
-	if err := cf.WaitForSuccess(ctx, stackName, "Scale Down"); err != nil {
-		return err
-	}
-
-	// Update, Keep Scale 0
-	log.Info(ctx, "Update Pre Migrate")
-	initialParameters, err := d.applyInitialParameters(ctx, stackParameters{
-		previousParameters: previous,
-		name:               stackName,
-		template:           app,
-		scale:              0,
-	})
-	if err != nil {
-		return err
-	}
-
-	if err := cf.updateCloudformationStack(ctx, StackArgs{
-		Template:   app,
-		Parameters: initialParameters,
-		Name:       stackName,
-	}); err != nil {
-		return err
-	}
-
-	lastState, err := cf.waitForSuccess(ctx, stackName, "Update")
-	if err != nil {
-		return err
-	}
-
-	// Migrate
-	log.Info(ctx, "Data Migrate")
-	if err := d.migrateData(ctx, lastState.Outputs, app, d.RotateSecrets); err != nil {
-		return err
-	}
-
-	// Scale Up
-	log.Info(ctx, "Scale Up")
-	if err := cf.setScale(ctx, stackName, 1); err != nil {
-		return err
-	}
-
-	if err := cf.WaitForSuccess(ctx, stackName, "Scale Up"); err != nil {
-		return err
-	}
-
-	return nil
 }
