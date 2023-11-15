@@ -132,17 +132,9 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 			if !ok {
 				return nil, fmt.Errorf("unknown database: %s", dbName)
 			}
-			jsonKey := "dburl"
-			versionStage := ""
-			versionID := ""
 			container.Secrets = append(container.Secrets, ecs.TaskDefinition_Secret{
-				Name: envVar.Name,
-				ValueFrom: cloudformation.Join(":", []string{
-					dbDef.SecretResource.Ref(),
-					jsonKey,
-					versionStage,
-					versionID,
-				}),
+				Name:      envVar.Name,
+				ValueFrom: dbDef.SecretValueFrom(),
 			})
 
 			continue

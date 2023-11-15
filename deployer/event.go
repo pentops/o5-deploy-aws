@@ -10,8 +10,8 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
+	"github.com/pentops/outbox.pg.go/outbox"
 	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -64,15 +64,15 @@ type ITransitionSpec interface {
 
 type TransitionBaton interface {
 	ChainEvent(*deployer_pb.DeploymentEvent)
-	SideEffect(proto.Message)
+	SideEffect(outbox.OutboxMessage)
 
-	ResolveParameters([]*deployer_pb.Parameter, VariableParameters) ([]*deployer_pb.KeyValue, error)
+	ResolveParameters([]*deployer_pb.Parameter) ([]*deployer_pb.CloudFormationStackParameter, error)
 
 	buildMigrationRequest(ctx context.Context, deployment *deployer_pb.DeploymentState, migration *deployer_pb.DatabaseMigrationState) (*deployer_tpb.RunDatabaseMigrationMessage, error)
 }
 
 type transitionData struct {
-	sideEffects []proto.Message
+	sideEffects []outbox.OutboxMessage
 	chainEvents []*deployer_pb.DeploymentEvent
 
 	parameterResolver ParameterResolver
@@ -156,12 +156,12 @@ func (td *transitionData) buildMigrationRequest(ctx context.Context, deployment 
 
 }
 
-func (td *transitionData) ResolveParameters(stackParameters []*deployer_pb.Parameter, variables VariableParameters) ([]*deployer_pb.KeyValue, error) {
+func (td *transitionData) ResolveParameters(stackParameters []*deployer_pb.Parameter) ([]*deployer_pb.CloudFormationStackParameter, error) {
 
-	parameters := make([]*deployer_pb.KeyValue, 0, len(stackParameters))
+	parameters := make([]*deployer_pb.CloudFormationStackParameter, 0, len(stackParameters))
 
 	for _, param := range stackParameters {
-		parameter, err := td.parameterResolver.ResolveParameter(param, variables)
+		parameter, err := td.parameterResolver.ResolveParameter(param)
 		if err != nil {
 			return nil, fmt.Errorf("parameter '%s': %w", param.Name, err)
 		}
@@ -175,7 +175,7 @@ func (td *transitionData) ChainEvent(event *deployer_pb.DeploymentEvent) {
 	td.chainEvents = append(td.chainEvents, event)
 }
 
-func (td *transitionData) SideEffect(msg proto.Message) {
+func (td *transitionData) SideEffect(msg outbox.OutboxMessage) {
 	td.sideEffects = append(td.sideEffects, msg)
 }
 
@@ -188,37 +188,11 @@ func (d *Deployer) findTransition(ctx context.Context, deployment *deployer_pb.D
 	return nil
 }
 
-func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
+func (dd *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
 
-	// TODO: This is a heavy operation, but also needs to run
-	// just-in-time, so we should only run it when the event
-	// requires it.
-	deployerResolver, err := d.BuildParameterResolver(ctx)
-	if err != nil {
-		return err
-	}
+	runTransition := func(ctx context.Context, tx TransitionTransaction, transition TransitionBaton, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
 
-	runTransition := func(ctx context.Context, tx TransitionTransaction, transition TransitionBaton, event *deployer_pb.DeploymentEvent) error {
-		ctx = log.WithFields(ctx, map[string]interface{}{
-			"deploymentId": event.DeploymentId,
-			"event":        protojson.Format(event.Event),
-		})
-		log.Debug(ctx, "Beign Deployment Event")
-
-		deployment, err := tx.GetDeployment(ctx, event.DeploymentId)
-		if errors.Is(err, DeploymentNotFoundError) {
-			deployment = &deployer_pb.DeploymentState{
-				DeploymentId: event.DeploymentId,
-			}
-		} else if err != nil {
-			return err
-		}
-
-		ctx = log.WithFields(ctx, map[string]interface{}{
-			"stateBefore": deployment.Status.ShortString(),
-		})
-
-		spec := d.findTransition(ctx, deployment, event)
+		spec := dd.findTransition(ctx, deployment, event)
 		if spec == nil {
 			typeKey, ok := event.Event.TypeKey()
 			if !ok {
@@ -242,26 +216,65 @@ func (d *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploym
 			return err
 		}
 
-		log.WithFields(ctx, map[string]interface{}{
-			"stateAfter": deployment.Status.ShortString(),
-		}).Info("Deployment Event Handled")
-
 		return nil
 	}
 
-	return d.storage.Transact(ctx, func(ctx context.Context, tx TransitionTransaction) error {
+	return dd.storage.Transact(ctx, func(ctx context.Context, tx TransitionTransaction) error {
+		deployment, err := tx.GetDeployment(ctx, event.DeploymentId)
+		if errors.Is(err, DeploymentNotFoundError) {
+			deployment = &deployer_pb.DeploymentState{
+				DeploymentId: event.DeploymentId,
+			}
+		} else if err != nil {
+			return err
+		}
+
+		spec := deployment.Spec
+		if spec == nil {
+			trigger := event.Event.GetTriggered()
+			if trigger == nil {
+				return fmt.Errorf("no spec found for deployment %s, and the event is not an initiating event", event.DeploymentId)
+			}
+			spec = trigger.Spec
+		}
+
+		environment, err := tx.GetEnvironment(ctx, spec.EnvironmentName)
+		if err != nil {
+			return err
+		}
+
+		deployerResolver, err := BuildParameterResolver(ctx, environment)
+		if err != nil {
+			return err
+		}
+
 		// Recursive function, so that the event and all chained events are
 		// handled atomically.
-		// TODO: No need to re-fetch the current state between chained events.
+		// Deployment is modified in place by the transition, and stored at the
+		// end with the event. We then pass the same deployment pointer through
+		// to the next event as-is, which should match the stored state
 		var runOne func(event *deployer_pb.DeploymentEvent) error
 		runOne = func(innerEvent *deployer_pb.DeploymentEvent) error {
 			baton := &transitionData{
 				parameterResolver: deployerResolver,
-				env:               d.Environment,
+				env:               environment,
 			}
-			if err := runTransition(ctx, tx, baton, innerEvent); err != nil {
+			typeKey, _ := event.Event.TypeKey()
+
+			ctx = log.WithFields(ctx, map[string]interface{}{
+				"deploymentId": event.DeploymentId,
+				"eventType":    typeKey,
+				"stateBefore":  deployment.Status.ShortString(),
+			})
+			log.WithField(ctx, "event", protojson.Format(event.Event)).Debug("Begin Deployment Event")
+			if err := runTransition(ctx, tx, baton, deployment, innerEvent); err != nil {
+				log.WithError(ctx, err).Error("Running Deployment Tarnsition")
 				return err
 			}
+
+			log.WithFields(ctx, map[string]interface{}{
+				"stateAfter": deployment.Status.ShortString(),
+			}).Info("Deployment Event Handled")
 
 			for _, se := range baton.sideEffects {
 				if err := tx.PublishEvent(ctx, se); err != nil {

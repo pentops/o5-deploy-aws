@@ -31,6 +31,8 @@ type RuntimeService struct {
 	ingressEndpoints map[string]struct{}
 
 	spec *application_pb.Runtime
+
+	outboxDatabases []DatabaseReference
 }
 
 func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*RuntimeService, error) {
@@ -94,6 +96,15 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		policy.AddMetaDeployPermissions()
 	}
 
+	outboxDatabases := []DatabaseReference{}
+	for _, db := range globals.databases {
+		postgres := db.Definition.GetPostgres()
+		if postgres == nil || !postgres.RunOutbox {
+			continue
+		}
+		outboxDatabases = append(outboxDatabases, db)
+	}
+
 	return &RuntimeService{
 		spec:             runtime,
 		Prefix:           globals.appName,
@@ -105,6 +116,7 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		TargetGroups:     map[string]*Resource[*elbv2.TargetGroup]{},
 		ingressEndpoints: map[string]struct{}{},
 		IngressContainer: runtimeSidecar,
+		outboxDatabases:  outboxDatabases,
 	}, nil
 }
 
@@ -124,7 +136,7 @@ func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
 	}
 }
 
-func (rs *RuntimeService) Apply(template *Application) {
+func (rs *RuntimeService) Apply(template *Application) error {
 
 	desiredCountParameter := fmt.Sprintf("DesiredCount%s", rs.Name)
 	template.AddParameter(&deployer_pb.Parameter{
@@ -241,7 +253,9 @@ func (rs *RuntimeService) Apply(template *Application) {
 		}))
 	}
 
+	needsIngress := false
 	if len(rs.ingressEndpoints) > 0 {
+		needsIngress = true
 		ingressEndpoints := make([]string, 0, len(rs.ingressEndpoints))
 		for endpoint := range rs.ingressEndpoints {
 			ingressEndpoints = append(ingressEndpoints, endpoint)
@@ -262,7 +276,21 @@ func (rs *RuntimeService) Apply(template *Application) {
 				Value: String("8080"),
 			})
 		}
-	} else {
+	}
+
+	if len(rs.outboxDatabases) > 1 {
+		return fmt.Errorf("only one outbox DB supported")
+	}
+
+	for _, db := range rs.outboxDatabases {
+		needsIngress = true
+		rs.IngressContainer.Secrets = append(rs.IngressContainer.Secrets, ecs.TaskDefinition_Secret{
+			Name:      "POSTGRES_OUTBOX",
+			ValueFrom: db.SecretValueFrom(),
+		})
+	}
+
+	if !needsIngress {
 		rs.IngressContainer = nil
 	}
 
@@ -316,6 +344,7 @@ func (rs *RuntimeService) Apply(template *Application) {
 		template.AddResource(targetGroup)
 	}
 
+	return nil
 }
 
 func (rs *RuntimeService) AddRoutes(ingress *ListenerRuleSet) error {

@@ -14,35 +14,74 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	sq "github.com/elgris/sqrl"
+	"github.com/golang/protobuf/ptypes/empty"
 	_ "github.com/lib/pq"
 	"github.com/pentops/log.go/log"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"gopkg.daemonl.com/sqrlx"
 )
 
 func (d *AWSRunner) RunDatabaseMigration(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) (*emptypb.Empty, error) {
-	if err := d.upsertPostgresDatabase(ctx, msg); err != nil {
+	if err := d.messageHandler.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
+		MigrationId:  msg.MigrationId,
+		DeploymentId: msg.DeploymentId,
+		Status:       deployer_pb.DatabaseMigrationStatus_PENDING,
+	}); err != nil {
 		return nil, err
+	}
+
+	migrateErr := d.runDatabaseMigration(ctx, msg)
+
+	if migrateErr != nil {
+		log.WithError(ctx, migrateErr).Error("RunDatabaseMigration")
+		if err := d.messageHandler.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
+			MigrationId:  msg.MigrationId,
+			DeploymentId: msg.DeploymentId,
+			Status:       deployer_pb.DatabaseMigrationStatus_FAILED,
+			Error:        proto.String(migrateErr.Error()),
+		}); err != nil {
+			return nil, err
+		}
+		return &empty.Empty{}, nil
+	}
+
+	if err := d.messageHandler.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
+		DeploymentId: msg.DeploymentId,
+		MigrationId:  msg.MigrationId,
+		Status:       deployer_pb.DatabaseMigrationStatus_COMPLETED,
+	}); err != nil {
+		return nil, err
+	}
+
+	return &empty.Empty{}, nil
+
+}
+
+func (d *AWSRunner) runDatabaseMigration(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
+	if err := d.upsertPostgresDatabase(ctx, msg); err != nil {
+		return err
 	}
 
 	if msg.Database.MigrationTaskOutputName != nil {
 
 		if msg.MigrationTaskArn == "" {
-			return nil, fmt.Errorf("stack output '%s' not found, for database %q", *msg.Database.MigrationTaskOutputName, msg.Database.Database.Name)
+			return fmt.Errorf("stack output '%s' not found, for database %q", *msg.Database.MigrationTaskOutputName, msg.Database.Database.Name)
 		}
 
 		if err := d.runMigrationTask(ctx, msg); err != nil {
-			return nil, err
+			return err
 		}
 
 		// This runs both before and after migration
 		if err := d.fixPostgresOwnership(ctx, msg); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
-	return &emptypb.Empty{}, nil
+	return nil
 
 }
 

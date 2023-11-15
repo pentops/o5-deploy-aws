@@ -3,12 +3,11 @@ package deployer
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	protovalidate "github.com/bufbuild/protovalidate-go"
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/app"
@@ -20,49 +19,55 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+type Environment struct {
+	Environment *environment_pb.Environment
+	AWS         *environment_pb.AWS
+}
 type Deployer struct {
-	Environment   *environment_pb.Environment
-	AWS           *environment_pb.AWS
 	RotateSecrets bool
-	Clients       awsinfra.ClientBuilder
-	storage       DeployerStorage
+	CancelUpdates bool
+
+	s3Client         awsinfra.S3API
+	cfTemplateBucket string
+
+	storage DeployerStorage
 
 	*deployer_tpb.UnimplementedDeployerTopicServer
 }
 
-func NewDeployer(storage DeployerStorage, environment *environment_pb.Environment, clientSet awsinfra.ClientBuilder) (*Deployer, error) {
-
-	validator, err := protovalidate.New()
-	if err != nil {
-		panic(err)
-	}
-
-	if err := validator.Validate(environment); err != nil {
-		return nil, err
-	}
-
-	awsTarget := environment.GetAws()
-	if awsTarget == nil {
-		return nil, errors.New("AWS Deployer requires the type of environment provider to be AWS")
-	}
-
+func NewDeployer(storage DeployerStorage, cfTemplateBucket string, s3Client awsinfra.S3API) (*Deployer, error) {
+	cfTemplateBucket = strings.TrimPrefix(cfTemplateBucket, "s3://")
 	return &Deployer{
-		Environment: environment,
-		AWS:         awsTarget,
-		Clients:     clientSet,
-		storage:     storage,
+		s3Client:         s3Client,
+		storage:          storage,
+		cfTemplateBucket: cfTemplateBucket,
 	}, nil
 }
 
-func (d *Deployer) BeginDeployment(ctx context.Context, app *app.BuiltApplication, cancelUpdates bool) error {
+func (d *Deployer) BeginDeployments(ctx context.Context, app *app.BuiltApplication, envNames []string) error {
+	for _, envName := range envNames {
+		if err := d.BeginDeployment(ctx, app, envName); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *Deployer) BeginDeployment(ctx context.Context, app *app.BuiltApplication, envName string) error {
+
 	ctx = log.WithFields(ctx, map[string]interface{}{
 		"appName":     app.Name,
-		"environment": d.Environment.FullName,
+		"environment": envName,
 	})
 
-	clients, err := d.Clients.Clients(ctx)
+	environment, err := d.storage.GetEnvironment(ctx, envName)
 	if err != nil {
 		return err
+	}
+
+	awsEnv := environment.GetAws()
+	if awsEnv == nil {
+		return fmt.Errorf("environment %s is not an AWS environment", envName)
 	}
 
 	deploymentID := uuid.NewString()
@@ -72,9 +77,9 @@ func (d *Deployer) BeginDeployment(ctx context.Context, app *app.BuiltApplicatio
 		return err
 	}
 
-	templateKey := fmt.Sprintf("%s/%s/%s.json", d.Environment.FullName, app.Name, deploymentID)
-	_, err = clients.S3.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(d.AWS.ScratchBucket),
+	templateKey := fmt.Sprintf("%s/%s/%s.json", environment.FullName, app.Name, deploymentID)
+	_, err = d.s3Client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(d.cfTemplateBucket),
 		Key:    aws.String(templateKey),
 		Body:   bytes.NewReader(templateJSON),
 	})
@@ -83,17 +88,18 @@ func (d *Deployer) BeginDeployment(ctx context.Context, app *app.BuiltApplicatio
 		return err
 	}
 
-	templateURL := fmt.Sprintf("https://s3.us-east-1.amazonaws.com/%s/%s", d.AWS.ScratchBucket, templateKey)
+	templateURL := fmt.Sprintf("https://s3.us-east-1.amazonaws.com/%s/%s", d.cfTemplateBucket, templateKey)
 
 	spec := &deployer_pb.DeploymentSpec{
-		AppName:           app.Name,
-		Version:           app.Version,
-		EnvironmentName:   d.Environment.FullName,
-		TemplateUrl:       templateURL,
-		Databases:         app.PostgresDatabases(),
-		Parameters:        app.Parameters(),
-		CancelUpdates:     cancelUpdates,
-		SnsTopics:         app.SNSTopics,
+		AppName:         app.Name,
+		Version:         app.Version,
+		EnvironmentName: environment.FullName,
+		TemplateUrl:     templateURL,
+		Databases:       app.PostgresDatabases(),
+		Parameters:      app.Parameters(),
+		SnsTopics:       app.SNSTopics,
+
+		CancelUpdates:     d.CancelUpdates,
 		RotateCredentials: d.RotateSecrets,
 	}
 
@@ -131,13 +137,8 @@ func (dd *Deployer) TriggerDeployment(ctx context.Context, msg *deployer_tpb.Tri
 
 func (dd *Deployer) StackStatusChanged(ctx context.Context, msg *deployer_tpb.StackStatusChangedMessage) (*emptypb.Empty, error) {
 
-	deployment, err := dd.storage.GetDeploymentForStack(ctx, msg.StackName)
-	if err != nil {
-		return nil, err
-	}
-
 	event := &deployer_pb.DeploymentEvent{
-		DeploymentId: deployment.DeploymentId,
+		DeploymentId: msg.StackId.DeploymentId,
 		Metadata: &deployer_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),

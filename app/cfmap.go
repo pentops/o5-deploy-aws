@@ -47,6 +47,18 @@ type DatabaseReference struct {
 	SecretResource *Resource[*secretsmanager.Secret]
 }
 
+func (dbDef DatabaseReference) SecretValueFrom() string {
+	jsonKey := "dburl"
+	versionStage := ""
+	versionID := ""
+	return cloudformation.Join(":", []string{
+		dbDef.SecretResource.Ref(),
+		jsonKey,
+		versionStage,
+		versionID,
+	})
+}
+
 func BuildApplication(app *application_pb.Application, versionTag string) (*Application, error) {
 
 	stackTemplate := NewApplication(app.Name, versionTag)
@@ -212,7 +224,10 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 			return nil, fmt.Errorf("adding routes to %s: %w", runtime.Name, err)
 		}
 
-		runtimeStack.Apply(stackTemplate)
+		if err := runtimeStack.Apply(stackTemplate); err != nil {
+			return nil, fmt.Errorf("adding %s: %w", runtime.Name, err)
+		}
+
 	}
 
 	for _, listenerRule := range listener.Rules {

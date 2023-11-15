@@ -4,89 +4,95 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/pentops/o5-deploy-aws/app"
-	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
 
-type VariableParameters struct {
-	DesiredCount int
-}
-
 type ParameterResolver interface {
-	ResolveParameter(param *deployer_pb.Parameter, variabla VariableParameters) (*deployer_pb.KeyValue, error)
+	ResolveParameter(param *deployer_pb.Parameter) (*deployer_pb.CloudFormationStackParameter, error)
 }
 
-func (d *Deployer) BuildParameterResolver(ctx context.Context) (*deployerResolver, error) {
+func BuildParameterResolver(ctx context.Context, environment *environment_pb.Environment) (*deployerResolver, error) {
 
-	takenPriorities, err := d.loadTakenPriorities(ctx)
-	if err != nil {
-		return nil, err
+	awsEnv := environment.GetAws()
+	if awsEnv == nil {
+		return nil, errors.New("AWS Deployer requires the type of environment provider to be AWS")
 	}
 
 	hostHeader := "*.*"
-	if d.AWS.HostHeader != nil {
-		hostHeader = *d.AWS.HostHeader
+	if awsEnv.HostHeader != nil {
+		hostHeader = *awsEnv.HostHeader
 	}
 
 	crossEnvSNS := map[string]string{}
 
-	for _, envLink := range d.AWS.EnvironmentLinks {
+	for _, envLink := range awsEnv.EnvironmentLinks {
 		crossEnvSNS[envLink.FullName] = envLink.SnsPrefix
 	}
 
 	dr := &deployerResolver{
-		takenPriorities: takenPriorities,
 		wellKnown: map[string]string{
-			app.ListenerARNParameter:          d.AWS.ListenerArn,
+			app.ListenerARNParameter:          awsEnv.ListenerArn,
 			app.HostHeaderParameter:           hostHeader,
-			app.ECSClusterParameter:           d.AWS.EcsClusterName,
-			app.ECSRepoParameter:              d.AWS.EcsRepo,
-			app.ECSTaskExecutionRoleParameter: d.AWS.EcsTaskExecutionRole,
-			app.EnvNameParameter:              d.Environment.FullName,
-			app.VPCParameter:                  d.AWS.VpcId,
-			app.MetaDeployAssumeRoleParameter: strings.Join(d.AWS.O5DeployerGrantRoles, ","),
-			app.JWKSParameter:                 strings.Join(d.Environment.TrustJwks, ","),
+			app.ECSClusterParameter:           awsEnv.EcsClusterName,
+			app.ECSRepoParameter:              awsEnv.EcsRepo,
+			app.ECSTaskExecutionRoleParameter: awsEnv.EcsTaskExecutionRole,
+			app.EnvNameParameter:              environment.FullName,
+			app.VPCParameter:                  awsEnv.VpcId,
+			app.MetaDeployAssumeRoleParameter: strings.Join(awsEnv.O5DeployerGrantRoles, ","),
+			app.JWKSParameter:                 strings.Join(environment.TrustJwks, ","),
 		},
-		custom:              d.Environment.Vars,
+		custom:              environment.Vars,
 		crossEnvSNSPrefixes: crossEnvSNS,
 	}
 	return dr, nil
 }
 
-func (rr *deployerResolver) ResolveParameter(param *deployer_pb.Parameter, variable VariableParameters) (*deployer_pb.KeyValue, error) {
+func (rr *deployerResolver) ResolveParameter(param *deployer_pb.Parameter) (*deployer_pb.CloudFormationStackParameter, error) {
 
-	parameter := &deployer_pb.KeyValue{
-		Name: param.Name,
+	switch ps := param.Source.Type.(type) {
+	case *deployer_pb.ParameterSourceType_RulePriority_:
+
+		return &deployer_pb.CloudFormationStackParameter{
+			Name: param.Name,
+			Source: &deployer_pb.CloudFormationStackParameter_Resolve{
+				Resolve: &deployer_pb.CloudFormationStackParameterType{
+					Type: &deployer_pb.CloudFormationStackParameterType_RulePriority_{
+						RulePriority: &deployer_pb.CloudFormationStackParameterType_RulePriority{
+							RouteGroup: ps.RulePriority.RouteGroup,
+						},
+					},
+				},
+			},
+		}, nil
+
+	case *deployer_pb.ParameterSourceType_DesiredCount_:
+		return &deployer_pb.CloudFormationStackParameter{
+			Name: param.Name,
+			Source: &deployer_pb.CloudFormationStackParameter_Resolve{
+				Resolve: &deployer_pb.CloudFormationStackParameterType{
+					Type: &deployer_pb.CloudFormationStackParameterType_DesiredCount_{
+						DesiredCount: &deployer_pb.CloudFormationStackParameterType_DesiredCount{},
+					},
+				},
+			},
+		}, nil
 	}
+
+	var value string
 	switch ps := param.Source.Type.(type) {
 	case *deployer_pb.ParameterSourceType_Static_:
-		parameter.Value = ps.Static.Value
+		value = ps.Static.Value
 
 	case *deployer_pb.ParameterSourceType_WellKnown_:
-		value, ok := rr.WellKnownParameter(param.Name)
+		val, ok := rr.WellKnownParameter(param.Name)
 		if !ok {
 			return nil, fmt.Errorf("unknown well known parameter: %s", param.Name)
 		}
-		parameter.Value = value
-
-	case *deployer_pb.ParameterSourceType_RulePriority_:
-		group := ps.RulePriority.RouteGroup
-		priority, err := rr.NextAvailableListenerRulePriority(group)
-		if err != nil {
-			return nil, err
-		}
-
-		parameter.Value = fmt.Sprintf("%d", priority)
-
-	case *deployer_pb.ParameterSourceType_DesiredCount_:
-		parameter.Value = fmt.Sprintf("%d", variable.DesiredCount)
+		value = val
 
 	case *deployer_pb.ParameterSourceType_CrossEnvSns_:
 		envName := ps.CrossEnvSns.EnvName
@@ -95,7 +101,7 @@ func (rr *deployerResolver) ResolveParameter(param *deployer_pb.Parameter, varia
 			return nil, err
 		}
 
-		parameter.Value = topicPrefix
+		value = topicPrefix
 
 	case *deployer_pb.ParameterSourceType_EnvVar_:
 		key := ps.EnvVar.Name
@@ -103,17 +109,22 @@ func (rr *deployerResolver) ResolveParameter(param *deployer_pb.Parameter, varia
 		if !ok {
 			return nil, fmt.Errorf("unknown env var: %s", key)
 		}
-		parameter.Value = val
+		value = val
 
 	default:
 		return nil, fmt.Errorf("unknown parameter source (%v) %s", param.Source, param.Name)
 	}
 
-	return parameter, nil
+	return &deployer_pb.CloudFormationStackParameter{
+		Name: param.Name,
+		Source: &deployer_pb.CloudFormationStackParameter_Value{
+			Value: value,
+		},
+	}, nil
+
 }
 
 type deployerResolver struct {
-	takenPriorities     map[int]bool
 	wellKnown           map[string]string
 	custom              []*environment_pb.CustomVariable
 	crossEnvSNSPrefixes map[string]string
@@ -142,70 +153,7 @@ func (dr *deployerResolver) CrossEnvSNSPrefix(envName string) (string, error) {
 	return "", fmt.Errorf("unknown env for SNS prefix: %s", envName)
 }
 
-func (dr *deployerResolver) NextAvailableListenerRulePriority(group application_pb.RouteGroup) (int, error) {
-	var groupRange [2]int
-
-	switch group {
-	case application_pb.RouteGroup_ROUTE_GROUP_NORMAL,
-		application_pb.RouteGroup_ROUTE_GROUP_UNSPECIFIED:
-		groupRange = [2]int{1000, 2000}
-	case application_pb.RouteGroup_ROUTE_GROUP_FIRST:
-		groupRange = [2]int{1, 1000}
-	case application_pb.RouteGroup_ROUTE_GROUP_FALLBACK:
-		groupRange = [2]int{2000, 3000}
-	default:
-		return 0, fmt.Errorf("unknown route group %s", group)
-	}
-
-	for i := groupRange[0]; i < groupRange[1]; i++ {
-		if _, ok := dr.takenPriorities[i]; !ok {
-			dr.takenPriorities[i] = true
-			return i, nil
-		}
-	}
-
-	return 0, errors.New("no available listener rule priorities")
-}
-
 func (dr *deployerResolver) WellKnownParameter(name string) (string, bool) {
 	val, ok := dr.wellKnown[name]
 	return val, ok
-}
-func (d *Deployer) loadTakenPriorities(ctx context.Context) (map[int]bool, error) {
-	clients, err := d.Clients.Clients(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	elbClient := clients.ELB
-
-	takenPriorities := make(map[int]bool)
-	var marker *string
-	for {
-		rules, err := elbClient.DescribeRules(ctx, &elbv2.DescribeRulesInput{
-			ListenerArn: aws.String(d.AWS.ListenerArn),
-			Marker:      marker,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		for _, rule := range rules.Rules {
-			if *rule.Priority == "default" {
-				continue
-			}
-			priority, err := strconv.Atoi(*rule.Priority)
-			if err != nil {
-				return nil, err
-			}
-
-			takenPriorities[priority] = true
-		}
-
-		marker = rules.NextMarker
-		if marker == nil {
-			break
-		}
-	}
-	return takenPriorities, nil
 }

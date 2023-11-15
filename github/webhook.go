@@ -16,7 +16,7 @@ type IClient interface {
 }
 
 type IDeployer interface {
-	Deploy(context.Context, *app.BuiltApplication, bool) error
+	BeginDeployments(ctx context.Context, app *app.BuiltApplication, envNames []string) error
 }
 
 type RefMatcher interface {
@@ -24,18 +24,18 @@ type RefMatcher interface {
 }
 
 type WebhookWorker struct {
-	github    IClient
-	deployers map[string]IDeployer
-	refs      RefMatcher
+	github   IClient
+	deployer IDeployer
+	refs     RefMatcher
 
 	github_pb.UnimplementedWebhookTopicServer
 }
 
-func NewWebhookWorker(githubClient IClient, deployers map[string]IDeployer, refs RefMatcher) (*WebhookWorker, error) {
+func NewWebhookWorker(githubClient IClient, deployer IDeployer, refs RefMatcher) (*WebhookWorker, error) {
 	return &WebhookWorker{
-		github:    githubClient,
-		deployers: deployers,
-		refs:      refs,
+		github:   githubClient,
+		deployer: deployer,
+		refs:     refs,
 	}, nil
 }
 
@@ -53,17 +53,6 @@ func (ww *WebhookWorker) Push(ctx context.Context, event *github_pb.PushMessage)
 	if len(targetEnvNames) < 1 {
 		log.Info(ctx, "No refs match, nothing to do")
 		return &emptypb.Empty{}, nil
-	}
-
-	targetEnvs := make([]IDeployer, len(targetEnvNames))
-	for i, envName := range targetEnvNames {
-
-		envDeployer, ok := ww.deployers[envName]
-		if !ok {
-			return nil, fmt.Errorf("no deployer found for environment %s", envName)
-		}
-
-		targetEnvs[i] = envDeployer
 	}
 
 	apps, err := ww.github.PullO5Configs(ctx, event.Owner, event.Repo, event.After)
@@ -86,10 +75,8 @@ func (ww *WebhookWorker) Push(ctx context.Context, event *github_pb.PushMessage)
 
 	built := appStack.Build()
 
-	for _, targetEnv := range targetEnvs {
-		if err := targetEnv.Deploy(ctx, built, false); err != nil {
-			return nil, err
-		}
+	if err := ww.deployer.BeginDeployments(ctx, built, targetEnvNames); err != nil {
+		return nil, err
 	}
 	return &emptypb.Empty{}, nil
 }

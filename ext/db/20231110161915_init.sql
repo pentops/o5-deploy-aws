@@ -1,17 +1,19 @@
 -- +goose Up
 
 CREATE TABLE deployment (
-	id uuid NOT NULL,
-	state jsonb NOT NULL,
+	id uuid PRIMARY KEY,
+	state jsonb NOT NULL
 );
 
 CREATE TABLE deployment_event (
-	id uuid NOT NULL,
+	id uuid PRIMARY KEY,
 	deployment_id uuid NOT NULL,
 	event jsonb NOT NULL,
-	timestamptz timestamp NOT NULL
+	timestamp timestamptz NOT NULL
 );
 
 -- +goose Down
 
+DROP TABLE deployment_event;
 DROP TABLE deployment;
+

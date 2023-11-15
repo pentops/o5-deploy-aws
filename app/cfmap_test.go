@@ -158,8 +158,8 @@ func TestRuntime(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	if len(rs.Containers) != 2 {
-		t.Fatalf("expected 2 container definition, got %d", len(rs.Containers))
+	if len(rs.Containers) != 1 {
+		t.Fatalf("expected 1 container definition, got %d", len(rs.Containers))
 	}
 
 	{

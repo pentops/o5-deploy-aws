@@ -10,6 +10,24 @@ import (
 )
 
 var transitions = []ITransitionSpec{
+	// Ignore Events
+	TransitionSpec[*deployer_pb.DeploymentEventType_StackStatus]{
+		FromStatus: []deployer_pb.DeploymentStatus{
+			deployer_pb.DeploymentStatus_DB_MIGRATING,
+		},
+		EventFilter: func(event *deployer_pb.DeploymentEventType_StackStatus) bool {
+			return event.Lifecycle == deployer_pb.StackLifecycle_COMPLETE
+		},
+		Transition: func(
+			ctx context.Context,
+			tb TransitionBaton,
+			deployment *deployer_pb.DeploymentState,
+			event *deployer_pb.DeploymentEventType_StackStatus,
+		) error {
+			return nil
+		},
+	},
+
 	// [*] --> Queued : Triggered
 	TransitionSpec[*deployer_pb.DeploymentEventType_Triggered]{
 		FromStatus: []deployer_pb.DeploymentStatus{
@@ -44,16 +62,6 @@ var transitions = []ITransitionSpec{
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_LOCKED
 
-			topicNames := make([]string, len(deployment.Spec.SnsTopics))
-			for i, topic := range deployment.Spec.SnsTopics {
-				topicNames[i] = topic.Name
-			}
-
-			tb.SideEffect(&deployer_tpb.UpsertSNSTopicsMessage{
-				EnvironmentName: deployment.Spec.EnvironmentName,
-				TopicNames:      topicNames,
-			})
-
 			tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_StackWait_{
 				StackWait: &deployer_pb.DeploymentEventType_StackWait{},
 			}))
@@ -74,7 +82,11 @@ var transitions = []ITransitionSpec{
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_WAITING
 			tb.SideEffect(&deployer_tpb.StabalizeStackMessage{
-				StackName:    deployment.StackName,
+				StackId: &deployer_tpb.StackID{
+					StackName:       deployment.StackName,
+					DeploymentId:    deployment.DeploymentId,
+					DeploymentPhase: "wait",
+				},
 				CancelUpdate: deployment.Spec.CancelUpdates,
 			})
 
@@ -118,20 +130,29 @@ var transitions = []ITransitionSpec{
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_CREATING
 
-			initialParameters, err := tb.ResolveParameters(
-				deployment.Spec.Parameters,
-				VariableParameters{
-					DesiredCount: 0,
-				})
+			initialParameters, err := tb.ResolveParameters(deployment.Spec.Parameters)
 			if err != nil {
 				return err
 			}
 
+			topicNames := make([]string, len(deployment.Spec.SnsTopics))
+			for i, topic := range deployment.Spec.SnsTopics {
+				topicNames[i] = fmt.Sprintf("%s-%s", deployment.Spec.EnvironmentName, topic.Name)
+			}
+
 			// Create, scale 0
 			tb.SideEffect(&deployer_tpb.CreateNewStackMessage{
-				StackName:   deployment.StackName,
-				Parameters:  initialParameters,
-				TemplateUrl: deployment.Spec.TemplateUrl,
+				StackId: &deployer_tpb.StackID{
+					StackName:       deployment.StackName,
+					DeploymentId:    deployment.DeploymentId,
+					DeploymentPhase: "create",
+				},
+				Parameters:   initialParameters,
+				TemplateUrl:  deployment.Spec.TemplateUrl,
+				DesiredCount: 0,
+				ExtraResources: &deployer_tpb.ExtraResources{
+					SnsTopics: topicNames,
+				},
 			})
 			return nil
 		},
@@ -409,7 +430,11 @@ var transitions = []ITransitionSpec{
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_SCALING_UP
 			tb.SideEffect(&deployer_tpb.ScaleStackMessage{
-				StackName:    deployment.StackName,
+				StackId: &deployer_tpb.StackID{
+					StackName:       deployment.StackName,
+					DeploymentId:    deployment.DeploymentId,
+					DeploymentPhase: "scale-up",
+				},
 				DesiredCount: event.DesiredCount,
 			})
 			return nil
@@ -428,8 +453,12 @@ var transitions = []ITransitionSpec{
 			deployment.Status = deployer_pb.DeploymentStatus_SCALING_DOWN
 
 			tb.SideEffect(&deployer_tpb.ScaleStackMessage{
-				StackName:    deployment.StackName,
 				DesiredCount: event.DesiredCount,
+				StackId: &deployer_tpb.StackID{
+					StackName:       deployment.StackName,
+					DeploymentId:    deployment.DeploymentId,
+					DeploymentPhase: "scale-down",
+				},
 			})
 			return nil
 		},
@@ -446,19 +475,28 @@ var transitions = []ITransitionSpec{
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_INFRA_MIGRATE
 
-			parameters, err := tb.ResolveParameters(
-				deployment.Spec.Parameters,
-				VariableParameters{
-					DesiredCount: 0,
-				})
+			parameters, err := tb.ResolveParameters(deployment.Spec.Parameters)
 			if err != nil {
 				return err
 			}
 
+			topicNames := make([]string, len(deployment.Spec.SnsTopics))
+			for i, topic := range deployment.Spec.SnsTopics {
+				topicNames[i] = fmt.Sprintf("%s-%s", deployment.Spec.EnvironmentName, topic.Name)
+			}
+
 			msg := &deployer_tpb.UpdateStackMessage{
-				StackName:   deployment.StackName,
-				Parameters:  parameters,
-				TemplateUrl: deployment.Spec.TemplateUrl,
+				StackId: &deployer_tpb.StackID{
+					StackName:       deployment.StackName,
+					DeploymentId:    deployment.DeploymentId,
+					DeploymentPhase: "infra-migrate",
+				},
+				Parameters:   parameters,
+				TemplateUrl:  deployment.Spec.TemplateUrl,
+				DesiredCount: 0,
+				ExtraResources: &deployer_tpb.ExtraResources{
+					SnsTopics: topicNames,
+				},
 			}
 
 			tb.SideEffect(msg)
