@@ -11,6 +11,7 @@ secrets:
 databases:
   - name: main
     postgres:
+      runOutbox: true
       dbName: o5
       serverGroup: default
       dbExtensions:

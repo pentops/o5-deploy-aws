@@ -143,15 +143,9 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 	}
 
 	awsRunner := awsinfra.NewRunner(clientSet, eventLoop)
+	awsRunner.LocalCLIRun = true
 
 	if err := localrun.RegisterLocalHandlers(eventLoop, awsRunner); err != nil {
-		return err
-	}
-
-	stackName := fmt.Sprintf("%s-%s", env.FullName, app.AppName())
-
-	poller, err := awsRunner.PollStack(ctx, stackName)
-	if err != nil {
 		return err
 	}
 
@@ -161,9 +155,6 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 
 	ctx, cancel := context.WithCancel(ctx)
 	eg, ctx := errgroup.WithContext(ctx)
-	eg.Go(func() error {
-		return poller.Wait(ctx)
-	})
 	eg.Go(func() error {
 		return eventLoop.Wait(ctx)
 	})

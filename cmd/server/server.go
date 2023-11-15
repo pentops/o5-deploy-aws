@@ -207,7 +207,7 @@ func runServe(ctx context.Context) error {
 	}
 
 	awsInfraRunner := awsinfra.NewRunner(clientSet, pgStore)
-	awsInfraRunner.CallbackARN = cfg.CallbackARN
+	awsInfraRunner.CallbackARNs = []string{cfg.CallbackARN}
 
 	deploymentManager, err := deployer.NewDeployer(pgStore, cfg.CFTemplates, s3Client)
 	if err != nil {

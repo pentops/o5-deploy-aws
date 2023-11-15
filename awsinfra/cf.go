@@ -14,6 +14,7 @@ import (
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/smithy-go"
+	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-go/application/v1/application_pb"
@@ -31,10 +32,14 @@ type MessageHandler interface {
 
 type AWSRunner struct {
 	Clients        ClientBuilder
-	CallbackARN    string
+	CallbackARNs   []string
 	messageHandler MessageHandler
 	*deployer_tpb.UnimplementedAWSCommandTopicServer
 	*messaging_tpb.UnimplementedRawMessageTopicServer
+
+	// LocalCLIRun causes the runner to poll the stack until it reaches a terminal state
+	// after changes, as well as log more verbosely while waiting
+	LocalCLIRun bool
 }
 
 func NewRunner(clients ClientBuilder, messageHandler MessageHandler) *AWSRunner {
@@ -256,6 +261,12 @@ func (cf *AWSRunner) StabalizeStack(ctx context.Context, msg *deployer_tpb.Staba
 
 	case types.StackStatusRollbackInProgress:
 		// Short exit: Further events will be emitted during the rollback
+		if cf.LocalCLIRun {
+			err = cf.pollStack(ctx, "", msg.StackId)
+			if err != nil {
+				return nil, err
+			}
+		}
 		return &emptypb.Empty{}, nil
 	}
 
@@ -265,13 +276,22 @@ func (cf *AWSRunner) StabalizeStack(ctx context.Context, msg *deployer_tpb.Staba
 		"stackStatus": remoteStack.StackStatus,
 	}).Debug("StabalizeStack Result")
 
-	err = cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
-		StackId:   msg.StackId,
-		Status:    string(remoteStack.StackStatus),
-		Lifecycle: lifecycle,
-	})
-	if err != nil {
-		return nil, err
+	if cf.LocalCLIRun {
+		err = cf.pollStack(ctx, "", msg.StackId)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// This only runs if we aren't running the poller, as the poller will do
+		// the same thing
+		err = cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
+			StackId:   msg.StackId,
+			Status:    string(remoteStack.StackStatus),
+			Lifecycle: lifecycle,
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &emptypb.Empty{}, nil
@@ -447,6 +467,7 @@ func (cf *AWSRunner) resolveParameters(ctx context.Context, lastInput []types.Pa
 		case *deployer_pb.CloudFormationStackParameter_Resolve:
 			var previousParameter *types.Parameter
 			for _, p := range lastInput {
+				p := p
 				if *p.ParameterKey == param.Name {
 					previousParameter = &p
 					break
@@ -494,10 +515,17 @@ func (cf *AWSRunner) CreateNewStack(ctx context.Context, msg *deployer_tpb.Creat
 		Capabilities: []types.Capability{
 			types.CapabilityCapabilityNamedIam,
 		},
-		NotificationARNs: []string{cf.CallbackARN},
+		NotificationARNs: cf.CallbackARNs,
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	if cf.LocalCLIRun {
+		err = cf.pollStack(ctx, "", msg.StackId)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &emptypb.Empty{}, nil
@@ -534,7 +562,7 @@ func (cf *AWSRunner) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateSt
 		Capabilities: []types.Capability{
 			types.CapabilityCapabilityNamedIam,
 		},
-		NotificationARNs: []string{cf.CallbackARN},
+		NotificationARNs: cf.CallbackARNs,
 	})
 	if err != nil {
 		if !isNoUpdatesError(err) {
@@ -546,33 +574,14 @@ func (cf *AWSRunner) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateSt
 		}
 	}
 
+	if cf.LocalCLIRun {
+		err = cf.pollStack(ctx, current.StackStatus, msg.StackId)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &emptypb.Empty{}, nil
-}
-
-// sends a fake status update message back to the deployer so that it thinks
-// something has happened and continues the event chain
-func (cf *AWSRunner) noUpdatesToBePerformed(ctx context.Context, stackID *deployer_tpb.StackID) error {
-
-	remoteStack, err := cf.getOneStack(ctx, stackID.StackName)
-	if err != nil {
-		return err
-	}
-
-	summary, err := summarizeStackStatus(remoteStack)
-	if err != nil {
-		return err
-	}
-
-	if err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
-		StackId:   stackID,
-		Status:    "NO UPDATES TO BE PERFORMED",
-		Outputs:   summary.Outputs,
-		Lifecycle: deployer_pb.StackLifecycle_COMPLETE,
-	}); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (cf *AWSRunner) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStackMessage) (*emptypb.Empty, error) {
@@ -604,7 +613,6 @@ func (cf *AWSRunner) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStac
 		return nil, err
 	}
 
-	log.Debug(ctx, "UpdateStack direct call")
 	_, err = client.UpdateStack(ctx, &cloudformation.UpdateStackInput{
 		StackName:           aws.String(msg.StackId.StackName),
 		ClientRequestToken:  buildClientID(msg.StackId),
@@ -613,7 +621,7 @@ func (cf *AWSRunner) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStac
 		Capabilities: []types.Capability{
 			types.CapabilityCapabilityNamedIam,
 		},
-		NotificationARNs: []string{cf.CallbackARN},
+		NotificationARNs: cf.CallbackARNs,
 	})
 	if err != nil {
 		if !isNoUpdatesError(err) {
@@ -624,7 +632,40 @@ func (cf *AWSRunner) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStac
 		}
 	}
 
+	if cf.LocalCLIRun {
+		err = cf.pollStack(ctx, current.StackStatus, msg.StackId)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &emptypb.Empty{}, nil
+}
+
+// sends a fake status update message back to the deployer so that it thinks
+// something has happened and continues the event chain
+func (cf *AWSRunner) noUpdatesToBePerformed(ctx context.Context, stackID *deployer_tpb.StackID) error {
+
+	remoteStack, err := cf.getOneStack(ctx, stackID.StackName)
+	if err != nil {
+		return err
+	}
+
+	summary, err := summarizeStackStatus(remoteStack)
+	if err != nil {
+		return err
+	}
+
+	if err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
+		StackId:   stackID,
+		Status:    "NO UPDATES TO BE PERFORMED",
+		Outputs:   summary.Outputs,
+		Lifecycle: deployer_pb.StackLifecycle_COMPLETE,
+	}); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (cf *AWSRunner) CancelStackUpdate(ctx context.Context, msg *deployer_tpb.CancelStackUpdateMessage) (*emptypb.Empty, error) {
@@ -827,77 +868,56 @@ func isNoUpdatesError(err error) bool {
 	return opError.ErrorCode() == "ValidationError" && opError.ErrorMessage() == "No updates are to be performed."
 }
 
-type StackPoller struct {
-	chErr chan error
-}
-
-func (sp StackPoller) Wait(ctx context.Context) error {
-	select {
-	case err := <-sp.chErr:
-		return err
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func (cf *AWSRunner) PollStack(ctx context.Context, stackID *deployer_tpb.StackID) (*StackPoller, error) {
-
-	sp := &StackPoller{
-		chErr: make(chan error),
-	}
+func (cf *AWSRunner) pollStack(ctx context.Context, lastStatus types.StackStatus, stackID *deployer_tpb.StackID) error {
 
 	stackName := stackID.StackName
 
-	ctx = log.WithField(ctx, "stackName", stackName)
+	ctx = log.WithFields(ctx, map[string]interface{}{
+		"stackName": stackName,
+		"pollerID":  uuid.NewString(),
+	})
 
 	log.Debug(ctx, "PollStack Begin")
 
-	remoteStack, err := cf.getOneStack(ctx, stackName)
-	if err != nil {
-		return nil, err
+	for {
+		remoteStack, err := cf.getOneStack(ctx, stackName)
+		if err != nil {
+			return err
+		}
+		if remoteStack == nil {
+			return fmt.Errorf("missing stack %s", stackName)
+		}
+
+		if lastStatus == remoteStack.StackStatus {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+
+		lastStatus = remoteStack.StackStatus
+
+		summary, err := summarizeStackStatus(remoteStack)
+		if err != nil {
+			return err
+		}
+
+		log.WithFields(ctx, map[string]interface{}{
+			"lifecycle":   summary.SummaryType.ShortString(),
+			"stackStatus": remoteStack.StackStatus,
+		}).Debug("PollStack Result")
+
+		if err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
+			StackId:   stackID,
+			Status:    string(remoteStack.StackStatus),
+			Outputs:   summary.Outputs,
+			Lifecycle: summary.SummaryType,
+		}); err != nil {
+			return err
+		}
+
+		if summary.Stable {
+			log.Debug(ctx, "PollStack End")
+			return nil
+		}
 	}
-	lastStatus := remoteStack.StackStatus
 
-	go func() {
-		sp.chErr <- func() error {
-			for {
-				remoteStack, err := cf.getOneStack(ctx, stackName)
-				if err != nil {
-					return err
-				}
-				if remoteStack == nil {
-					return fmt.Errorf("missing stack %s", stackName)
-				}
-
-				if lastStatus == remoteStack.StackStatus {
-					time.Sleep(1 * time.Second)
-					continue
-				}
-
-				lastStatus = remoteStack.StackStatus
-
-				summary, err := summarizeStackStatus(remoteStack)
-				if err != nil {
-					return err
-				}
-
-				log.WithFields(ctx, map[string]interface{}{
-					"lifecycle":   summary.SummaryType.ShortString(),
-					"stackStatus": remoteStack.StackStatus,
-				}).Debug("PollStack Result")
-
-				if err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
-					StackId:   stackID,
-					Status:    string(remoteStack.StackStatus),
-					Outputs:   summary.Outputs,
-					Lifecycle: summary.SummaryType,
-				}); err != nil {
-					return err
-				}
-			}
-		}()
-		log.Debug(ctx, "PollStack End")
-	}()
-
-	return sp, nil
 }
