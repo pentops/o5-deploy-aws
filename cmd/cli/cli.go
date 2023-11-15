@@ -26,6 +26,7 @@ type flagConfig struct {
 	dryRun        bool
 	rotateSecrets bool
 	cancelUpdate  bool
+	scratchBucket string
 }
 
 func main() {
@@ -33,6 +34,7 @@ func main() {
 	flag.StringVar(&cfg.envFilename, "env", "", "environment file")
 	flag.StringVar(&cfg.appFilename, "app", "", "application file")
 	flag.StringVar(&cfg.version, "version", "", "version tag")
+	flag.StringVar(&cfg.scratchBucket, "scratch-bucket", "", "An S3 bucket name to upload templates")
 	flag.BoolVar(&cfg.dryRun, "dry", false, "dry run - print template and exit")
 	flag.BoolVar(&cfg.rotateSecrets, "rotate-secrets", false, "rotate secrets - rotate any existing secrets (e.g. db creds)")
 	flag.BoolVar(&cfg.cancelUpdate, "cancel-update", false, "cancel update - cancel any ongoing update prior to deployment")
@@ -41,6 +43,11 @@ func main() {
 
 	if cfg.appFilename == "" {
 		fmt.Fprintln(os.Stderr, "missing application file (-app)")
+		os.Exit(1)
+	}
+
+	if cfg.scratchBucket == "" {
+		fmt.Fprintln(os.Stderr, "missing scratch bucket (-scratch-bucket)")
 		os.Exit(1)
 	}
 
@@ -129,7 +136,7 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		return err
 	}
 
-	deploymentManager, err := deployer.NewDeployer(stateStore, awsTarget.ScratchBucket, s3Client)
+	deploymentManager, err := deployer.NewDeployer(stateStore, flagConfig.scratchBucket, s3Client)
 
 	if err != nil {
 		return err

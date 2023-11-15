@@ -24,7 +24,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/pentops/genericstate v0.0.0-20231111010630-4bbbdca0d2f5
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
-	github.com/pentops/o5-go v0.0.0-20231114235256-4b37157d817a
+	github.com/pentops/o5-go v0.0.0-20231115013819-e43fc6b0bb89
 	github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/stretchr/testify v1.8.4

@@ -2,6 +2,7 @@ package localrun
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -74,6 +75,7 @@ func (lel *LocalEventLoop) Wait(ctx context.Context) error {
 	}()
 
 	err := <-chErr
+	log.WithError(ctx, err).Error("Event Loop Exit")
 	cancel()
 	return err
 }
@@ -91,7 +93,9 @@ func (lel *LocalEventLoop) handleMessage(ctx context.Context, msg proto.Message)
 	log.Debug(handlerContext, "Begin Event Loop Handler")
 
 	if err := handler(handlerContext, msg); err != nil {
-		log.WithError(handlerContext, err).Error("Event Loop Handler Error")
+		if !errors.Is(err, context.Canceled) {
+			log.WithError(handlerContext, err).Error("Event Loop Handler Error")
+		}
 		return err
 	}
 	log.Info(handlerContext, "Event Loop Handler Success")

@@ -288,6 +288,10 @@ func (rs *RuntimeService) Apply(template *Application) error {
 			Name:      "POSTGRES_OUTBOX",
 			ValueFrom: db.SecretValueFrom(),
 		})
+		rs.IngressContainer.Environment = append(rs.IngressContainer.Environment, ecs.TaskDefinition_KeyValuePair{
+			Name:  String("SNS_PREFIX"),
+			Value: String(cloudformation.Ref(SNSPrefixParameter)),
+		})
 	}
 
 	if !needsIngress {

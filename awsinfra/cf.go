@@ -258,6 +258,16 @@ func (cf *AWSRunner) StabalizeStack(ctx context.Context, msg *deployer_tpb.Staba
 		// In the Stabalize handler ONLY, this counts as a success, as the stack
 		// is stable and ready for another attempt
 		lifecycle = deployer_pb.StackLifecycle_COMPLETE
+		err = cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
+			StackId:   msg.StackId,
+			Status:    string(remoteStack.StackStatus),
+			Lifecycle: lifecycle,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		return &emptypb.Empty{}, nil
 
 	case types.StackStatusRollbackInProgress:
 		// Short exit: Further events will be emitted during the rollback
@@ -630,6 +640,7 @@ func (cf *AWSRunner) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStac
 		if err := cf.noUpdatesToBePerformed(ctx, msg.StackId); err != nil {
 			return nil, err
 		}
+		return &emptypb.Empty{}, nil
 	}
 
 	if cf.LocalCLIRun {
@@ -888,17 +899,22 @@ func (cf *AWSRunner) pollStack(ctx context.Context, lastStatus types.StackStatus
 			return fmt.Errorf("missing stack %s", stackName)
 		}
 
+		summary, err := summarizeStackStatus(remoteStack)
+		if err != nil {
+			return err
+		}
+
 		if lastStatus == remoteStack.StackStatus {
+
+			log.WithFields(ctx, map[string]interface{}{
+				"lifecycle":   summary.SummaryType.ShortString(),
+				"stackStatus": remoteStack.StackStatus,
+			}).Debug("PollStack No Change")
 			time.Sleep(1 * time.Second)
 			continue
 		}
 
 		lastStatus = remoteStack.StackStatus
-
-		summary, err := summarizeStackStatus(remoteStack)
-		if err != nil {
-			return err
-		}
 
 		log.WithFields(ctx, map[string]interface{}{
 			"lifecycle":   summary.SummaryType.ShortString(),

@@ -50,7 +50,12 @@ func NewLocalStateStore(eventLoop Publisher) *LocalStateStore {
 }
 
 func (lss *LocalStateStore) Wait(ctx context.Context) error {
-	return <-lss.waitChan
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-lss.waitChan:
+		return err
+	}
 }
 
 func (lss *LocalStateStore) AddEnvironment(environment *environment_pb.Environment) error {
