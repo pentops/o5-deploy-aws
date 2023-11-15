@@ -32,6 +32,7 @@ const (
 
 	O5SidecarContainerName = "o5_runtime"
 	O5SidecarImageName     = "ghcr.io/pentops/o5-runtime-sidecar:latest"
+	DeadLetterTargetName   = "dead-letter"
 )
 
 type globalData struct {
@@ -214,6 +215,21 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 	}
 
 	listener := NewListenerRuleSet()
+
+	if len(app.Targets) > 0 {
+		hadDeadLetter := false
+		for _, target := range app.Targets {
+			if target.Name == DeadLetterTargetName {
+				hadDeadLetter = true
+				break
+			}
+		}
+		if !hadDeadLetter {
+			app.Targets = append(app.Targets, &application_pb.Target{
+				Name: "dead-letter",
+			})
+		}
+	}
 
 	for _, runtime := range app.Runtimes {
 		runtimeStack, err := NewRuntimeService(global, runtime)

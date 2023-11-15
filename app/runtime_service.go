@@ -128,6 +128,7 @@ func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
 				"ecs",
 				cloudformation.Ref(EnvNameParameter),
 				rsPrefix,
+				def.Name,
 			}),
 			"awslogs-create-group":  "true",
 			"awslogs-region":        cloudformation.Ref("AWS::Region"),
