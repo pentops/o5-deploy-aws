@@ -23,7 +23,8 @@ type Environment struct {
 	Environment *environment_pb.Environment
 	AWS         *environment_pb.AWS
 }
-type Deployer struct {
+
+type DeploymentManager struct {
 	RotateSecrets bool
 	CancelUpdates bool
 
@@ -35,16 +36,16 @@ type Deployer struct {
 	*deployer_tpb.UnimplementedDeployerTopicServer
 }
 
-func NewDeployer(storage DeployerStorage, cfTemplateBucket string, s3Client awsinfra.S3API) (*Deployer, error) {
+func NewDeploymentManager(storage DeployerStorage, cfTemplateBucket string, s3Client awsinfra.S3API) (*DeploymentManager, error) {
 	cfTemplateBucket = strings.TrimPrefix(cfTemplateBucket, "s3://")
-	return &Deployer{
+	return &DeploymentManager{
 		s3Client:         s3Client,
 		storage:          storage,
 		cfTemplateBucket: cfTemplateBucket,
 	}, nil
 }
 
-func (d *Deployer) BeginDeployments(ctx context.Context, app *app.BuiltApplication, envNames []string) error {
+func (d *DeploymentManager) BeginDeployments(ctx context.Context, app *app.BuiltApplication, envNames []string) error {
 	for _, envName := range envNames {
 		if err := d.BeginDeployment(ctx, app, envName); err != nil {
 			return err
@@ -53,7 +54,7 @@ func (d *Deployer) BeginDeployments(ctx context.Context, app *app.BuiltApplicati
 	return nil
 }
 
-func (d *Deployer) BeginDeployment(ctx context.Context, app *app.BuiltApplication, envName string) error {
+func (d *DeploymentManager) BeginDeployment(ctx context.Context, app *app.BuiltApplication, envName string) error {
 
 	ctx = log.WithFields(ctx, map[string]interface{}{
 		"appName":     app.Name,
@@ -111,7 +112,7 @@ func (d *Deployer) BeginDeployment(ctx context.Context, app *app.BuiltApplicatio
 	})
 }
 
-func (dd *Deployer) TriggerDeployment(ctx context.Context, msg *deployer_tpb.TriggerDeploymentMessage) (*emptypb.Empty, error) {
+func (dd *DeploymentManager) TriggerDeployment(ctx context.Context, msg *deployer_tpb.TriggerDeploymentMessage) (*emptypb.Empty, error) {
 
 	deploymentEvent := &deployer_pb.DeploymentEvent{
 		DeploymentId: msg.DeploymentId,
@@ -135,7 +136,7 @@ func (dd *Deployer) TriggerDeployment(ctx context.Context, msg *deployer_tpb.Tri
 	return &emptypb.Empty{}, nil
 }
 
-func (dd *Deployer) StackStatusChanged(ctx context.Context, msg *deployer_tpb.StackStatusChangedMessage) (*emptypb.Empty, error) {
+func (dd *DeploymentManager) StackStatusChanged(ctx context.Context, msg *deployer_tpb.StackStatusChangedMessage) (*emptypb.Empty, error) {
 
 	event := &deployer_pb.DeploymentEvent{
 		DeploymentId: msg.StackId.DeploymentId,
@@ -153,11 +154,11 @@ func (dd *Deployer) StackStatusChanged(ctx context.Context, msg *deployer_tpb.St
 			},
 		},
 	}
-	return &emptypb.Empty{}, dd.RegisterEvent(ctx, event)
 
+	return &emptypb.Empty{}, dd.RegisterEvent(ctx, event)
 }
 
-func (dd *Deployer) MigrationStatusChanged(ctx context.Context, msg *deployer_tpb.MigrationStatusChangedMessage) (*emptypb.Empty, error) {
+func (dd *DeploymentManager) MigrationStatusChanged(ctx context.Context, msg *deployer_tpb.MigrationStatusChangedMessage) (*emptypb.Empty, error) {
 
 	event := &deployer_pb.DeploymentEvent{
 		DeploymentId: msg.DeploymentId,
@@ -175,6 +176,6 @@ func (dd *Deployer) MigrationStatusChanged(ctx context.Context, msg *deployer_tp
 			},
 		},
 	}
-	return &emptypb.Empty{}, dd.RegisterEvent(ctx, event)
 
+	return &emptypb.Empty{}, dd.RegisterEvent(ctx, event)
 }
