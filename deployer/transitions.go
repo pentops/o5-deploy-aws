@@ -276,7 +276,25 @@ var transitions = []ITransitionSpec{
 			return nil
 		},
 	},
-	// Waiting --> Failed : StackStatus.Failed
+	// Waiting --> Failed : StackStatus.Rollback In Progress.
+	// TODO: Needs an actual key
+	TransitionSpec[*deployer_pb.DeploymentEventType_StackStatus]{
+		FromStatus: []deployer_pb.DeploymentStatus{
+			deployer_pb.DeploymentStatus_WAITING,
+		},
+		EventFilter: func(event *deployer_pb.DeploymentEventType_StackStatus) bool {
+			return event.FullStatus == "UPDATE_ROLLBACK_IN_PROGRESS"
+		},
+		Transition: func(
+			ctx context.Context,
+			tb TransitionBaton,
+			deployment *deployer_pb.DeploymentState,
+			event *deployer_pb.DeploymentEventType_StackStatus,
+		) error {
+			// nothing, just log the progress
+			return nil
+		},
+	},
 	// Creating --> Failed : StackStatus.Failed
 	// ScalingUp --> Failed : StackStatus.Failed
 	// ScalingDown --> Failed : StackStatus.Failed

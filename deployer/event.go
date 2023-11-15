@@ -268,7 +268,7 @@ func (dd *Deployer) RegisterEvent(ctx context.Context, outerEvent *deployer_pb.D
 			})
 			log.WithField(ctx, "event", protojson.Format(innerEvent.Event)).Debug("Begin Deployment Event")
 			if err := runTransition(ctx, tx, baton, deployment, innerEvent); err != nil {
-				log.WithError(ctx, err).Error("Running Deployment Tarnsition")
+				log.WithError(ctx, err).Error("Running Deployment Transition")
 				return err
 			}
 

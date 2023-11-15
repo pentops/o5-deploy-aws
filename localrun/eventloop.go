@@ -75,7 +75,11 @@ func (lel *LocalEventLoop) Wait(ctx context.Context) error {
 	}()
 
 	err := <-chErr
-	log.WithError(ctx, err).Error("Event Loop Exit")
+	if err != nil {
+		log.WithError(ctx, err).Error("Event Loop Exit")
+	} else {
+		log.Info(ctx, "Event Loop Exit")
+	}
 	cancel()
 	return err
 }

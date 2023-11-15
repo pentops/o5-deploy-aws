@@ -226,6 +226,20 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 			return nil, fmt.Errorf("adding routes to %s: %w", runtime.Name, err)
 		}
 
+		for _, target := range app.Targets {
+			snsTopicARN := cloudformation.Join("", []string{
+				"arn:aws:sns:",
+				cloudformation.Ref("AWS::Region"),
+				":",
+				cloudformation.Ref("AWS::AccountId"),
+				":",
+				cloudformation.Ref(EnvNameParameter),
+				"-",
+				target.Name,
+			})
+			runtimeStack.Policy.AddSNSPublish(snsTopicARN)
+		}
+
 		if err := runtimeStack.Apply(stackTemplate); err != nil {
 			return nil, fmt.Errorf("adding %s: %w", runtime.Name, err)
 		}

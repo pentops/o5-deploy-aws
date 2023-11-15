@@ -147,6 +147,8 @@ github.com/pentops/o5-go v0.0.0-20231114235256-4b37157d817a h1:CkVlllRYDops/MJNi
 github.com/pentops/o5-go v0.0.0-20231114235256-4b37157d817a/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
 github.com/pentops/o5-go v0.0.0-20231115013819-e43fc6b0bb89 h1:TQMa/MTT6AybYi1ltmx+qSMolYUr3zS5YWXp2vlxA3M=
 github.com/pentops/o5-go v0.0.0-20231115013819-e43fc6b0bb89/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
+github.com/pentops/o5-go v0.0.0-20231115021119-4e799ff59e1b h1:UH3Q6cDjf95H5DlB//me7jrwqdaFoL+d8x9VBasiS8s=
+github.com/pentops/o5-go v0.0.0-20231115021119-4e799ff59e1b/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
 github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8 h1:u+7WnBJrBSVJOinXlRw7/io8gLSG7Xa4anS97B9o3EI=
 github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8/go.mod h1:ePQpGllAGCMQ0bu6poSnNjqWeTFu9bZzy0Y8NdPqL2k=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=

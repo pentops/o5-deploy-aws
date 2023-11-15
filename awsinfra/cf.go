@@ -40,12 +40,15 @@ type AWSRunner struct {
 	// LocalCLIRun causes the runner to poll the stack until it reaches a terminal state
 	// after changes, as well as log more verbosely while waiting
 	LocalCLIRun bool
+
+	currentPoller map[string]string // map[stackName]uuid
 }
 
 func NewRunner(clients ClientBuilder, messageHandler MessageHandler) *AWSRunner {
 	return &AWSRunner{
 		Clients:        clients,
 		messageHandler: messageHandler,
+		currentPoller:  map[string]string{},
 	}
 }
 
@@ -732,6 +735,7 @@ var stackStatusProgress = []types.StackStatus{
 var stackStatusRollingBack = []types.StackStatus{
 	types.StackStatusRollbackInProgress,
 	types.StackStatusRollbackComplete,
+	types.StackStatusUpdateRollbackInProgress,
 	types.StackStatusUpdateRollbackFailed,
 	types.StackStatusUpdateRollbackCompleteCleanupInProgress,
 }
@@ -752,7 +756,6 @@ var stackStatusesTerminal = []types.StackStatus{
 	types.StackStatusRollbackFailed,
 	types.StackStatusDeleteFailed,
 	types.StackStatusUpdateFailed,
-	types.StackStatusUpdateRollbackInProgress,
 	types.StackStatusImportRollbackInProgress,
 	types.StackStatusImportRollbackFailed,
 	types.StackStatusImportRollbackComplete,
@@ -879,13 +882,27 @@ func isNoUpdatesError(err error) bool {
 	return opError.ErrorCode() == "ValidationError" && opError.ErrorMessage() == "No updates are to be performed."
 }
 
-func (cf *AWSRunner) pollStack(ctx context.Context, lastStatus types.StackStatus, stackID *deployer_tpb.StackID) error {
+func (cf *AWSRunner) pollStack(
+	ctx context.Context,
+	lastStatus types.StackStatus,
+	stackID *deployer_tpb.StackID,
+) error {
 
 	stackName := stackID.StackName
+	pollerID := uuid.NewString()
+	if current, ok := cf.currentPoller[stackName]; ok {
+		// These should never run at the same time, throwing an error here
+		// so that the mystery occasion where they ARE can be found.
+		return fmt.Errorf("pollStack: poller already running for stack %s: %s", stackName, current)
+	}
+	cf.currentPoller[stackName] = pollerID
+	defer func() {
+		delete(cf.currentPoller, stackName)
+	}()
 
 	ctx = log.WithFields(ctx, map[string]interface{}{
 		"stackName": stackName,
-		"pollerID":  uuid.NewString(),
+		"pollerID":  pollerID,
 	})
 
 	log.Debug(ctx, "PollStack Begin")

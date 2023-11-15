@@ -26,6 +26,9 @@ databases:
           - name: "POSTGRES_URL"
             database:
               databaseName: main
+targets:
+  - name: "o5-deployer-input"
+  - name: "o5-aws-command"
 
 runtimes:
   - name: main
