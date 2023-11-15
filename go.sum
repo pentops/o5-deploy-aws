@@ -133,16 +133,6 @@ github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53 h1:Hbu66tModJqM
 github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53/go.mod h1:Cd2eLUf4XY62DBSNyqZ347BGF5MOXyVoWmUGBZPoVxw=
 github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576 h1:A/vY7Qiv1S/1mUtacZQVoXicaYiiaSR7PInSUcaMOpA=
 github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576/go.mod h1:UXhrs+VZ6cWZ7b/v8AtuvBZc5nwS5WFHP94JoFrZQA8=
-github.com/pentops/o5-go v0.0.0-20231114212245-dde16daea2ac h1:y5fcI4ugjSwOHQzzrtQoZAWKWECoEMA1nAwlIGKrtMI=
-github.com/pentops/o5-go v0.0.0-20231114212245-dde16daea2ac/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
-github.com/pentops/o5-go v0.0.0-20231114212530-86e381d1ce4f h1:HCdijuzdctcO8DRy14LemFVk//xw7bPyzr2xY63v6BY=
-github.com/pentops/o5-go v0.0.0-20231114212530-86e381d1ce4f/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
-github.com/pentops/o5-go v0.0.0-20231114220847-6204755e3569 h1:kPxE6ex9G1NAzET58OYIhtJn7yNyD6Vi1jmwQyn22es=
-github.com/pentops/o5-go v0.0.0-20231114220847-6204755e3569/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
-github.com/pentops/o5-go v0.0.0-20231114222636-2215d3330b35 h1:3AQFGy8sMyQfUXH7mrTKC3zQB2t04Cap8FkTmtTOQHs=
-github.com/pentops/o5-go v0.0.0-20231114222636-2215d3330b35/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
-github.com/pentops/o5-go v0.0.0-20231114234654-cd1fadf68678 h1:a24GJD2QvJBFJve7NH2JgcyCzISx3XbTWPyDR0iV/6I=
-github.com/pentops/o5-go v0.0.0-20231114234654-cd1fadf68678/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
 github.com/pentops/o5-go v0.0.0-20231114235256-4b37157d817a h1:CkVlllRYDops/MJNil+ra0untHMmugH6r3Dp0OD7qW0=
 github.com/pentops/o5-go v0.0.0-20231114235256-4b37157d817a/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
 github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8 h1:u+7WnBJrBSVJOinXlRw7/io8gLSG7Xa4anS97B9o3EI=
