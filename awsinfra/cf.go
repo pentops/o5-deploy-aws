@@ -345,21 +345,11 @@ func (dpr *deferredParameterResolver) nextAvailableListenerRulePriority(ctx cont
 		return 0, err
 	}
 
-	var groupRange [2]int
-
-	switch group {
-	case application_pb.RouteGroup_ROUTE_GROUP_NORMAL,
-		application_pb.RouteGroup_ROUTE_GROUP_UNSPECIFIED:
-		groupRange = [2]int{1000, 2000}
-	case application_pb.RouteGroup_ROUTE_GROUP_FIRST:
-		groupRange = [2]int{1, 1000}
-	case application_pb.RouteGroup_ROUTE_GROUP_FALLBACK:
-		groupRange = [2]int{2000, 3000}
-	default:
-		return 0, fmt.Errorf("unknown route group %s", group)
+	a, b, err := groupRangeForPriority(group)
+	if err != nil {
+		return 0, err
 	}
-
-	for i := groupRange[0]; i < groupRange[1]; i++ {
+	for i := a; i < b; i++ {
 		if _, ok := takenPriorities[i]; !ok {
 			takenPriorities[i] = true
 			return i, nil
@@ -369,10 +359,51 @@ func (dpr *deferredParameterResolver) nextAvailableListenerRulePriority(ctx cont
 	return 0, errors.New("no available listener rule priorities")
 }
 
-func (dpr *deferredParameterResolver) Resolve(ctx context.Context, input *deployer_pb.CloudFormationStackParameterType) (string, error) {
+func groupRangeForPriority(group application_pb.RouteGroup) (int, int, error) {
+	switch group {
+	case application_pb.RouteGroup_ROUTE_GROUP_NORMAL,
+		application_pb.RouteGroup_ROUTE_GROUP_UNSPECIFIED:
+		return 1000, 2000, nil
+	case application_pb.RouteGroup_ROUTE_GROUP_FIRST:
+		return 1, 1000, nil
+	case application_pb.RouteGroup_ROUTE_GROUP_FALLBACK:
+		return 2000, 3000, nil
+	default:
+		return 0, 0, fmt.Errorf("unknown route group %s", group)
+	}
+}
+
+func validPreviousPriority(group application_pb.RouteGroup, previous *types.Parameter) (string, bool) {
+	if previous == nil || previous.ParameterValue == nil {
+		return "", false
+	}
+
+	previousPriority, err := strconv.Atoi(*previous.ParameterValue)
+	if err != nil {
+		return "", false // Who knows how, but let's just pretend it didn't happen
+	}
+
+	a, b, err := groupRangeForPriority(group)
+	if err != nil {
+		return "", false
+	}
+
+	if previousPriority >= a && previousPriority < b {
+		return *previous.ParameterValue, true
+	}
+
+	return "", false
+}
+
+func (dpr *deferredParameterResolver) Resolve(ctx context.Context, input *deployer_pb.CloudFormationStackParameterType, previous *types.Parameter) (string, error) {
 	switch pt := input.Type.(type) {
 	case *deployer_pb.CloudFormationStackParameterType_RulePriority_:
 		group := pt.RulePriority.RouteGroup
+		previous, ok := validPreviousPriority(group, previous)
+		if ok {
+			return previous, nil
+		}
+
 		priority, err := dpr.nextAvailableListenerRulePriority(ctx, group)
 		if err != nil {
 			return "", err
@@ -389,7 +420,7 @@ func (dpr *deferredParameterResolver) Resolve(ctx context.Context, input *deploy
 
 }
 
-func (cf *AWSRunner) resolveParameters(ctx context.Context, input []*deployer_pb.CloudFormationStackParameter, desiredCount int32) ([]types.Parameter, error) {
+func (cf *AWSRunner) resolveParameters(ctx context.Context, lastInput []types.Parameter, input []*deployer_pb.CloudFormationStackParameter, desiredCount int32) ([]types.Parameter, error) {
 	parameters := make([]types.Parameter, len(input))
 
 	var listenerARN string
@@ -414,7 +445,15 @@ func (cf *AWSRunner) resolveParameters(ctx context.Context, input []*deployer_pb
 			}
 
 		case *deployer_pb.CloudFormationStackParameter_Resolve:
-			resolvedValue, err := dpr.Resolve(ctx, sourceType.Resolve)
+			var previousParameter *types.Parameter
+			for _, p := range lastInput {
+				if *p.ParameterKey == param.Name {
+					previousParameter = &p
+					break
+				}
+			}
+
+			resolvedValue, err := dpr.Resolve(ctx, sourceType.Resolve, previousParameter)
 			if err != nil {
 				return nil, err
 			}
@@ -442,7 +481,7 @@ func (cf *AWSRunner) CreateNewStack(ctx context.Context, msg *deployer_tpb.Creat
 		}
 	}
 
-	parameters, err := cf.resolveParameters(ctx, msg.Parameters, msg.DesiredCount)
+	parameters, err := cf.resolveParameters(ctx, nil, msg.Parameters, msg.DesiredCount)
 	if err != nil {
 		return nil, err
 	}
@@ -476,8 +515,13 @@ func (cf *AWSRunner) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateSt
 		}
 	}
 
+	current, err := cf.getOneStack(ctx, msg.StackId.StackName)
+	if err != nil {
+		return nil, err
+	}
+
 	// TODO: Re-use assigned priorities for routes by using the previous input
-	parameters, err := cf.resolveParameters(ctx, msg.Parameters, msg.DesiredCount)
+	parameters, err := cf.resolveParameters(ctx, current.Parameters, msg.Parameters, msg.DesiredCount)
 	if err != nil {
 		return nil, err
 	}

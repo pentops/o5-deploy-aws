@@ -188,7 +188,7 @@ func (d *Deployer) findTransition(ctx context.Context, deployment *deployer_pb.D
 	return nil
 }
 
-func (dd *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
+func (dd *Deployer) RegisterEvent(ctx context.Context, outerEvent *deployer_pb.DeploymentEvent) error {
 
 	runTransition := func(ctx context.Context, tx TransitionTransaction, transition TransitionBaton, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
 
@@ -220,10 +220,10 @@ func (dd *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploy
 	}
 
 	return dd.storage.Transact(ctx, func(ctx context.Context, tx TransitionTransaction) error {
-		deployment, err := tx.GetDeployment(ctx, event.DeploymentId)
+		deployment, err := tx.GetDeployment(ctx, outerEvent.DeploymentId)
 		if errors.Is(err, DeploymentNotFoundError) {
 			deployment = &deployer_pb.DeploymentState{
-				DeploymentId: event.DeploymentId,
+				DeploymentId: outerEvent.DeploymentId,
 			}
 		} else if err != nil {
 			return err
@@ -231,9 +231,9 @@ func (dd *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploy
 
 		spec := deployment.Spec
 		if spec == nil {
-			trigger := event.Event.GetTriggered()
+			trigger := outerEvent.Event.GetTriggered()
 			if trigger == nil {
-				return fmt.Errorf("no spec found for deployment %s, and the event is not an initiating event", event.DeploymentId)
+				return fmt.Errorf("no spec found for deployment %s, and the event is not an initiating event", outerEvent.DeploymentId)
 			}
 			spec = trigger.Spec
 		}
@@ -259,14 +259,14 @@ func (dd *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploy
 				parameterResolver: deployerResolver,
 				env:               environment,
 			}
-			typeKey, _ := event.Event.TypeKey()
+			typeKey, _ := innerEvent.Event.TypeKey()
 
 			ctx = log.WithFields(ctx, map[string]interface{}{
-				"deploymentId": event.DeploymentId,
+				"deploymentId": innerEvent.DeploymentId,
 				"eventType":    typeKey,
 				"stateBefore":  deployment.Status.ShortString(),
 			})
-			log.WithField(ctx, "event", protojson.Format(event.Event)).Debug("Begin Deployment Event")
+			log.WithField(ctx, "event", protojson.Format(innerEvent.Event)).Debug("Begin Deployment Event")
 			if err := runTransition(ctx, tx, baton, deployment, innerEvent); err != nil {
 				log.WithError(ctx, err).Error("Running Deployment Tarnsition")
 				return err
@@ -290,7 +290,7 @@ func (dd *Deployer) RegisterEvent(ctx context.Context, event *deployer_pb.Deploy
 			return nil
 		}
 
-		return runOne(event)
+		return runOne(outerEvent)
 
 	})
 }
