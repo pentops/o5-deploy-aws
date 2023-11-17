@@ -14,6 +14,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/github"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-deploy-aws/service"
+	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
@@ -158,9 +159,76 @@ func (d *multiDeployer) BeginDeployments(ctx context.Context, app *app.BuiltAppl
 func runServe(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 
+	g.Go(runPublic(ctx))
 	g.Go(runWorker(ctx))
 
 	return g.Wait()
+}
+
+func runPublic(ctx context.Context) func() error {
+	return func() error {
+		type envConfig struct {
+			ConfigFile string `env:"CONFIG_FILE"`
+			PublicPort int    `env:"PUBLIC_PORT" default:"8082"`
+		}
+
+		cfg := envConfig{}
+		if err := envconf.Parse(&cfg); err != nil {
+			return err
+		}
+
+		log.WithField(ctx, "PUBLIC PORT", cfg.PublicPort).Info("Boot")
+
+		awsConfig, err := config.LoadDefaultConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to load configuration: %w", err)
+		}
+
+		s3Client := s3.NewFromConfig(awsConfig)
+
+		configFile := &github_pb.DeployerConfig{}
+		if err := protoread.PullAndParse(ctx, s3Client, cfg.ConfigFile, configFile); err != nil {
+			return err
+		}
+
+		environments := []*environment_pb.Environment{}
+
+		for _, envConfigFile := range configFile.TargetEnvironments {
+			env := &environment_pb.Environment{}
+			if err := protoread.PullAndParse(ctx, s3Client, envConfigFile, env); err != nil {
+				return err
+			}
+
+			environments = append(environments, env)
+		}
+
+		db, err := service.OpenDatabase(ctx)
+		if err != nil {
+			return err
+		}
+
+		pgStore, err := deployer.NewPostgresStateStore(db, environments)
+		if err != nil {
+			return err
+		}
+
+		deploymentQuerier := deployer.NewDeploymentQuerier(pgStore)
+
+		grpcServer := grpc.NewServer()
+		deployer_spb.RegisterDeploymentQueryServiceServer(grpcServer, deploymentQuerier)
+
+		reflection.Register(grpcServer)
+
+		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.PublicPort))
+		if err != nil {
+			return err
+		}
+
+		log.WithField(ctx, "public port", cfg.PublicPort).Info("Begin Public Server")
+		closeOnContextCancel(ctx, grpcServer)
+
+		return grpcServer.Serve(lis)
+	}
 }
 
 func runWorker(ctx context.Context) func() error {

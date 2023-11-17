@@ -13,6 +13,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -22,6 +23,16 @@ import (
 type Environment struct {
 	Environment *environment_pb.Environment
 	AWS         *environment_pb.AWS
+}
+
+type DeploymentQuerier struct {
+	storage DeployerStorage
+
+	*deployer_spb.UnimplementedDeploymentQueryServiceServer
+}
+
+func NewDeploymentQuerier(storage DeployerStorage) *DeploymentQuerier {
+	return &DeploymentQuerier{storage: storage}
 }
 
 type DeploymentManager struct {
