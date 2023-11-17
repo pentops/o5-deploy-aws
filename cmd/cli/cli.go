@@ -129,7 +129,7 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		return err
 	}
 
-	deploymentManager, err := deployer.NewDeployer(stateStore, awsTarget.ScratchBucket, s3Client)
+	deploymentManager, err := deployer.NewDeploymentManager(stateStore, awsTarget.ScratchBucket, s3Client)
 
 	if err != nil {
 		return err

@@ -14,11 +14,13 @@ import (
 	"github.com/pentops/o5-deploy-aws/github"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-deploy-aws/service"
+	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_tpb"
 	"github.com/pressly/goose"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"gopkg.daemonl.com/envconf"
@@ -153,101 +155,181 @@ func (d *multiDeployer) BeginDeployments(ctx context.Context, app *app.BuiltAppl
 
 }
 */
+
 func runServe(ctx context.Context) error {
-	type envConfig struct {
-		ConfigFile         string `env:"CONFIG_FILE"`
-		WorkerPort         int    `env:"WORKER_PORT" default:"8081"`
-		DeployerAssumeRole string `env:"DEPLOYER_ASSUME_ROLE"`
-		CFTemplates        string `env:"CF_TEMPLATES"`
-		CallbackARN        string `env:"CALLBACK_ARN"`
-	}
-	cfg := envConfig{}
-	if err := envconf.Parse(&cfg); err != nil {
-		return err
-	}
+	g, ctx := errgroup.WithContext(ctx)
 
-	log.WithField(ctx, "PORT", cfg.WorkerPort).Info("Boot")
+	g.Go(runPublic(ctx))
+	g.Go(runWorker(ctx))
 
-	awsConfig, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
-	}
+	return g.Wait()
+}
 
-	s3Client := s3.NewFromConfig(awsConfig)
+func runPublic(ctx context.Context) func() error {
+	return func() error {
+		type envConfig struct {
+			ConfigFile string `env:"CONFIG_FILE"`
+			PublicPort int    `env:"PUBLIC_PORT" default:"8082"`
+		}
 
-	configFile := &github_pb.DeployerConfig{}
-	if err := protoread.PullAndParse(ctx, s3Client, cfg.ConfigFile, configFile); err != nil {
-		return err
-	}
-
-	environments := []*environment_pb.Environment{}
-
-	for _, envConfigFile := range configFile.TargetEnvironments {
-		env := &environment_pb.Environment{}
-		if err := protoread.PullAndParse(ctx, s3Client, envConfigFile, env); err != nil {
+		cfg := envConfig{}
+		if err := envconf.Parse(&cfg); err != nil {
 			return err
 		}
 
-		environments = append(environments, env)
+		log.WithField(ctx, "PUBLIC PORT", cfg.PublicPort).Info("Boot")
+
+		awsConfig, err := config.LoadDefaultConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to load configuration: %w", err)
+		}
+
+		s3Client := s3.NewFromConfig(awsConfig)
+
+		configFile := &github_pb.DeployerConfig{}
+		if err := protoread.PullAndParse(ctx, s3Client, cfg.ConfigFile, configFile); err != nil {
+			return err
+		}
+
+		environments := []*environment_pb.Environment{}
+
+		for _, envConfigFile := range configFile.TargetEnvironments {
+			env := &environment_pb.Environment{}
+			if err := protoread.PullAndParse(ctx, s3Client, envConfigFile, env); err != nil {
+				return err
+			}
+
+			environments = append(environments, env)
+		}
+
+		db, err := service.OpenDatabase(ctx)
+		if err != nil {
+			return err
+		}
+
+		pgStore, err := deployer.NewPostgresStateStore(db, environments)
+		if err != nil {
+			return err
+		}
+
+		deploymentQuerier := deployer.NewDeploymentQuerier(pgStore)
+
+		grpcServer := grpc.NewServer()
+		deployer_spb.RegisterDeploymentQueryServiceServer(grpcServer, deploymentQuerier)
+
+		reflection.Register(grpcServer)
+
+		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.PublicPort))
+		if err != nil {
+			return err
+		}
+
+		log.WithField(ctx, "public port", cfg.PublicPort).Info("Begin Public Server")
+		closeOnContextCancel(ctx, grpcServer)
+
+		return grpcServer.Serve(lis)
 	}
+}
 
-	db, err := service.OpenDatabase(ctx)
-	if err != nil {
-		return err
+func runWorker(ctx context.Context) func() error {
+	return func() error {
+		type envConfig struct {
+			ConfigFile         string `env:"CONFIG_FILE"`
+			WorkerPort         int    `env:"WORKER_PORT" default:"8081"`
+			DeployerAssumeRole string `env:"DEPLOYER_ASSUME_ROLE"`
+			CFTemplates        string `env:"CF_TEMPLATES"`
+			CallbackARN        string `env:"CALLBACK_ARN"`
+		}
+
+		cfg := envConfig{}
+		if err := envconf.Parse(&cfg); err != nil {
+			return err
+		}
+
+		log.WithField(ctx, "WORKER PORT", cfg.WorkerPort).Info("Boot")
+
+		awsConfig, err := config.LoadDefaultConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to load configuration: %w", err)
+		}
+
+		s3Client := s3.NewFromConfig(awsConfig)
+
+		configFile := &github_pb.DeployerConfig{}
+		if err := protoread.PullAndParse(ctx, s3Client, cfg.ConfigFile, configFile); err != nil {
+			return err
+		}
+
+		environments := []*environment_pb.Environment{}
+
+		for _, envConfigFile := range configFile.TargetEnvironments {
+			env := &environment_pb.Environment{}
+			if err := protoread.PullAndParse(ctx, s3Client, envConfigFile, env); err != nil {
+				return err
+			}
+
+			environments = append(environments, env)
+		}
+
+		db, err := service.OpenDatabase(ctx)
+		if err != nil {
+			return err
+		}
+
+		pgStore, err := deployer.NewPostgresStateStore(db, environments)
+		if err != nil {
+			return err
+		}
+
+		clientSet := &awsinfra.ClientSet{
+			AssumeRoleARN: cfg.DeployerAssumeRole,
+			AWSConfig:     awsConfig,
+		}
+
+		awsInfraRunner := awsinfra.NewRunner(clientSet, pgStore)
+		awsInfraRunner.CallbackARNs = []string{cfg.CallbackARN}
+
+		deploymentManager, err := deployer.NewDeploymentManager(pgStore, cfg.CFTemplates, s3Client)
+		if err != nil {
+			return err
+		}
+
+		log.Debug(ctx, "Got DB")
+
+		githubClient, err := github.NewEnvClient(ctx)
+		if err != nil {
+			return err
+		}
+
+		refLookup := RefLookup(configFile.Refs)
+
+		githubWorker, err := github.NewWebhookWorker(
+			githubClient,
+			deploymentManager,
+			refLookup,
+		)
+		if err != nil {
+			return err
+		}
+
+		grpcServer := grpc.NewServer()
+		github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
+		deployer_tpb.RegisterAWSCommandTopicServer(grpcServer, awsInfraRunner)
+		deployer_tpb.RegisterDeployerTopicServer(grpcServer, deploymentManager)
+		messaging_tpb.RegisterRawMessageTopicServer(grpcServer, awsInfraRunner)
+
+		reflection.Register(grpcServer)
+
+		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.WorkerPort))
+		if err != nil {
+			return err
+		}
+
+		log.WithField(ctx, "worker port", cfg.WorkerPort).Info("Begin Worker Server")
+		closeOnContextCancel(ctx, grpcServer)
+
+		return grpcServer.Serve(lis)
 	}
-
-	pgStore, err := deployer.NewPostgresStateStore(db, environments)
-	if err != nil {
-		return err
-	}
-
-	clientSet := &awsinfra.ClientSet{
-		AssumeRoleARN: cfg.DeployerAssumeRole,
-		AWSConfig:     awsConfig,
-	}
-
-	awsInfraRunner := awsinfra.NewRunner(clientSet, pgStore)
-	awsInfraRunner.CallbackARNs = []string{cfg.CallbackARN}
-
-	deploymentManager, err := deployer.NewDeployer(pgStore, cfg.CFTemplates, s3Client)
-	if err != nil {
-		return err
-	}
-
-	log.Debug(ctx, "Got DB")
-
-	githubClient, err := github.NewEnvClient(ctx)
-	if err != nil {
-		return err
-	}
-
-	refLookup := RefLookup(configFile.Refs)
-
-	githubWorker, err := github.NewWebhookWorker(
-		githubClient,
-		deploymentManager,
-		refLookup,
-	)
-	if err != nil {
-		return err
-	}
-
-	grpcServer := grpc.NewServer()
-	github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
-	deployer_tpb.RegisterAWSCommandTopicServer(grpcServer, awsInfraRunner)
-	deployer_tpb.RegisterDeployerTopicServer(grpcServer, deploymentManager)
-	messaging_tpb.RegisterRawMessageTopicServer(grpcServer, awsInfraRunner)
-
-	reflection.Register(grpcServer)
-
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.WorkerPort))
-	if err != nil {
-		return err
-	}
-	log.WithField(ctx, "port", cfg.WorkerPort).Info("Begin Worker Server")
-	closeOnContextCancel(ctx, grpcServer)
-
-	return grpcServer.Serve(lis)
 }
 
 func closeOnContextCancel(ctx context.Context, srv *grpc.Server) {

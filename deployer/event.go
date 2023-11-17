@@ -179,7 +179,7 @@ func (td *transitionData) SideEffect(msg outbox.OutboxMessage) {
 	td.sideEffects = append(td.sideEffects, msg)
 }
 
-func (d *Deployer) findTransition(ctx context.Context, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) ITransitionSpec {
+func (d *DeploymentManager) findTransition(ctx context.Context, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) ITransitionSpec {
 	for _, search := range transitions {
 		if search.Matches(deployment, event) {
 			return search
@@ -188,7 +188,7 @@ func (d *Deployer) findTransition(ctx context.Context, deployment *deployer_pb.D
 	return nil
 }
 
-func (dd *Deployer) RegisterEvent(ctx context.Context, outerEvent *deployer_pb.DeploymentEvent) error {
+func (dd *DeploymentManager) RegisterEvent(ctx context.Context, outerEvent *deployer_pb.DeploymentEvent) error {
 
 	runTransition := func(ctx context.Context, tx TransitionTransaction, transition TransitionBaton, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
 
