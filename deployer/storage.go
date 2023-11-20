@@ -103,12 +103,15 @@ func (ptw *postgresTxWrapper) PublishEvent(ctx context.Context, evt outbox.Outbo
 
 func (ptw *postgresTxWrapper) GetDeployment(ctx context.Context, id string) (*deployer_pb.DeploymentState, error) {
 	var deploymentJSON []byte
-	err := ptw.tx.SelectRow(ctx, sq.Select("state").From("deployment").Where("id = ?", id)).Scan(&deploymentJSON)
+	q := sq.Select("state").From("deployment").Where("id = ?", id)
+
+	err := ptw.tx.SelectRow(ctx, q).Scan(&deploymentJSON)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, DeploymentNotFoundError
 	} else if err != nil {
 		return nil, err
 	}
+
 	var deployment deployer_pb.DeploymentState
 	if err := protojson.Unmarshal(deploymentJSON, &deployment); err != nil {
 		return nil, err
