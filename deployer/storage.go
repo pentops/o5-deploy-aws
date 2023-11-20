@@ -116,6 +116,26 @@ func (ptw *postgresTxWrapper) GetDeployment(ctx context.Context, id string) (*de
 	if err := protojson.Unmarshal(deploymentJSON, &deployment); err != nil {
 		return nil, err
 	}
+
+	return &deployment, nil
+}
+
+func (ptw *postgresTxWrapper) GetDeployments(ctx context.Context, id string) (*deployer_pb.DeploymentState, error) {
+	var deploymentJSON []byte
+	q := sq.Select("state").From("deployment")
+
+	err := ptw.tx.SelectRow(ctx, q).Scan(&deploymentJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, DeploymentNotFoundError
+	} else if err != nil {
+		return nil, err
+	}
+
+	var deployment deployer_pb.DeploymentState
+	if err := protojson.Unmarshal(deploymentJSON, &deployment); err != nil {
+		return nil, err
+	}
+
 	return &deployment, nil
 }
 
