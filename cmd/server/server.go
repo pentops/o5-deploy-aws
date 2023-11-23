@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -12,6 +13,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/github"
+	"github.com/pentops/o5-deploy-aws/japi"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
@@ -19,6 +21,7 @@ import (
 	"github.com/pentops/o5-go/github/v1/github_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_tpb"
 	"github.com/pressly/goose"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"gopkg.daemonl.com/envconf"
@@ -41,6 +44,12 @@ func main() {
 	switch args[0] {
 	case "serve":
 		if err := runServe(ctx); err != nil {
+			log.WithError(ctx, err).Error("Failed to serve")
+			os.Exit(1)
+		}
+
+	case "registry":
+		if err := runRegistry(ctx); err != nil {
 			log.WithError(ctx, err).Error("Failed to serve")
 			os.Exit(1)
 		}
@@ -74,89 +83,50 @@ func runMigrate(ctx context.Context) error {
 	return goose.Up(db, "/migrations")
 }
 
-/*
-	type multiDeployer struct {
-		clientSet    awsinfra.ClientBuilder
-		environments map[string]*environment_pb.Environment
-		store        *deployer.PostgresStateStore
-		cfTemplates  string
-		awsRunner    *awsinfra.AWSRunner
+func runRegistry(ctx context.Context) error {
+	type envConfig struct {
+		RegistryPort   int    `env:"REGISTRY_PORT" default:""`
+		RegistryBucket string `env:"REGISTRY_BUCKET" default:""`
+	}
+	cfg := envConfig{}
+	if err := envconf.Parse(&cfg); err != nil {
+		return err
 	}
 
-func (d *multiDeployer) BeginDeployments(ctx context.Context, app *app.BuiltApplication, envNames []string) error {
-
-	eventLoop := localrun.NewLocalEventLoop()
-
-	stateStore := localrun.NewLocalStateStore(eventLoop)
-
-	stateStore.StoreCallback = d.store.StoreDeploymentEvent
-
-	for _, envName := range envNames {
-		env, ok := d.environments[envName]
-		if !ok {
-			return fmt.Errorf("missing environment %s", envName)
-		}
-
-		if err := stateStore.AddEnvironment(env); err != nil {
-			return err
-		}
+	awsConfig, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	clients, err := d.clientSet.Clients(ctx)
+	s3Client := s3.NewFromConfig(awsConfig)
+	handler, err := japi.NewRegistry(ctx, s3Client, cfg.RegistryBucket)
 	if err != nil {
 		return err
 	}
 
-	if err := localrun.RegisterDeployerHandlers(eventLoop, deploymentManager); err != nil {
-		return err
+	httpServer := &http.Server{
+		Addr:    fmt.Sprintf(":%d", cfg.RegistryPort),
+		Handler: handler,
 	}
+	log.WithField(ctx, "port", cfg.RegistryPort).Info("Begin Registry Server")
 
-	awsRunner := awsinfra.NewRunner(d.clientSet, eventLoop)
-	if err := localrun.RegisterLocalHandlers(eventLoop, awsRunner); err != nil {
-		return err
-	}
+	go func() {
+		<-ctx.Done()
+		httpServer.Shutdown(ctx) // nolint:errcheck
+	}()
 
-	for _, envName := range envNames {
-		stackName := fmt.Sprintf("%s-%s", envName, app.Name)
-
-		poller, err := awsRunner.PollStack(ctx, stackName)
-		if err != nil {
-			return err
-		}
-
-		if err := deploymentManager.BeginDeployment(ctx, app, envName); err != nil {
-			return fmt.Errorf("deploy: %w", err)
-		}
-
-		ctx, cancel := context.WithCancel(ctx)
-		eg, ctx := errgroup.WithContext(ctx)
-		eg.Go(func() error {
-			return poller.Wait(ctx)
-		})
-		eg.Go(func() error {
-			return eventLoop.Wait(ctx)
-		})
-		eg.Go(func() error {
-			defer cancel()
-			// Cancel should run even if the Wait function returns no error, this
-			// stops the poller and event loop
-			return stateStore.Wait(ctx)
-		})
-		if err := deploymentManager.BeginDeployment(ctx, app, envName); err != nil {
-			return fmt.Errorf("deploy to %s: %w", envName, err)
-		}
-		if err := eg.Wait(); err != nil {
-			return fmt.Errorf("deploy to %s: %w", envName, err)
-		}
-	}
-	return nil
+	return httpServer.ListenAndServe()
 
 }
-*/
+
 func runServe(ctx context.Context) error {
 	type envConfig struct {
-		ConfigFile         string `env:"CONFIG_FILE"`
-		WorkerPort         int    `env:"WORKER_PORT" default:"8081"`
+		ConfigFile string `env:"CONFIG_FILE"`
+		WorkerPort int    `env:"WORKER_PORT" default:"8081"`
+
+		RegistryPort   int    `env:"REGISTRY_PORT" default:""`
+		RegistryBucket string `env:"REGISTRY_BUCKET" default:""`
+
 		DeployerAssumeRole string `env:"DEPLOYER_ASSUME_ROLE"`
 		CFTemplates        string `env:"CF_TEMPLATES"`
 		CallbackARN        string `env:"CALLBACK_ARN"`
@@ -232,29 +202,52 @@ func runServe(ctx context.Context) error {
 		return err
 	}
 
-	grpcServer := grpc.NewServer()
-	github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
-	deployer_tpb.RegisterAWSCommandTopicServer(grpcServer, awsInfraRunner)
-	deployer_tpb.RegisterDeployerTopicServer(grpcServer, deploymentManager)
-	messaging_tpb.RegisterRawMessageTopicServer(grpcServer, awsInfraRunner)
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		grpcServer := grpc.NewServer()
+		github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
+		deployer_tpb.RegisterAWSCommandTopicServer(grpcServer, awsInfraRunner)
+		deployer_tpb.RegisterDeployerTopicServer(grpcServer, deploymentManager)
+		messaging_tpb.RegisterRawMessageTopicServer(grpcServer, awsInfraRunner)
 
-	reflection.Register(grpcServer)
+		reflection.Register(grpcServer)
 
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.WorkerPort))
-	if err != nil {
-		return err
+		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.WorkerPort))
+		if err != nil {
+			return err
+		}
+		log.WithField(ctx, "port", cfg.WorkerPort).Info("Begin Worker Server")
+		go func() {
+			<-ctx.Done()
+			grpcServer.GracefulStop() // nolint:errcheck
+		}()
+
+		return grpcServer.Serve(lis)
+	})
+
+	if cfg.RegistryPort != 0 {
+		eg.Go(func() error {
+			handler, err := japi.NewRegistry(ctx, s3Client, cfg.RegistryBucket)
+			if err != nil {
+				return err
+			}
+
+			httpServer := &http.Server{
+				Addr:    fmt.Sprintf(":%d", cfg.RegistryPort),
+				Handler: handler,
+			}
+			log.WithField(ctx, "port", cfg.RegistryPort).Info("Begin Registry Server")
+
+			go func() {
+				<-ctx.Done()
+				httpServer.Shutdown(ctx) // nolint:errcheck
+			}()
+
+			return httpServer.ListenAndServe()
+		})
 	}
-	log.WithField(ctx, "port", cfg.WorkerPort).Info("Begin Worker Server")
-	closeOnContextCancel(ctx, grpcServer)
 
-	return grpcServer.Serve(lis)
-}
-
-func closeOnContextCancel(ctx context.Context, srv *grpc.Server) {
-	go func() {
-		<-ctx.Done()
-		srv.GracefulStop()
-	}()
+	return eg.Wait()
 }
 
 type RefLookup []*github_pb.RefLink
