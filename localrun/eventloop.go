@@ -44,10 +44,7 @@ func (lel *LocalEventLoop) PublishEvent(ctx context.Context, msg outbox.OutboxMe
 	}
 	log.WithField(ctx, "inputMessage", msg.ProtoReflect().Descriptor().FullName()).Debug("PublishEvent")
 
-	go func() {
-		lel.messages <- msg
-	}()
-	return nil
+	return lel.handleMessage(ctx, msg)
 }
 
 // Wait runs the event loop. It exits when all handlers have completed, or any
@@ -94,7 +91,6 @@ func (lel *LocalEventLoop) handleMessage(ctx context.Context, msg proto.Message)
 	handlerContext := log.WithFields(ctx, map[string]interface{}{
 		"inputMessage": msg.ProtoReflect().Descriptor().FullName(),
 	})
-	log.Debug(handlerContext, "Begin Event Loop Handler")
 
 	if err := handler(handlerContext, msg); err != nil {
 		if !errors.Is(err, context.Canceled) {
@@ -102,7 +98,6 @@ func (lel *LocalEventLoop) handleMessage(ctx context.Context, msg proto.Message)
 		}
 		return err
 	}
-	log.Info(handlerContext, "Event Loop Handler Success")
 	return nil
 }
 

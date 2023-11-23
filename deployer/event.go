@@ -179,7 +179,7 @@ func (td *transitionData) SideEffect(msg outbox.OutboxMessage) {
 	td.sideEffects = append(td.sideEffects, msg)
 }
 
-func (d *Deployer) findTransition(ctx context.Context, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) ITransitionSpec {
+func findTransition(ctx context.Context, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) ITransitionSpec {
 	for _, search := range transitions {
 		if search.Matches(deployment, event) {
 			return search
@@ -192,7 +192,7 @@ func (dd *Deployer) RegisterEvent(ctx context.Context, outerEvent *deployer_pb.D
 
 	runTransition := func(ctx context.Context, tx TransitionTransaction, transition TransitionBaton, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
 
-		spec := dd.findTransition(ctx, deployment, event)
+		spec := findTransition(ctx, deployment, event)
 		if spec == nil {
 			typeKey, ok := event.Event.TypeKey()
 			if !ok {
@@ -260,11 +260,12 @@ func (dd *Deployer) RegisterEvent(ctx context.Context, outerEvent *deployer_pb.D
 				env:               environment,
 			}
 			typeKey, _ := innerEvent.Event.TypeKey()
+			stateBefore := deployment.Status.ShortString()
 
 			ctx = log.WithFields(ctx, map[string]interface{}{
 				"deploymentId": innerEvent.DeploymentId,
 				"eventType":    typeKey,
-				"stateBefore":  deployment.Status.ShortString(),
+				"transition":   fmt.Sprintf("%s -> ? : %s", stateBefore, typeKey),
 			})
 			log.WithField(ctx, "event", protojson.Format(innerEvent.Event)).Debug("Begin Deployment Event")
 			if err := runTransition(ctx, tx, baton, deployment, innerEvent); err != nil {
@@ -273,7 +274,7 @@ func (dd *Deployer) RegisterEvent(ctx context.Context, outerEvent *deployer_pb.D
 			}
 
 			log.WithFields(ctx, map[string]interface{}{
-				"stateAfter": deployment.Status.ShortString(),
+				"transition": fmt.Sprintf("%s -> %s : %s", stateBefore, deployment.Status.ShortString(), typeKey),
 			}).Info("Deployment Event Handled")
 
 			for _, se := range baton.sideEffects {

@@ -938,6 +938,12 @@ func (cf *AWSRunner) pollStack(
 			"stackStatus": remoteStack.StackStatus,
 		}).Debug("PollStack Result")
 
+		if !summary.Stable {
+			continue
+		}
+
+		delete(cf.currentPoller, stackName)
+
 		if err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
 			StackId:   stackID,
 			Status:    string(remoteStack.StackStatus),
@@ -946,11 +952,7 @@ func (cf *AWSRunner) pollStack(
 		}); err != nil {
 			return err
 		}
-
-		if summary.Stable {
-			log.Debug(ctx, "PollStack End")
-			return nil
-		}
+		return nil
 	}
 
 }
