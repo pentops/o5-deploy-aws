@@ -21,27 +21,25 @@ type MessageHandler interface {
 	PublishEvent(context.Context, outbox.OutboxMessage) error
 }
 
-type AWSRunner struct {
-	messageHandler MessageHandler
+type InfraWorker struct {
 	*deployer_tpb.UnimplementedAWSCommandTopicServer
 	*messaging_tpb.UnimplementedRawMessageTopicServer
 
+	messageHandler MessageHandler
 	*CFClient
-	currentPoller map[string]string // map[stackName]uuid
 }
 
-func NewRunner(clients ClientBuilder, messageHandler MessageHandler) *AWSRunner {
+func NewInfraWorker(clients ClientBuilder, messageHandler MessageHandler) *InfraWorker {
 	cfClient := &CFClient{
 		Clients: clients,
 	}
-	return &AWSRunner{
+	return &InfraWorker{
 		CFClient:       cfClient,
 		messageHandler: messageHandler,
-		currentPoller:  map[string]string{},
 	}
 }
 
-func (cf *AWSRunner) eventOut(ctx context.Context, msg outbox.OutboxMessage) error {
+func (cf *InfraWorker) eventOut(ctx context.Context, msg outbox.OutboxMessage) error {
 	fmt.Printf("eventOut: %s\n", protojson.Format(msg))
 	return cf.messageHandler.PublishEvent(ctx, msg)
 }
@@ -67,7 +65,7 @@ func parseAWSRawMessage(raw []byte) (map[string]string, error) {
 	return fields, nil
 }
 
-func (cf *AWSRunner) Raw(ctx context.Context, msg *messaging_tpb.RawMessage) (*emptypb.Empty, error) {
+func (cf *InfraWorker) Raw(ctx context.Context, msg *messaging_tpb.RawMessage) (*emptypb.Empty, error) {
 
 	fields, err := parseAWSRawMessage(msg.Payload)
 	if err != nil {
@@ -136,7 +134,7 @@ func (cf *AWSRunner) Raw(ctx context.Context, msg *messaging_tpb.RawMessage) (*e
 	return &emptypb.Empty{}, nil
 }
 
-func (cf *AWSRunner) CreateNewStack(ctx context.Context, msg *deployer_tpb.CreateNewStackMessage) (*emptypb.Empty, error) {
+func (cf *InfraWorker) CreateNewStack(ctx context.Context, msg *deployer_tpb.CreateNewStackMessage) (*emptypb.Empty, error) {
 
 	err := cf.CFClient.CreateNewStack(ctx, msg)
 	if err != nil {
@@ -146,10 +144,10 @@ func (cf *AWSRunner) CreateNewStack(ctx context.Context, msg *deployer_tpb.Creat
 	return &emptypb.Empty{}, nil
 }
 
-func (cf *AWSRunner) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateStackMessage) (*emptypb.Empty, error) {
+func (cf *InfraWorker) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateStackMessage) (*emptypb.Empty, error) {
 
 	err := cf.CFClient.UpdateStack(ctx, msg)
-	if err != nil && !isNoUpdatesError(err) {
+	if err != nil && !IsNoUpdatesError(err) {
 		return nil, fmt.Errorf("UpdateStack: %w", err)
 	}
 
@@ -160,7 +158,7 @@ func (cf *AWSRunner) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateSt
 	return &emptypb.Empty{}, nil
 }
 
-func (cf *AWSRunner) CancelStackUpdate(ctx context.Context, msg *deployer_tpb.CancelStackUpdateMessage) (*emptypb.Empty, error) {
+func (cf *InfraWorker) CancelStackUpdate(ctx context.Context, msg *deployer_tpb.CancelStackUpdateMessage) (*emptypb.Empty, error) {
 	err := cf.CFClient.CancelStackUpdate(ctx, msg)
 	if err != nil {
 		return nil, err
@@ -169,7 +167,7 @@ func (cf *AWSRunner) CancelStackUpdate(ctx context.Context, msg *deployer_tpb.Ca
 	return &emptypb.Empty{}, nil
 }
 
-func (cf *AWSRunner) DeleteStack(ctx context.Context, msg *deployer_tpb.DeleteStackMessage) (*emptypb.Empty, error) {
+func (cf *InfraWorker) DeleteStack(ctx context.Context, msg *deployer_tpb.DeleteStackMessage) (*emptypb.Empty, error) {
 	err := cf.CFClient.DeleteStack(ctx, msg)
 	if err != nil {
 		return nil, err
@@ -178,9 +176,9 @@ func (cf *AWSRunner) DeleteStack(ctx context.Context, msg *deployer_tpb.DeleteSt
 	return &emptypb.Empty{}, nil
 }
 
-func (cf *AWSRunner) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStackMessage) (*emptypb.Empty, error) {
+func (cf *InfraWorker) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStackMessage) (*emptypb.Empty, error) {
 	err := cf.CFClient.ScaleStack(ctx, msg)
-	if err != nil && !isNoUpdatesError(err) {
+	if err != nil && !IsNoUpdatesError(err) {
 		return nil, fmt.Errorf("ScaleStack: %w", err)
 	}
 
@@ -191,7 +189,7 @@ func (cf *AWSRunner) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStac
 	return &emptypb.Empty{}, nil
 }
 
-func (cf *AWSRunner) StabalizeStack(ctx context.Context, msg *deployer_tpb.StabalizeStackMessage) (*emptypb.Empty, error) {
+func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.StabalizeStackMessage) (*emptypb.Empty, error) {
 
 	remoteStack, err := cf.getOneStack(ctx, msg.StackId.StackName)
 	if err != nil {
@@ -282,7 +280,7 @@ func (cf *AWSRunner) StabalizeStack(ctx context.Context, msg *deployer_tpb.Staba
 
 // sends a fake status update message back to the deployer so that it thinks
 // something has happened and continues the event chain
-func (cf *AWSRunner) noUpdatesToBePerformed(ctx context.Context, stackID *deployer_tpb.StackID) error {
+func (cf *InfraWorker) noUpdatesToBePerformed(ctx context.Context, stackID *deployer_tpb.StackID) error {
 
 	remoteStack, err := cf.getOneStack(ctx, stackID.StackName)
 	if err != nil {
@@ -306,7 +304,7 @@ func (cf *AWSRunner) noUpdatesToBePerformed(ctx context.Context, stackID *deploy
 	return nil
 }
 
-func (d *AWSRunner) RunDatabaseMigration(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) (*emptypb.Empty, error) {
+func (d *InfraWorker) RunDatabaseMigration(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) (*emptypb.Empty, error) {
 	if err := d.messageHandler.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
 		MigrationId:  msg.MigrationId,
 		DeploymentId: msg.DeploymentId,
@@ -318,7 +316,7 @@ func (d *AWSRunner) RunDatabaseMigration(ctx context.Context, msg *deployer_tpb.
 	migrator := &DBMigrator{
 		Clients: d.Clients,
 	}
-	migrateErr := migrator.runDatabaseMigration(ctx, msg)
+	migrateErr := migrator.RunDatabaseMigration(ctx, msg)
 
 	if migrateErr != nil {
 		log.WithError(ctx, migrateErr).Error("RunDatabaseMigration")

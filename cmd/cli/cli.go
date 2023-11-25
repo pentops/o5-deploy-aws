@@ -13,7 +13,6 @@ import (
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/localrun"
 	"github.com/pentops/o5-deploy-aws/protoread"
-	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
@@ -113,30 +112,15 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		AWSConfig:     awsConfig,
 	}
 
-	awsRunner := awsinfra.NewLocalRunner(clientSet)
-	eventLoop := localrun.NewLocalEventLoop(awsRunner)
-
-	stateStore := localrun.NewLocalStateStore()
-
-	if dbURL := os.Getenv("POSTGRES_URL"); dbURL != "" {
-		db, err := service.OpenDatabase(ctx)
-		if err != nil {
-			return err
-		}
-
-		pgStore, err := deployer.NewPostgresStateStore(db, []*environment_pb.Environment{env})
-		if err != nil {
-			return err
-		}
-
-		stateStore.StoreCallback = pgStore.StoreDeploymentEvent
-	}
+	awsRunner := localrun.NewInfraAdapter(clientSet)
+	stateStore := localrun.NewStateStore()
+	eventLoop := localrun.NewEventLoop(awsRunner, stateStore)
 
 	if err := stateStore.AddEnvironment(env); err != nil {
 		return err
 	}
 
-	deploymentManager, err := deployer.NewDeployer(stateStore, flagConfig.scratchBucket, s3Client)
+	deploymentManager, err := deployer.NewTrigger(stateStore, flagConfig.scratchBucket, s3Client)
 	if err != nil {
 		return err
 	}

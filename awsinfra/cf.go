@@ -5,14 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/smithy-go"
-	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
@@ -29,6 +27,19 @@ func (cf *CFClient) getClient(ctx context.Context) (CloudFormationAPI, error) {
 		return nil, err
 	}
 	return clients.CloudFormation, nil
+}
+
+func (cf *CFClient) GetOneStack(ctx context.Context, stackName string) (*StackStatus, error) {
+	stack, err := cf.getOneStack(ctx, stackName)
+	if err != nil {
+		return nil, err
+	}
+	summary, err := summarizeStackStatus(stack)
+	if err != nil {
+		return nil, err
+	}
+	return &summary, nil
+
 }
 
 func (cf *CFClient) getOneStack(ctx context.Context, stackName string) (*types.Stack, error) {
@@ -300,70 +311,11 @@ type StackArgs struct {
 	Parameters []types.Parameter
 }
 
-func isNoUpdatesError(err error) bool {
+func IsNoUpdatesError(err error) bool {
 	var opError smithy.APIError
 	if !errors.As(err, &opError) {
 		return false
 	}
 
 	return opError.ErrorCode() == "ValidationError" && opError.ErrorMessage() == "No updates are to be performed."
-}
-
-func (cf *LocalRunner) pollStack(
-	ctx context.Context,
-	lastStatus types.StackStatus,
-	stackID *deployer_tpb.StackID,
-) (*deployer_tpb.StackStatusChangedMessage, error) {
-
-	stackName := stackID.StackName
-
-	ctx = log.WithFields(ctx, map[string]interface{}{
-		"stackName": stackName,
-	})
-
-	log.Debug(ctx, "PollStack Begin")
-
-	for {
-		remoteStack, err := cf.getOneStack(ctx, stackName)
-		if err != nil {
-			return nil, err
-		}
-		if remoteStack == nil {
-			return nil, fmt.Errorf("missing stack %s", stackName)
-		}
-
-		summary, err := summarizeStackStatus(remoteStack)
-		if err != nil {
-			return nil, err
-		}
-
-		if lastStatus == remoteStack.StackStatus {
-
-			log.WithFields(ctx, map[string]interface{}{
-				"lifecycle":   summary.SummaryType.ShortString(),
-				"stackStatus": remoteStack.StackStatus,
-			}).Debug("PollStack No Change")
-			time.Sleep(1 * time.Second)
-			continue
-		}
-
-		lastStatus = remoteStack.StackStatus
-
-		log.WithFields(ctx, map[string]interface{}{
-			"lifecycle":   summary.SummaryType.ShortString(),
-			"stackStatus": remoteStack.StackStatus,
-		}).Debug("PollStack Result")
-
-		if !summary.Stable {
-			continue
-		}
-
-		return &deployer_tpb.StackStatusChangedMessage{
-			StackId:   stackID,
-			Status:    string(remoteStack.StackStatus),
-			Outputs:   summary.Outputs,
-			Lifecycle: summary.SummaryType,
-		}, nil
-	}
-
 }

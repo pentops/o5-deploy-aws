@@ -22,46 +22,30 @@ type Environment struct {
 	AWS         *environment_pb.AWS
 }
 
-type Deployer struct {
+type Trigger struct {
 	RotateSecrets bool
 	CancelUpdates bool
 
 	s3Client         awsinfra.S3API
 	cfTemplateBucket string
 
-	storage DeployerStorage
+	storage EnvironmentStore
 }
 
-func NewDeployer(storage DeployerStorage, cfTemplateBucket string, s3Client awsinfra.S3API) (*Deployer, error) {
+type EnvironmentStore interface {
+	GetEnvironment(ctx context.Context, environmentName string) (*environment_pb.Environment, error)
+}
+
+func NewTrigger(storage EnvironmentStore, cfTemplateBucket string, s3Client awsinfra.S3API) (*Trigger, error) {
 	cfTemplateBucket = strings.TrimPrefix(cfTemplateBucket, "s3://")
-	return &Deployer{
+	return &Trigger{
 		s3Client:         s3Client,
 		storage:          storage,
 		cfTemplateBucket: cfTemplateBucket,
 	}, nil
 }
 
-func (d *Deployer) BeginDeployments(ctx context.Context, app *app.BuiltApplication, envNames []string) error {
-	for _, envName := range envNames {
-		if err := d.BeginDeployment(ctx, app, envName); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (d *Deployer) BeginDeployment(ctx context.Context, app *app.BuiltApplication, envName string) error {
-	trigger, err := d.BuildTrigger(ctx, app, envName)
-	if err != nil {
-		return err
-	}
-
-	return d.storage.Transact(ctx, func(ctx context.Context, tx TransitionTransaction) error {
-		return tx.PublishEvent(ctx, trigger)
-	})
-}
-
-func (dd *Deployer) BuildTrigger(ctx context.Context, app *app.BuiltApplication, envName string) (*deployer_tpb.TriggerDeploymentMessage, error) {
+func (dd *Trigger) BuildTrigger(ctx context.Context, app *app.BuiltApplication, envName string) (*deployer_tpb.TriggerDeploymentMessage, error) {
 
 	ctx = log.WithFields(ctx, map[string]interface{}{
 		"appName":     app.Name,

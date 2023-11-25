@@ -27,24 +27,6 @@ func NewDeployerWorker(store DeployerStorage) (*DeployerWorker, error) {
 
 func (dw *DeployerWorker) RegisterEvent(ctx context.Context, outerEvent *deployer_pb.DeploymentEvent) error {
 
-	runTransition := func(ctx context.Context, tx TransitionTransaction, baton TransitionBaton, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
-
-		transition, err := FindTransition(ctx, deployment, event)
-		if err != nil {
-			return err
-		}
-
-		if err := transition.RunTransition(ctx, baton, deployment, event); err != nil {
-			return err
-		}
-
-		if err := tx.StoreDeploymentEvent(ctx, deployment, event); err != nil {
-			return err
-		}
-
-		return nil
-	}
-
 	return dw.storage.Transact(ctx, func(ctx context.Context, tx TransitionTransaction) error {
 		deployment, err := tx.GetDeployment(ctx, outerEvent.DeploymentId)
 		if errors.Is(err, DeploymentNotFoundError) {
@@ -55,16 +37,16 @@ func (dw *DeployerWorker) RegisterEvent(ctx context.Context, outerEvent *deploye
 			return err
 		}
 
-		spec := deployment.Spec
-		if spec == nil {
-			trigger := outerEvent.Event.GetTriggered()
-			if trigger == nil {
-				return fmt.Errorf("no spec found for deployment %s, and the event is not an initiating event", outerEvent.DeploymentId)
-			}
-			spec = trigger.Spec
+		var environmentName string
+		if deployment.Spec != nil {
+			environmentName = deployment.Spec.EnvironmentName
+		} else if trigger := outerEvent.Event.GetTriggered(); trigger != nil {
+			environmentName = trigger.Spec.EnvironmentName
+		} else {
+			return fmt.Errorf("no spec found for deployment %s, and the event is not an initiating event", outerEvent.DeploymentId)
 		}
 
-		environment, err := tx.GetEnvironment(ctx, spec.EnvironmentName)
+		environment, err := tx.GetEnvironment(ctx, environmentName)
 		if err != nil {
 			return err
 		}
@@ -74,13 +56,12 @@ func (dw *DeployerWorker) RegisterEvent(ctx context.Context, outerEvent *deploye
 			return err
 		}
 
-		// Recursive function, so that the event and all chained events are
-		// handled atomically.
-		// Deployment is modified in place by the transition, and stored at the
-		// end with the event. We then pass the same deployment pointer through
-		// to the next event as-is, which should match the stored state
-		var runOne func(event *deployer_pb.DeploymentEvent) error
-		runOne = func(innerEvent *deployer_pb.DeploymentEvent) error {
+		eventsToProcess := []*deployer_pb.DeploymentEvent{outerEvent}
+
+		for len(eventsToProcess) > 0 {
+			innerEvent := eventsToProcess[0]
+			eventsToProcess = eventsToProcess[1:]
+
 			baton := &TransitionData{
 				ParameterResolver: deployerResolver,
 			}
@@ -93,8 +74,18 @@ func (dw *DeployerWorker) RegisterEvent(ctx context.Context, outerEvent *deploye
 				"transition":   fmt.Sprintf("%s -> ? : %s", stateBefore, typeKey),
 			})
 			log.WithField(ctx, "event", protojson.Format(innerEvent.Event)).Debug("Begin Deployment Event")
-			if err := runTransition(ctx, tx, baton, deployment, innerEvent); err != nil {
+			transition, err := FindTransition(ctx, deployment, innerEvent)
+
+			if err != nil {
+				return err
+			}
+
+			if err := transition.RunTransition(ctx, baton, deployment, innerEvent); err != nil {
 				log.WithError(ctx, err).Error("Running Deployment Transition")
+				return err
+			}
+
+			if err := tx.StoreDeploymentEvent(ctx, deployment, innerEvent); err != nil {
 				return err
 			}
 
@@ -110,16 +101,9 @@ func (dw *DeployerWorker) RegisterEvent(ctx context.Context, outerEvent *deploye
 				}
 			}
 
-			for _, nextEvent := range baton.ChainEvents {
-				if err := runOne(nextEvent); err != nil {
-					return fmt.Errorf("chain: %w", err)
-				}
-			}
-			return nil
+			eventsToProcess = append(eventsToProcess, baton.ChainEvents...)
 		}
-
-		return runOne(outerEvent)
-
+		return nil
 	})
 }
 

@@ -7,7 +7,6 @@ import (
 
 	"github.com/bufbuild/protovalidate-go"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
@@ -15,27 +14,28 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// LocalEventLoop emulates AWS infrastructure by running all handlers in the
+// EventLoop emulates AWS infrastructure by running all handlers in the
 // same process. Used when running as a standalone tool, e.g. when
 // bootstrapping a new environment.
-type LocalEventLoop struct {
+type EventLoop struct {
 	validator *protovalidate.Validator
-	storage   *LocalStateStore
-	awsRunner *awsinfra.LocalRunner
+	storage   *StateStore
+	awsRunner *InfraAdapter
 }
 
-func NewLocalEventLoop(awsRunner *awsinfra.LocalRunner) *LocalEventLoop {
+func NewEventLoop(awsRunner *InfraAdapter, stateStore *StateStore) *EventLoop {
 	validator, err := protovalidate.New()
 	if err != nil {
 		panic(err)
 	}
-	return &LocalEventLoop{
+	return &EventLoop{
 		awsRunner: awsRunner,
+		storage:   stateStore,
 		validator: validator,
 	}
 }
 
-func (lel *LocalEventLoop) Run(ctx context.Context, trigger *deployer_tpb.TriggerDeploymentMessage) error {
+func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.TriggerDeploymentMessage) error {
 	if err := lel.validator.Validate(trigger); err != nil {
 		return err
 	}
@@ -95,6 +95,11 @@ func (lel *LocalEventLoop) Run(ctx context.Context, trigger *deployer_tpb.Trigge
 			return err
 		}
 
+		ctx = log.WithFields(ctx, map[string]interface{}{
+			"transition": fmt.Sprintf("%s -> %s : %s", stateBefore, deployment.Status.ShortString(), typeKey),
+		})
+		log.Info(ctx, "End Deployment Event")
+
 		if err := tx.StoreDeploymentEvent(ctx, deployment, innerEvent); err != nil {
 			return err
 		}
@@ -149,7 +154,7 @@ func mapSideEffectResult(result proto.Message) (*deployer_pb.DeploymentEvent, er
 
 }
 
-func (lel *LocalEventLoop) handleSideEffect(ctx context.Context, msg proto.Message) (proto.Message, error) {
+func (lel *EventLoop) handleSideEffect(ctx context.Context, msg proto.Message) (proto.Message, error) {
 	log.WithField(ctx, "inputMessage", msg.ProtoReflect().Descriptor().FullName()).Debug("Side Effect")
 
 	switch msg := msg.(type) {

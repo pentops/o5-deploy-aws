@@ -24,29 +24,29 @@ type DBMigrator struct {
 	Clients ClientBuilder
 }
 
-func (d *DBMigrator) runDatabaseMigration(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
+func (d *DBMigrator) RunDatabaseMigration(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
 	if err := d.upsertPostgresDatabase(ctx, msg); err != nil {
 		return err
 	}
 
-	if msg.Database.MigrationTaskOutputName != nil {
+	if msg.Database.MigrationTaskOutputName == nil {
+		return nil
+	}
 
-		if msg.MigrationTaskArn == "" {
-			return fmt.Errorf("stack output '%s' not found, for database %q", *msg.Database.MigrationTaskOutputName, msg.Database.Database.Name)
-		}
+	if msg.MigrationTaskArn == "" {
+		return fmt.Errorf("stack output '%s' not found, for database %q", *msg.Database.MigrationTaskOutputName, msg.Database.Database.Name)
+	}
 
-		if err := d.runMigrationTask(ctx, msg); err != nil {
-			return err
-		}
+	if err := d.runMigrationTask(ctx, msg); err != nil {
+		return err
+	}
 
-		// This runs both before and after migration
-		if err := d.fixPostgresOwnership(ctx, msg); err != nil {
-			return err
-		}
+	// This runs both before and after migration
+	if err := d.fixPostgresOwnership(ctx, msg); err != nil {
+		return err
 	}
 
 	return nil
-
 }
 
 func (d *DBMigrator) runMigrationTask(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {

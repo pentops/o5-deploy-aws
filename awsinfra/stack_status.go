@@ -47,7 +47,7 @@ var stackStatusesTerminal = []types.StackStatus{
 }
 
 type StackStatus struct {
-	StatusName  types.StackStatus
+	StackStatus types.StackStatus
 	SummaryType deployer_pb.StackLifecycle
 	IsOK        bool
 	Stable      bool
@@ -117,7 +117,7 @@ func summarizeStackStatus(stack *types.Stack) (StackStatus, error) {
 	}
 
 	out := StackStatus{
-		StatusName:  stack.StackStatus,
+		StackStatus: stack.StackStatus,
 		Parameters:  parameters,
 		SummaryType: lifecycle,
 		Outputs:     mapOutputs(stack.Outputs),

@@ -176,7 +176,7 @@ func runServe(ctx context.Context) error {
 		AWSConfig:     awsConfig,
 	}
 
-	awsInfraRunner := awsinfra.NewRunner(clientSet, pgStore)
+	awsInfraRunner := awsinfra.NewInfraWorker(clientSet, pgStore)
 	awsInfraRunner.CallbackARNs = []string{cfg.CallbackARN}
 
 	deploymentWorker, err := deployer.NewDeployerWorker(pgStore)
@@ -184,7 +184,7 @@ func runServe(ctx context.Context) error {
 		return err
 	}
 
-	deploymentManager, err := deployer.NewDeployer(pgStore, cfg.CFTemplates, s3Client)
+	deploymentManager, err := deployer.NewTrigger(pgStore, cfg.CFTemplates, s3Client)
 	if err != nil {
 		return err
 	}
@@ -199,6 +199,7 @@ func runServe(ctx context.Context) error {
 	refLookup := RefLookup(configFile.Refs)
 
 	githubWorker, err := github.NewWebhookWorker(
+		db,
 		githubClient,
 		deploymentManager,
 		refLookup,
