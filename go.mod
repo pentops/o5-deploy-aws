@@ -38,7 +38,6 @@ require (
 	google.golang.org/grpc v1.59.0
 	google.golang.org/protobuf v1.31.1-0.20231027082548-f4a6c1f6e5c1
 	gopkg.daemonl.com/envconf v0.0.0-20220909014755-d65ec77bd452
-	gopkg.daemonl.com/log v0.0.13
 	gopkg.daemonl.com/sqrlx v0.0.26-0.20231109230408-4e2718f3736f
 )
 

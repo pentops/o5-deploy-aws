@@ -676,8 +676,6 @@ github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53 h1:Hbu66tModJqM
 github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53/go.mod h1:Cd2eLUf4XY62DBSNyqZ347BGF5MOXyVoWmUGBZPoVxw=
 github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576 h1:A/vY7Qiv1S/1mUtacZQVoXicaYiiaSR7PInSUcaMOpA=
 github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576/go.mod h1:UXhrs+VZ6cWZ7b/v8AtuvBZc5nwS5WFHP94JoFrZQA8=
-github.com/pentops/o5-go v0.0.0-20231123033345-82dd9d679fb4 h1:DIQFJSX/ht77CN6fZdEZeVWhCSoNPhaoSRqkHD4J+Lg=
-github.com/pentops/o5-go v0.0.0-20231123033345-82dd9d679fb4/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
 github.com/pentops/o5-go v0.0.0-20231123034227-ac9197d1359d h1:bTTwd7Lx/Uo8dvZG6CUIPogmJmylbvriiJgZ/5HZZ0M=
 github.com/pentops/o5-go v0.0.0-20231123034227-ac9197d1359d/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
 github.com/pentops/o5-runtime-sidecar v0.0.1-beta7 h1:TXSXmivdLYtPIhs+Wk+xpp5q3M77hWDUi3lnzgp5X+s=
@@ -1296,8 +1294,6 @@ google.golang.org/protobuf v1.31.1-0.20231027082548-f4a6c1f6e5c1 h1:fk72uXZyuZiT
 google.golang.org/protobuf v1.31.1-0.20231027082548-f4a6c1f6e5c1/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqwMG9pJV4I=
 gopkg.daemonl.com/envconf v0.0.0-20220909014755-d65ec77bd452 h1:o3GxEB2X2+IpUsC70ld3vWv68UVARMC/ygUPQ5MFD+k=
 gopkg.daemonl.com/envconf v0.0.0-20220909014755-d65ec77bd452/go.mod h1:bVXSKkePHHubtEgvoVrjuRAQOeie9ITEFm0moC/gpc0=
-gopkg.daemonl.com/log v0.0.13 h1:y15F+/WF/XojS1iS2ky9f1KcU5dC4DBIuUcEn458jPY=
-gopkg.daemonl.com/log v0.0.13/go.mod h1:Dfp3yqXsgnxrZPm889AWZMiFyGP7ZXNdREqH66EPqRk=
 gopkg.daemonl.com/sqrlx v0.0.26-0.20231109230408-4e2718f3736f h1:f8RCD/ooe91dsJk5SuPtpqs0TvuMFnq9ymEjix7wJBU=
 gopkg.daemonl.com/sqrlx v0.0.26-0.20231109230408-4e2718f3736f/go.mod h1:UaR0HoXnRiC8bOTQ7Ru2tPCRYBCThUvlM22iU02H57Q=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
