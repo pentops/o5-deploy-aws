@@ -4,6 +4,7 @@ name: "o5deploy"
 blobstores:
   - name: env-configs
   - name: cf-templates
+  - name: japi-images
 
 secrets:
   - name: github
@@ -26,10 +27,19 @@ databases:
           - name: "POSTGRES_URL"
             database:
               databaseName: main
+targets:
+  - name: "o5-deployer-input"
+  - name: "o5-aws-command"
 
 runtimes:
   - name: main
     grantMetaDeployPermissions: true
+    routes:
+      - prefix: "/registry/v1/"
+        protocol: ROUTE_PROTOCOL_HTTP
+        bypass_ingress: true
+        port: 8080
+
     subscriptions:
       - name: "webhook-github"
         envName: "publicweb"
@@ -63,6 +73,12 @@ runtimes:
           - name: CF_TEMPLATES
             blobstore:
               name: cf-templates
+              s3_direct: true
+          - name: REGISTRY_PORT
+            value: "8080"
+          - name: REGISTRY_BUCKET
+            blobstore:
+              name: japi-images
               s3_direct: true
           - name: GH_PRIVATE_KEY
             secret:

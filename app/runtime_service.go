@@ -128,6 +128,7 @@ func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
 				"ecs",
 				cloudformation.Ref(EnvNameParameter),
 				rsPrefix,
+				def.Name,
 			}),
 			"awslogs-create-group":  "true",
 			"awslogs-region":        cloudformation.Ref("AWS::Region"),
@@ -287,6 +288,10 @@ func (rs *RuntimeService) Apply(template *Application) error {
 		rs.IngressContainer.Secrets = append(rs.IngressContainer.Secrets, ecs.TaskDefinition_Secret{
 			Name:      "POSTGRES_OUTBOX",
 			ValueFrom: db.SecretValueFrom(),
+		})
+		rs.IngressContainer.Environment = append(rs.IngressContainer.Environment, ecs.TaskDefinition_KeyValuePair{
+			Name:  String("SNS_PREFIX"),
+			Value: String(cloudformation.Ref(SNSPrefixParameter)),
 		})
 	}
 

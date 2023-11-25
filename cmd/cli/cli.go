@@ -13,10 +13,8 @@ import (
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/localrun"
 	"github.com/pentops/o5-deploy-aws/protoread"
-	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
-	"golang.org/x/sync/errgroup"
 )
 
 type flagConfig struct {
@@ -26,6 +24,7 @@ type flagConfig struct {
 	dryRun        bool
 	rotateSecrets bool
 	cancelUpdate  bool
+	scratchBucket string
 }
 
 func main() {
@@ -33,6 +32,7 @@ func main() {
 	flag.StringVar(&cfg.envFilename, "env", "", "environment file")
 	flag.StringVar(&cfg.appFilename, "app", "", "application file")
 	flag.StringVar(&cfg.version, "version", "", "version tag")
+	flag.StringVar(&cfg.scratchBucket, "scratch-bucket", "", "An S3 bucket name to upload templates")
 	flag.BoolVar(&cfg.dryRun, "dry", false, "dry run - print template and exit")
 	flag.BoolVar(&cfg.rotateSecrets, "rotate-secrets", false, "rotate secrets - rotate any existing secrets (e.g. db creds)")
 	flag.BoolVar(&cfg.cancelUpdate, "cancel-update", false, "cancel update - cancel any ongoing update prior to deployment")
@@ -41,6 +41,11 @@ func main() {
 
 	if cfg.appFilename == "" {
 		fmt.Fprintln(os.Stderr, "missing application file (-app)")
+		os.Exit(1)
+	}
+
+	if cfg.scratchBucket == "" {
+		fmt.Fprintln(os.Stderr, "missing scratch bucket (-scratch-bucket)")
 		os.Exit(1)
 	}
 
@@ -107,30 +112,15 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		AWSConfig:     awsConfig,
 	}
 
-	eventLoop := localrun.NewLocalEventLoop()
-
-	stateStore := localrun.NewLocalStateStore(eventLoop)
-
-	if dbURL := os.Getenv("POSTGRES_URL"); dbURL != "" {
-		db, err := service.OpenDatabase(ctx)
-		if err != nil {
-			return err
-		}
-
-		pgStore, err := deployer.NewPostgresStateStore(db, []*environment_pb.Environment{env})
-		if err != nil {
-			return err
-		}
-
-		stateStore.StoreCallback = pgStore.StoreDeploymentEvent
-	}
+	awsRunner := localrun.NewInfraAdapter(clientSet)
+	stateStore := localrun.NewStateStore()
+	eventLoop := localrun.NewEventLoop(awsRunner, stateStore)
 
 	if err := stateStore.AddEnvironment(env); err != nil {
 		return err
 	}
 
-	deploymentManager, err := deployer.NewDeploymentManager(stateStore, awsTarget.ScratchBucket, s3Client)
-
+	deploymentManager, err := deployer.NewTrigger(stateStore, flagConfig.scratchBucket, s3Client)
 	if err != nil {
 		return err
 	}
@@ -138,32 +128,11 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 	deploymentManager.RotateSecrets = flagConfig.rotateSecrets
 	deploymentManager.CancelUpdates = flagConfig.cancelUpdate
 
-	if err := localrun.RegisterDeployerHandlers(eventLoop, deploymentManager); err != nil {
+	trigger, err := deploymentManager.BuildTrigger(ctx, built, env.FullName)
+	if err != nil {
 		return err
 	}
 
-	awsRunner := awsinfra.NewRunner(clientSet, eventLoop)
-	awsRunner.LocalCLIRun = true
+	return eventLoop.Run(ctx, trigger)
 
-	if err := localrun.RegisterLocalHandlers(eventLoop, awsRunner); err != nil {
-		return err
-	}
-
-	if err := deploymentManager.BeginDeployment(ctx, built, env.FullName); err != nil {
-		return fmt.Errorf("deploy: %w", err)
-	}
-
-	ctx, cancel := context.WithCancel(ctx)
-	eg, ctx := errgroup.WithContext(ctx)
-	eg.Go(func() error {
-		return eventLoop.Wait(ctx)
-	})
-	eg.Go(func() error {
-		defer cancel()
-		// Cancel should run even if the Wait function returns no error, this
-		// stops the poller and event loop
-		return stateStore.Wait(ctx)
-	})
-
-	return eg.Wait()
 }

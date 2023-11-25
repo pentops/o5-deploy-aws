@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 )
@@ -276,7 +277,25 @@ var transitions = []ITransitionSpec{
 			return nil
 		},
 	},
-	// Waiting --> Failed : StackStatus.Failed
+	// Waiting --> Failed : StackStatus.Rollback In Progress.
+	// TODO: Needs an actual key
+	TransitionSpec[*deployer_pb.DeploymentEventType_StackStatus]{
+		FromStatus: []deployer_pb.DeploymentStatus{
+			deployer_pb.DeploymentStatus_WAITING,
+		},
+		EventFilter: func(event *deployer_pb.DeploymentEventType_StackStatus) bool {
+			return event.FullStatus == "UPDATE_ROLLBACK_IN_PROGRESS"
+		},
+		Transition: func(
+			ctx context.Context,
+			tb TransitionBaton,
+			deployment *deployer_pb.DeploymentState,
+			event *deployer_pb.DeploymentEventType_StackStatus,
+		) error {
+			// nothing, just log the progress
+			return nil
+		},
+	},
 	// Creating --> Failed : StackStatus.Failed
 	// ScalingUp --> Failed : StackStatus.Failed
 	// ScalingDown --> Failed : StackStatus.Failed
@@ -327,10 +346,47 @@ var transitions = []ITransitionSpec{
 				}
 				deployment.DataMigrations[i] = migration
 
-				migrationMsg, err := tb.buildMigrationRequest(ctx, deployment, migration)
-				if err != nil {
-					return err
+				ctx = log.WithFields(ctx, map[string]interface{}{
+					"database":    db.Database.Name,
+					"serverGroup": db.Database.GetPostgres().ServerGroup,
+				})
+				log.Debug(ctx, "Upsert Database")
+				var migrationTaskARN string
+				var secretARN string
+				for _, output := range deployment.StackOutput {
+					if *db.MigrationTaskOutputName == output.Name {
+						migrationTaskARN = output.Value
+					}
+					if *db.SecretOutputName == output.Name {
+						secretARN = output.Value
+					}
 				}
+
+				if db.MigrationTaskOutputName != nil {
+					if migrationTaskARN == "" {
+						return fmt.Errorf("no migration task found for database %s", db.Database.Name)
+					}
+					if secretARN == "" {
+						return fmt.Errorf("no migration secret found for database %s", db.Database.Name)
+					}
+				}
+
+				secretName := db.RdsHost.SecretName
+				if secretName == "" {
+					return fmt.Errorf("no host found for server group %q", db.Database.GetPostgres().ServerGroup)
+				}
+
+				migrationMsg := &deployer_tpb.RunDatabaseMigrationMessage{
+					MigrationId:       migration.MigrationId,
+					DeploymentId:      deployment.DeploymentId,
+					MigrationTaskArn:  migrationTaskARN,
+					SecretArn:         secretARN,
+					Database:          db,
+					RotateCredentials: migration.RotateCredentials,
+					EcsClusterName:    deployment.Spec.EcsCluster,
+					RootSecretName:    secretName,
+				}
+
 				tb.SideEffect(migrationMsg)
 			}
 

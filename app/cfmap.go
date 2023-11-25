@@ -28,9 +28,11 @@ const (
 	MetaDeployAssumeRoleParameter = "MetaDeployAssumeRoleArns"
 	JWKSParameter                 = "JWKS"
 	AWSRegionParameter            = "AWS::Region"
+	SNSPrefixParameter            = "SNSPrefix"
 
 	O5SidecarContainerName = "o5_runtime"
 	O5SidecarImageName     = "ghcr.io/pentops/o5-runtime-sidecar:latest"
+	DeadLetterTargetName   = "dead-letter"
 )
 
 type globalData struct {
@@ -74,6 +76,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		VersionTagParameter,
 		MetaDeployAssumeRoleParameter,
 		JWKSParameter,
+		SNSPrefixParameter,
 	} {
 		parameter := &deployer_pb.Parameter{
 			Name: key,
@@ -213,6 +216,21 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 
 	listener := NewListenerRuleSet()
 
+	if len(app.Targets) > 0 {
+		hadDeadLetter := false
+		for _, target := range app.Targets {
+			if target.Name == DeadLetterTargetName {
+				hadDeadLetter = true
+				break
+			}
+		}
+		if !hadDeadLetter {
+			app.Targets = append(app.Targets, &application_pb.Target{
+				Name: "dead-letter",
+			})
+		}
+	}
+
 	for _, runtime := range app.Runtimes {
 		runtimeStack, err := NewRuntimeService(global, runtime)
 		if err != nil {
@@ -222,6 +240,20 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 
 		if err := runtimeStack.AddRoutes(listener); err != nil {
 			return nil, fmt.Errorf("adding routes to %s: %w", runtime.Name, err)
+		}
+
+		for _, target := range app.Targets {
+			snsTopicARN := cloudformation.Join("", []string{
+				"arn:aws:sns:",
+				cloudformation.Ref("AWS::Region"),
+				":",
+				cloudformation.Ref("AWS::AccountId"),
+				":",
+				cloudformation.Ref(EnvNameParameter),
+				"-",
+				target.Name,
+			})
+			runtimeStack.Policy.AddSNSPublish(snsTopicARN)
 		}
 
 		if err := runtimeStack.Apply(stackTemplate); err != nil {

@@ -2,13 +2,18 @@ package github
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
+	sq "github.com/elgris/sqrl"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
+	"github.com/pentops/outbox.pg.go/outbox"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"gopkg.daemonl.com/sqrlx"
 )
 
 type IClient interface {
@@ -16,7 +21,7 @@ type IClient interface {
 }
 
 type IDeployer interface {
-	BeginDeployments(ctx context.Context, app *app.BuiltApplication, envNames []string) error
+	BuildTrigger(ctx context.Context, app *app.BuiltApplication, envName string) (*deployer_tpb.TriggerDeploymentMessage, error)
 }
 
 type RefMatcher interface {
@@ -27,15 +32,21 @@ type WebhookWorker struct {
 	github   IClient
 	deployer IDeployer
 	refs     RefMatcher
+	db       *sqrlx.Wrapper
 
 	github_pb.UnimplementedWebhookTopicServer
 }
 
-func NewWebhookWorker(githubClient IClient, deployer IDeployer, refs RefMatcher) (*WebhookWorker, error) {
+func NewWebhookWorker(conn sqrlx.Connection, githubClient IClient, deployer IDeployer, refs RefMatcher) (*WebhookWorker, error) {
+	db, err := sqrlx.New(conn, sq.Dollar)
+	if err != nil {
+		return nil, err
+	}
 	return &WebhookWorker{
 		github:   githubClient,
 		deployer: deployer,
 		refs:     refs,
+		db:       db,
 	}, nil
 }
 
@@ -75,8 +86,31 @@ func (ww *WebhookWorker) Push(ctx context.Context, event *github_pb.PushMessage)
 
 	built := appStack.Build()
 
-	if err := ww.deployer.BeginDeployments(ctx, built, targetEnvNames); err != nil {
+	var triggers []outbox.OutboxMessage
+
+	for _, envName := range targetEnvNames {
+		trigger, err := ww.deployer.BuildTrigger(ctx, built, envName)
+		if err != nil {
+			return nil, err
+		}
+		triggers = append(triggers, trigger)
+	}
+
+	err = ww.db.Transact(ctx, &sqrlx.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+		ReadOnly:  false,
+		Retryable: true,
+	}, func(ctx context.Context, tx sqrlx.Transaction) error {
+		for _, trigger := range triggers {
+			if err := outbox.Send(ctx, tx, trigger); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
+
 	return &emptypb.Empty{}, nil
 }

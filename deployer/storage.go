@@ -21,8 +21,6 @@ var DeploymentNotFoundError = fmt.Errorf("deployment not found")
 
 type DeployerStorage interface {
 	Transact(context.Context, func(context.Context, TransitionTransaction) error) error
-
-	GetEnvironment(ctx context.Context, environmentName string) (*environment_pb.Environment, error)
 }
 
 type TransitionTransaction interface {
