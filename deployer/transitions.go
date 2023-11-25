@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 )
@@ -345,10 +346,47 @@ var transitions = []ITransitionSpec{
 				}
 				deployment.DataMigrations[i] = migration
 
-				migrationMsg, err := tb.buildMigrationRequest(ctx, deployment, migration)
-				if err != nil {
-					return err
+				ctx = log.WithFields(ctx, map[string]interface{}{
+					"database":    db.Database.Name,
+					"serverGroup": db.Database.GetPostgres().ServerGroup,
+				})
+				log.Debug(ctx, "Upsert Database")
+				var migrationTaskARN string
+				var secretARN string
+				for _, output := range deployment.StackOutput {
+					if *db.MigrationTaskOutputName == output.Name {
+						migrationTaskARN = output.Value
+					}
+					if *db.SecretOutputName == output.Name {
+						secretARN = output.Value
+					}
 				}
+
+				if db.MigrationTaskOutputName != nil {
+					if migrationTaskARN == "" {
+						return fmt.Errorf("no migration task found for database %s", db.Database.Name)
+					}
+					if secretARN == "" {
+						return fmt.Errorf("no migration secret found for database %s", db.Database.Name)
+					}
+				}
+
+				secretName := db.RdsHost.SecretName
+				if secretName == "" {
+					return fmt.Errorf("no host found for server group %q", db.Database.GetPostgres().ServerGroup)
+				}
+
+				migrationMsg := &deployer_tpb.RunDatabaseMigrationMessage{
+					MigrationId:       migration.MigrationId,
+					DeploymentId:      deployment.DeploymentId,
+					MigrationTaskArn:  migrationTaskARN,
+					SecretArn:         secretARN,
+					Database:          db,
+					RotateCredentials: migration.RotateCredentials,
+					EcsClusterName:    deployment.Spec.EcsCluster,
+					RootSecretName:    secretName,
+				}
+
 				tb.SideEffect(migrationMsg)
 			}
 

@@ -16,7 +16,6 @@ import (
 	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
-	"golang.org/x/sync/errgroup"
 )
 
 type flagConfig struct {
@@ -114,9 +113,10 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		AWSConfig:     awsConfig,
 	}
 
-	eventLoop := localrun.NewLocalEventLoop()
+	awsRunner := awsinfra.NewLocalRunner(clientSet)
+	eventLoop := localrun.NewLocalEventLoop(awsRunner)
 
-	stateStore := localrun.NewLocalStateStore(eventLoop)
+	stateStore := localrun.NewLocalStateStore()
 
 	if dbURL := os.Getenv("POSTGRES_URL"); dbURL != "" {
 		db, err := service.OpenDatabase(ctx)
@@ -137,7 +137,6 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 	}
 
 	deploymentManager, err := deployer.NewDeployer(stateStore, flagConfig.scratchBucket, s3Client)
-
 	if err != nil {
 		return err
 	}
@@ -145,32 +144,11 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 	deploymentManager.RotateSecrets = flagConfig.rotateSecrets
 	deploymentManager.CancelUpdates = flagConfig.cancelUpdate
 
-	if err := localrun.RegisterDeployerHandlers(eventLoop, deploymentManager); err != nil {
+	trigger, err := deploymentManager.BuildTrigger(ctx, built, env.FullName)
+	if err != nil {
 		return err
 	}
 
-	awsRunner := awsinfra.NewRunner(clientSet, eventLoop)
-	awsRunner.LocalCLIRun = true
+	return eventLoop.Run(ctx, trigger)
 
-	if err := localrun.RegisterLocalHandlers(eventLoop, awsRunner); err != nil {
-		return err
-	}
-
-	if err := deploymentManager.BeginDeployment(ctx, built, env.FullName); err != nil {
-		return fmt.Errorf("deploy: %w", err)
-	}
-
-	ctx, cancel := context.WithCancel(ctx)
-	eg, ctx := errgroup.WithContext(ctx)
-	eg.Go(func() error {
-		return eventLoop.Wait(ctx)
-	})
-	eg.Go(func() error {
-		defer cancel()
-		// Cancel should run even if the Wait function returns no error, this
-		// stops the poller and event loop
-		return stateStore.Wait(ctx)
-	})
-
-	return eg.Wait()
 }

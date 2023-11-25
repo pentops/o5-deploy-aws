@@ -14,53 +14,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	sq "github.com/elgris/sqrl"
-	"github.com/golang/protobuf/ptypes/empty"
 	_ "github.com/lib/pq"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"gopkg.daemonl.com/sqrlx"
 )
 
-func (d *AWSRunner) RunDatabaseMigration(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) (*emptypb.Empty, error) {
-	if err := d.messageHandler.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
-		MigrationId:  msg.MigrationId,
-		DeploymentId: msg.DeploymentId,
-		Status:       deployer_pb.DatabaseMigrationStatus_PENDING,
-	}); err != nil {
-		return nil, err
-	}
-
-	migrateErr := d.runDatabaseMigration(ctx, msg)
-
-	if migrateErr != nil {
-		log.WithError(ctx, migrateErr).Error("RunDatabaseMigration")
-		if err := d.messageHandler.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
-			MigrationId:  msg.MigrationId,
-			DeploymentId: msg.DeploymentId,
-			Status:       deployer_pb.DatabaseMigrationStatus_FAILED,
-			Error:        proto.String(migrateErr.Error()),
-		}); err != nil {
-			return nil, err
-		}
-		return &empty.Empty{}, nil
-	}
-
-	if err := d.messageHandler.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
-		DeploymentId: msg.DeploymentId,
-		MigrationId:  msg.MigrationId,
-		Status:       deployer_pb.DatabaseMigrationStatus_COMPLETED,
-	}); err != nil {
-		return nil, err
-	}
-
-	return &empty.Empty{}, nil
-
+type DBMigrator struct {
+	Clients ClientBuilder
 }
 
-func (d *AWSRunner) runDatabaseMigration(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
+func (d *DBMigrator) runDatabaseMigration(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
 	if err := d.upsertPostgresDatabase(ctx, msg); err != nil {
 		return err
 	}
@@ -85,7 +49,7 @@ func (d *AWSRunner) runDatabaseMigration(ctx context.Context, msg *deployer_tpb.
 
 }
 
-func (d *AWSRunner) runMigrationTask(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
+func (d *DBMigrator) runMigrationTask(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
 
 	clients, err := d.Clients.Clients(ctx)
 	if err != nil {
@@ -157,7 +121,7 @@ func (ss DBSecret) buildURLForDB(dbName string) string {
 	return fmt.Sprintf("postgres://%s:%s@%s:5432/%s", ss.Username, ss.Password, ss.Hostname, dbName)
 }
 
-func (d *AWSRunner) rootPostgresCredentials(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) (*DBSecret, error) {
+func (d *DBMigrator) rootPostgresCredentials(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) (*DBSecret, error) {
 	// "/${var.env_name}/global/rds/${var.name}/root" from TF
 
 	clients, err := d.Clients.Clients(ctx)
@@ -180,7 +144,7 @@ func (d *AWSRunner) rootPostgresCredentials(ctx context.Context, msg *deployer_t
 	return secretVal, nil
 }
 
-func (d *AWSRunner) fixPostgresOwnership(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
+func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
 
 	log.Info(ctx, "Fix object ownership")
 	pgSpec := msg.Database.Database.GetPostgres()
@@ -295,7 +259,7 @@ func (d *AWSRunner) fixPostgresOwnership(ctx context.Context, msg *deployer_tpb.
 	return nil
 }
 
-func (d *AWSRunner) upsertPostgresDatabase(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
+func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
 
 	// spec *deployer_pb.PostgresDatabase, secretARN string, rotateExisting bool) error {
 	//.Database, msg.SecretArn, msg.RotateCredentials); err != nil {

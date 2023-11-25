@@ -179,6 +179,11 @@ func runServe(ctx context.Context) error {
 	awsInfraRunner := awsinfra.NewRunner(clientSet, pgStore)
 	awsInfraRunner.CallbackARNs = []string{cfg.CallbackARN}
 
+	deploymentWorker, err := deployer.NewDeployerWorker(pgStore)
+	if err != nil {
+		return err
+	}
+
 	deploymentManager, err := deployer.NewDeployer(pgStore, cfg.CFTemplates, s3Client)
 	if err != nil {
 		return err
@@ -207,7 +212,7 @@ func runServe(ctx context.Context) error {
 		grpcServer := grpc.NewServer()
 		github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
 		deployer_tpb.RegisterAWSCommandTopicServer(grpcServer, awsInfraRunner)
-		deployer_tpb.RegisterDeployerTopicServer(grpcServer, deploymentManager)
+		deployer_tpb.RegisterDeployerTopicServer(grpcServer, deploymentWorker)
 		messaging_tpb.RegisterRawMessageTopicServer(grpcServer, awsInfraRunner)
 
 		reflection.Register(grpcServer)
