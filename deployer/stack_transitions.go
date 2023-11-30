@@ -8,27 +8,27 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 )
 
-type StackTransitionSpec[Event deployer_pb.IsStackEventTypeWrappedType] struct {
+type StackTransition[Event deployer_pb.IsStackEventTypeWrappedType] struct {
 	FromStatus  []deployer_pb.StackStatus
 	EventFilter func(Event) bool
-	Transition  func(context.Context, TransitionBaton[*deployer_pb.StackEvent], *deployer_pb.StackState, Event) error
+	Transition  func(context.Context, StackTransitionBaton, *deployer_pb.StackState, Event) error
 }
 
-func (ts StackTransitionSpec[Event]) RunTransition(ctx context.Context, tb TransitionBaton[*deployer_pb.StackEvent], state *deployer_pb.StackState, event *deployer_pb.StackEvent) error {
-	asType, ok := event.Event.Get().(Event)
+func (ts StackTransition[Event]) RunTransition(
+	ctx context.Context,
+	tb TransitionBaton[deployer_pb.IsStackEventTypeWrappedType],
+	state *deployer_pb.StackState,
+	event deployer_pb.IsStackEventTypeWrappedType) error {
+	asType, ok := event.(Event)
 	if !ok {
-		return fmt.Errorf("unexpected event type: %T", event.Event.Get())
+		return fmt.Errorf("unexpected event type: %T", event)
 	}
 
 	return ts.Transition(ctx, tb, state, asType)
 }
 
-func (ts StackTransitionSpec[Event]) Matches(deployment *deployer_pb.StackState, event *deployer_pb.StackEvent) bool {
-	got := event.Event.Get()
-	if got == nil {
-		return false
-	}
-	asType, ok := got.(Event)
+func (ts StackTransition[Event]) Matches(deployment *deployer_pb.StackState, event deployer_pb.IsStackEventTypeWrappedType) bool {
+	asType, ok := event.(Event)
 	if !ok {
 		return false
 	}
@@ -49,15 +49,27 @@ func (ts StackTransitionSpec[Event]) Matches(deployment *deployer_pb.StackState,
 	return true
 }
 
-var stackTransitions = []ITransitionSpec[*deployer_pb.StackState, *deployer_pb.StackEvent]{
+func findStackTransition(stack *deployer_pb.StackState, event deployer_pb.IsStackEventTypeWrappedType) (ITransitionSpec[*deployer_pb.StackState, deployer_pb.IsStackEventTypeWrappedType], error) {
+	for _, search := range stackTransitions {
+		if search.Matches(stack, event) {
+			return search, nil
+		}
+	}
+	typeKey := event.TypeKey()
+	return nil, fmt.Errorf("no transition found for %s -> %s", stack.Status.String(), typeKey)
+}
+
+type StackTransitionBaton TransitionBaton[deployer_pb.IsStackEventTypeWrappedType]
+
+var stackTransitions = []ITransitionSpec[*deployer_pb.StackState, deployer_pb.IsStackEventTypeWrappedType]{
 	// [*] --> CREATING : Triggered
-	StackTransitionSpec[*deployer_pb.StackEventType_Triggered]{
+	StackTransition[*deployer_pb.StackEventType_Triggered]{
 		FromStatus: []deployer_pb.StackStatus{
 			deployer_pb.StackStatus_UNSPECIFIED,
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton[*deployer_pb.StackEvent],
+			tb StackTransitionBaton,
 			state *deployer_pb.StackState,
 			event *deployer_pb.StackEventType_Triggered,
 		) error {
@@ -78,14 +90,14 @@ var stackTransitions = []ITransitionSpec[*deployer_pb.StackState, *deployer_pb.S
 
 	// CREATING --> STABLE : DeploymentCompleted
 	// MIGRATING --> STABLE : DeploymentCompleted
-	StackTransitionSpec[*deployer_pb.StackEventType_DeploymentCompleted]{
+	StackTransition[*deployer_pb.StackEventType_DeploymentCompleted]{
 		FromStatus: []deployer_pb.StackStatus{
 			deployer_pb.StackStatus_CREATING,
 			deployer_pb.StackStatus_MIGRATING,
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton[*deployer_pb.StackEvent],
+			tb StackTransitionBaton,
 			state *deployer_pb.StackState,
 			event *deployer_pb.StackEventType_DeploymentCompleted,
 		) error {
@@ -93,39 +105,25 @@ var stackTransitions = []ITransitionSpec[*deployer_pb.StackState, *deployer_pb.S
 
 			if len(state.QueuedDeployments) == 0 {
 				// CHAIN NEXT
-				tb.ChainEvent(&deployer_pb.StackEvent{
-					StackId:  state.StackId,
-					Metadata: &deployer_pb.EventMetadata{},
-					Event: &deployer_pb.StackEventType{
-						Type: &deployer_pb.StackEventType_Available_{},
-					},
-				})
+				tb.ChainEvent(&deployer_pb.StackEventType_Available{})
 				return nil
 			}
 
-			tb.ChainEvent(&deployer_pb.StackEvent{
-				StackId:  state.StackId,
-				Metadata: &deployer_pb.EventMetadata{},
-				Event: &deployer_pb.StackEventType{
-					Type: &deployer_pb.StackEventType_Triggered_{
-						Triggered: &deployer_pb.StackEventType_Triggered{
-							Deployment: state.QueuedDeployments[0],
-						},
-					},
-				},
+			tb.ChainEvent(&deployer_pb.StackEventType_Triggered{
+				Deployment: state.QueuedDeployments[0],
 			})
 			return nil
 		},
 	},
 
 	// STABLE --> MIGRATING : Triggered (Int)
-	StackTransitionSpec[*deployer_pb.StackEventType_Triggered]{
+	StackTransition[*deployer_pb.StackEventType_Triggered]{
 		FromStatus: []deployer_pb.StackStatus{
 			deployer_pb.StackStatus_STABLE,
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton[*deployer_pb.StackEvent],
+			tb StackTransitionBaton,
 			state *deployer_pb.StackState,
 			event *deployer_pb.StackEventType_Triggered,
 		) error {
@@ -146,13 +144,13 @@ var stackTransitions = []ITransitionSpec[*deployer_pb.StackState, *deployer_pb.S
 	},
 
 	// AVAILABLE --> MIGRATING : Triggered (Ext)
-	StackTransitionSpec[*deployer_pb.StackEventType_Triggered]{
+	StackTransition[*deployer_pb.StackEventType_Triggered]{
 		FromStatus: []deployer_pb.StackStatus{
 			deployer_pb.StackStatus_AVAILABLE,
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton[*deployer_pb.StackEvent],
+			tb StackTransitionBaton,
 			state *deployer_pb.StackState,
 			event *deployer_pb.StackEventType_Triggered,
 		) error {
@@ -172,13 +170,13 @@ var stackTransitions = []ITransitionSpec[*deployer_pb.StackState, *deployer_pb.S
 	},
 
 	// STABLE -> AVAILABLE : Available
-	StackTransitionSpec[*deployer_pb.StackEventType_Available]{
+	StackTransition[*deployer_pb.StackEventType_Available]{
 		FromStatus: []deployer_pb.StackStatus{
 			deployer_pb.StackStatus_STABLE,
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton[*deployer_pb.StackEvent],
+			tb StackTransitionBaton,
 			state *deployer_pb.StackState,
 			event *deployer_pb.StackEventType_Available,
 		) error {
@@ -190,7 +188,7 @@ var stackTransitions = []ITransitionSpec[*deployer_pb.StackState, *deployer_pb.S
 	// BROKEN --> BROKEN : Triggered
 	// CREATING --> CREATING : Triggered
 	// MIGRATING --> MIGRATING : Triggered
-	StackTransitionSpec[*deployer_pb.StackEventType_Triggered]{
+	StackTransition[*deployer_pb.StackEventType_Triggered]{
 		FromStatus: []deployer_pb.StackStatus{
 			deployer_pb.StackStatus_BROKEN,
 			deployer_pb.StackStatus_CREATING,
@@ -198,7 +196,7 @@ var stackTransitions = []ITransitionSpec[*deployer_pb.StackState, *deployer_pb.S
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton[*deployer_pb.StackEvent],
+			tb StackTransitionBaton,
 			state *deployer_pb.StackState,
 			event *deployer_pb.StackEventType_Triggered,
 		) error {

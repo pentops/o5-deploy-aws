@@ -9,7 +9,7 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
-	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -25,16 +25,83 @@ func NewDeployerWorker(store DeployerStorage) (*DeployerWorker, error) {
 	}, nil
 }
 
-func (dw *DeployerWorker) registerEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
+func (dw *DeployerWorker) doDeploymentEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
 	if err := dw.storage.Transact(ctx, func(ctx context.Context, tx TransitionTransaction) error {
-		return registerEvent(ctx, tx, event)
+		return doDeploymentEvent(ctx, tx, event)
 	}); err != nil {
 		return err
 	}
 	return nil
 }
 
-func registerEvent(ctx context.Context, tx TransitionTransaction, outerEvent *deployer_pb.DeploymentEvent) error {
+type Eventer[WrappedEvent proto.Message, Event any, State proto.Message] struct {
+	wrapEvent      func(Event) WrappedEvent
+	unwrapEvent    func(WrappedEvent) Event
+	runEvent       func(context.Context, TransitionTransaction, TransitionBaton[Event], Event) error
+	findTransition func(State, Event) (ITransitionSpec[State, Event], error)
+	storeEvent     func(context.Context, TransitionTransaction, State, WrappedEvent) error
+	stateLabel     func(State) string
+	eventLabel     func(Event) string
+}
+
+func (ee Eventer[WrappedEvent, Event, State]) Run(ctx context.Context, tx TransitionTransaction, state State, outerEvent WrappedEvent) error {
+
+	eventQueue := []WrappedEvent{outerEvent}
+
+	for len(eventQueue) > 0 {
+		innerEvent := eventQueue[0]
+		eventQueue = eventQueue[1:]
+
+		baton := &TransitionData[Event]{}
+
+		unwrapped := ee.unwrapEvent(innerEvent)
+
+		transition, err := ee.findTransition(state, unwrapped)
+		if err != nil {
+			return err
+		}
+
+		typeKey := ee.eventLabel(unwrapped)
+		stateBefore := ee.stateLabel(state)
+
+		ctx = log.WithFields(ctx, map[string]interface{}{
+			"eventType":  typeKey,
+			"transition": fmt.Sprintf("%s -> ? : %s", stateBefore, typeKey),
+		})
+
+		log.Debug(ctx, "Begin Event")
+
+		if err := transition.RunTransition(ctx, baton, state, unwrapped); err != nil {
+			log.WithError(ctx, err).Error("Running Transition")
+			return err
+		}
+
+		ctx = log.WithFields(ctx, map[string]interface{}{
+			"transition": fmt.Sprintf("%s -> %s : %s", stateBefore, ee.stateLabel(state), typeKey),
+		})
+
+		log.Info(ctx, "Event Handled")
+
+		if err := ee.storeEvent(ctx, tx, state, innerEvent); err != nil {
+			return err
+		}
+
+		for _, se := range baton.SideEffects {
+			if err := tx.PublishEvent(ctx, se); err != nil {
+				return fmt.Errorf("publishEvent: %w", err)
+			}
+		}
+
+		for _, event := range baton.ChainEvents {
+			wrappedEvent := ee.wrapEvent(event)
+			eventQueue = append(eventQueue, wrappedEvent)
+		}
+	}
+
+	return nil
+}
+
+func doDeploymentEvent(ctx context.Context, tx TransitionTransaction, outerEvent *deployer_pb.DeploymentEvent) error {
 
 	deployment, err := tx.GetDeployment(ctx, outerEvent.DeploymentId)
 	if errors.Is(err, DeploymentNotFoundError) {
@@ -51,128 +118,75 @@ func registerEvent(ctx context.Context, tx TransitionTransaction, outerEvent *de
 		return err
 	}
 
-	environment, err := tx.GetEnvironment(ctx, deployment.Spec.EnvironmentName)
-	if err != nil {
-		return err
-	}
+	ctx = log.WithFields(ctx, map[string]interface{}{
+		"deploymentId": deployment.DeploymentId,
+	})
 
-	deployerResolver, err := BuildParameterResolver(ctx, environment)
-	if err != nil {
-		return err
-	}
-
-	eventsToProcess := []*deployer_pb.DeploymentEvent{outerEvent}
-
-	for len(eventsToProcess) > 0 {
-		innerEvent := eventsToProcess[0]
-		eventsToProcess = eventsToProcess[1:]
-
-		baton := &TransitionData[*deployer_pb.DeploymentEvent]{
-			ParameterResolver: deployerResolver,
-		}
-		typeKey, _ := innerEvent.Event.TypeKey()
-		stateBefore := deployment.Status.ShortString()
-
-		ctx = log.WithFields(ctx, map[string]interface{}{
-			"deploymentId": innerEvent.DeploymentId,
-			"eventType":    typeKey,
-			"transition":   fmt.Sprintf("%s -> ? : %s", stateBefore, typeKey),
-		})
-		log.WithField(ctx, "event", protojson.Format(innerEvent.Event)).Debug("Begin Deployment Event")
-		transition, err := FindTransition(ctx, deployment, innerEvent)
-
-		if err != nil {
-			return err
-		}
-
-		if err := transition.RunTransition(ctx, baton, deployment, innerEvent); err != nil {
-			log.WithError(ctx, err).Error("Running Deployment Transition")
-			return err
-		}
-
-		if err := tx.StoreDeploymentEvent(ctx, deployment, innerEvent); err != nil {
-			return err
-		}
-
-		ctx = log.WithFields(ctx, map[string]interface{}{
-			"transition": fmt.Sprintf("%s -> %s : %s", stateBefore, deployment.Status.ShortString(), typeKey),
-		})
-
-		log.Info(ctx, "Deployment Event Handled")
-
-		for _, se := range baton.SideEffects {
-			if err := tx.PublishEvent(ctx, se); err != nil {
-				return fmt.Errorf("publishEvent: %w", err)
+	ee := &Eventer[*deployer_pb.DeploymentEvent, deployer_pb.IsDeploymentEventTypeWrappedType, *deployer_pb.DeploymentState]{
+		wrapEvent: func(event deployer_pb.IsDeploymentEventTypeWrappedType) *deployer_pb.DeploymentEvent {
+			wrappedEvent := &deployer_pb.DeploymentEvent{
+				DeploymentId: deployment.DeploymentId,
+				Metadata: &deployer_pb.EventMetadata{
+					EventId:   uuid.NewString(),
+					Timestamp: timestamppb.Now(),
+				},
+				Event: &deployer_pb.DeploymentEventType{},
 			}
-		}
-
-		eventsToProcess = append(eventsToProcess, baton.ChainEvents...)
+			wrappedEvent.Event.Set(event)
+			return wrappedEvent
+		},
+		unwrapEvent: func(event *deployer_pb.DeploymentEvent) deployer_pb.IsDeploymentEventTypeWrappedType {
+			return event.Event.Get()
+		},
+		findTransition: findTransition,
+		storeEvent: func(ctx context.Context, tx TransitionTransaction, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
+			return tx.StoreDeploymentEvent(ctx, deployment, event)
+		},
+		stateLabel: func(state *deployer_pb.DeploymentState) string {
+			return state.Status.ShortString()
+		},
+		eventLabel: func(event deployer_pb.IsDeploymentEventTypeWrappedType) string {
+			return string(event.TypeKey())
+		},
 	}
-	return nil
+
+	return ee.Run(ctx, tx, deployment, outerEvent)
 }
 
-func findStackTransition(stack *deployer_pb.StackState, event *deployer_pb.StackEvent) (ITransitionSpec[*deployer_pb.StackState, *deployer_pb.StackEvent], error) {
-	for _, search := range stackTransitions {
-		if search.Matches(stack, event) {
-			return search, nil
-		}
-	}
-	typeKey, ok := event.Event.TypeKey()
-	if !ok {
-		return nil, fmt.Errorf("unknown event type: %T", event.Event)
-	}
-	return nil, fmt.Errorf("no transition found for %s -> %s", stack.Status.String(), typeKey)
-}
+func doStackEvent(ctx context.Context, tx TransitionTransaction, stack *deployer_pb.StackState, outerEvent *deployer_pb.StackEvent) error {
+	ctx = log.WithFields(ctx, map[string]interface{}{
+		"stackId": stack.StackId,
+	})
 
-func stackTransition(ctx context.Context, tx TransitionTransaction, stack *deployer_pb.StackState, outerEvent *deployer_pb.StackEvent) error {
-	events := make([]*deployer_pb.StackEvent, 1, 2)
-	events[0] = outerEvent
-
-	for len(events) > 0 {
-		event := events[0]
-		events = events[1:]
-
-		baton := &TransitionData[*deployer_pb.StackEvent]{}
-
-		typeKey, _ := event.Event.TypeKey()
-
-		ctx = log.WithFields(ctx, map[string]interface{}{
-			"stackId":    event.StackId,
-			"eventType":  typeKey,
-			"transition": fmt.Sprintf("%s -> ? : %s", stack.Status.String(), typeKey),
-		})
-
-		log.Info(ctx, "Begin Stack Event")
-
-		transition, err := findStackTransition(stack, event)
-		if err != nil {
-			return err
-		}
-
-		if err := transition.RunTransition(ctx, baton, stack, event); err != nil {
-			return err
-		}
-
-		ctx = log.WithFields(ctx, map[string]interface{}{
-			"transition": fmt.Sprintf("%s -> %s : %s", stack.Status.String(), stack.Status.String(), typeKey),
-		})
-
-		log.Info(ctx, "Stack Event Handled")
-
-		if err := tx.StoreStackEvent(ctx, stack, event); err != nil {
-			return err
-		}
-
-		for _, se := range baton.SideEffects {
-			if err := tx.PublishEvent(ctx, se); err != nil {
-				return fmt.Errorf("publishEvent: %w", err)
+	ee := &Eventer[*deployer_pb.StackEvent, deployer_pb.IsStackEventTypeWrappedType, *deployer_pb.StackState]{
+		wrapEvent: func(event deployer_pb.IsStackEventTypeWrappedType) *deployer_pb.StackEvent {
+			wrappedEvent := &deployer_pb.StackEvent{
+				StackId: stack.StackId,
+				Metadata: &deployer_pb.EventMetadata{
+					EventId:   uuid.NewString(),
+					Timestamp: timestamppb.Now(),
+				},
+				Event: &deployer_pb.StackEventType{},
 			}
-		}
-
-		events = append(events, baton.ChainEvents...)
+			wrappedEvent.Event.Set(event)
+			return wrappedEvent
+		},
+		unwrapEvent: func(event *deployer_pb.StackEvent) deployer_pb.IsStackEventTypeWrappedType {
+			return event.Event.Get()
+		},
+		findTransition: findStackTransition,
+		storeEvent: func(ctx context.Context, tx TransitionTransaction, stack *deployer_pb.StackState, event *deployer_pb.StackEvent) error {
+			return tx.StoreStackEvent(ctx, stack, event)
+		},
+		stateLabel: func(state *deployer_pb.StackState) string {
+			return state.Status.String()
+		},
+		eventLabel: func(event deployer_pb.IsStackEventTypeWrappedType) string {
+			return string(event.TypeKey())
+		},
 	}
 
-	return nil
+	return ee.Run(ctx, tx, stack, outerEvent)
 }
 
 func (dw *DeployerWorker) TriggerDeployment(ctx context.Context, msg *deployer_tpb.TriggerDeploymentMessage) (*emptypb.Empty, error) {
@@ -191,7 +205,7 @@ func (dw *DeployerWorker) TriggerDeployment(ctx context.Context, msg *deployer_t
 		},
 	}
 
-	if err := dw.registerEvent(ctx, triggerDeploymentEvent); err != nil {
+	if err := dw.doDeploymentEvent(ctx, triggerDeploymentEvent); err != nil {
 		return nil, err
 	}
 
@@ -248,11 +262,11 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 			return err
 		}
 
-		if err := stackTransition(ctx, tx, stack, evt); err != nil {
+		if err := doStackEvent(ctx, tx, stack, evt); err != nil {
 			return err
 		}
 
-		return registerEvent(ctx, tx, createDeploymentEvent)
+		return doDeploymentEvent(ctx, tx, createDeploymentEvent)
 	}); err != nil {
 		return nil, err
 	}
@@ -282,7 +296,7 @@ func (dw *DeployerWorker) DeploymentComplete(ctx context.Context, msg *deployer_
 		if err != nil {
 			return err
 		}
-		return stackTransition(ctx, tx, stack, stackEvent)
+		return doStackEvent(ctx, tx, stack, stackEvent)
 	}); err != nil {
 		return nil, err
 	}
@@ -315,7 +329,7 @@ func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *deployer_
 	if err != nil {
 		return nil, err
 	}
-	return &emptypb.Empty{}, dw.registerEvent(ctx, event)
+	return &emptypb.Empty{}, dw.doDeploymentEvent(ctx, event)
 }
 
 func TranslateMigrationStatusChanged(msg *deployer_tpb.MigrationStatusChangedMessage) (*deployer_pb.DeploymentEvent, error) {
@@ -344,6 +358,6 @@ func (dw *DeployerWorker) MigrationStatusChanged(ctx context.Context, msg *deplo
 		return nil, err
 	}
 
-	return &emptypb.Empty{}, dw.registerEvent(ctx, event)
+	return &emptypb.Empty{}, dw.doDeploymentEvent(ctx, event)
 
 }

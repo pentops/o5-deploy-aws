@@ -99,13 +99,28 @@ func (dd *Trigger) BuildTrigger(ctx context.Context, app *app.BuiltApplication, 
 
 	templateURL := fmt.Sprintf("https://s3.us-east-1.amazonaws.com/%s/%s", dd.cfTemplateBucket, templateKey)
 
+	deployerResolver, err := BuildParameterResolver(ctx, environment)
+	if err != nil {
+		return nil, err
+	}
+
+	appParameters := app.Parameters()
+	parameters := make([]*deployer_pb.CloudFormationStackParameter, 0, len(appParameters))
+	for _, param := range appParameters {
+		parameter, err := deployerResolver.ResolveParameter(param)
+		if err != nil {
+			return nil, fmt.Errorf("parameter '%s': %w", param.Name, err)
+		}
+		parameters = append(parameters, parameter)
+	}
+
 	spec := &deployer_pb.DeploymentSpec{
 		AppName:         app.Name,
 		Version:         app.Version,
 		EnvironmentName: environment.FullName,
 		TemplateUrl:     templateURL,
 		Databases:       postgresDatabases,
-		Parameters:      app.Parameters(),
+		Parameters:      parameters,
 		SnsTopics:       app.SNSTopics,
 
 		CancelUpdates:     dd.CancelUpdates,

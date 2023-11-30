@@ -10,29 +10,53 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 )
 
-type DeploymentTransitionBaton TransitionBaton[*deployer_pb.DeploymentEvent]
+type DeploymentTransition[Event deployer_pb.IsDeploymentEventTypeWrappedType] struct {
+	FromStatus  []deployer_pb.DeploymentStatus
+	EventFilter func(Event) bool
+	Transition  func(context.Context, DeploymentTransitionBaton, *deployer_pb.DeploymentState, Event) error
+}
 
-var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.DeploymentEvent]{
-	// Ignore Events
-	TransitionSpec[*deployer_pb.DeploymentEventType_StackStatus]{
-		FromStatus: []deployer_pb.DeploymentStatus{
-			deployer_pb.DeploymentStatus_DB_MIGRATING,
-		},
-		EventFilter: func(event *deployer_pb.DeploymentEventType_StackStatus) bool {
-			return event.Lifecycle == deployer_pb.StackLifecycle_COMPLETE
-		},
-		Transition: func(
-			ctx context.Context,
-			tb DeploymentTransitionBaton,
-			deployment *deployer_pb.DeploymentState,
-			event *deployer_pb.DeploymentEventType_StackStatus,
-		) error {
-			return nil
-		},
-	},
+func (ts DeploymentTransition[Event]) RunTransition(
+	ctx context.Context,
+	tb TransitionBaton[deployer_pb.IsDeploymentEventTypeWrappedType],
+	deployment *deployer_pb.DeploymentState,
+	event deployer_pb.IsDeploymentEventTypeWrappedType) error {
+	asType, ok := event.(Event)
+	if !ok {
+		return fmt.Errorf("unexpected event type: %T", event)
+	}
+
+	return ts.Transition(ctx, tb, deployment, asType)
+}
+
+func (ts DeploymentTransition[Event]) Matches(deployment *deployer_pb.DeploymentState, event deployer_pb.IsDeploymentEventTypeWrappedType) bool {
+	asType, ok := event.(Event)
+	if !ok {
+		return false
+	}
+	didMatch := false
+	for _, fromStatus := range ts.FromStatus {
+		if fromStatus == deployment.Status {
+			didMatch = true
+			break
+		}
+	}
+	if !didMatch {
+		return false
+	}
+
+	if ts.EventFilter != nil && !ts.EventFilter(asType) {
+		return false
+	}
+	return true
+}
+
+type DeploymentTransitionBaton TransitionBaton[deployer_pb.IsDeploymentEventTypeWrappedType]
+
+var deploymentTransitions = []ITransitionSpec[*deployer_pb.DeploymentState, deployer_pb.IsDeploymentEventTypeWrappedType]{
 
 	// [*] --> QUEUED : Created
-	TransitionSpec[*deployer_pb.DeploymentEventType_Created]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_Created]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_UNSPECIFIED,
 		},
@@ -53,7 +77,7 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 	},
 
 	// QUEUED --> TRIGGERED : Trigger
-	TransitionSpec[*deployer_pb.DeploymentEventType_Triggered]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_Triggered]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_QUEUED,
 		},
@@ -64,15 +88,14 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_TRIGGERED
 
-			tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_StackWait_{
-				StackWait: &deployer_pb.DeploymentEventType_StackWait{},
-			}))
+			tb.ChainEvent(&deployer_pb.DeploymentEventType_StackWait{})
 
 			return nil
 		},
 	},
+
 	// TRIGGERED --> WAITING : StackWait
-	TransitionSpec[*deployer_pb.DeploymentEventType_StackWait]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_StackWait]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_TRIGGERED,
 		},
@@ -97,7 +120,7 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 	},
 
 	// AVAILABLE --> CREATING : StackCreate
-	TransitionSpec[*deployer_pb.DeploymentEventType_StackCreate]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_StackCreate]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_AVAILABLE,
 		},
@@ -108,11 +131,6 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			event *deployer_pb.DeploymentEventType_StackCreate,
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_CREATING
-
-			initialParameters, err := tb.ResolveParameters(deployment.Spec.Parameters)
-			if err != nil {
-				return err
-			}
 
 			topicNames := make([]string, len(deployment.Spec.SnsTopics))
 			for i, topic := range deployment.Spec.SnsTopics {
@@ -126,7 +144,7 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 					DeploymentId:    deployment.DeploymentId,
 					DeploymentPhase: "create",
 				},
-				Parameters:   initialParameters,
+				Parameters:   deployment.Spec.Parameters,
 				TemplateUrl:  deployment.Spec.TemplateUrl,
 				DesiredCount: 0,
 				ExtraResources: &deployer_tpb.ExtraResources{
@@ -140,7 +158,7 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 	// WAITING --> AVAILABLE : StackStatus.Complete
 	// WAITING --> AVAILABLE : StackStatus.Missing
 	// WAITING --> AVAILABLE : StackStatus.Terminal + UPDATE_ROLLBACK_COMPLETE
-	TransitionSpec[*deployer_pb.DeploymentEventType_StackStatus]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_StackStatus]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_WAITING,
 		},
@@ -159,19 +177,13 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			deployment.StackOutput = event.StackOutput
 
 			if deployment.Spec.QuickMode {
-				tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_StackUpsert_{
-					StackUpsert: &deployer_pb.DeploymentEventType_StackUpsert{},
-				}))
+				tb.ChainEvent(&deployer_pb.DeploymentEventType_StackUpsert{})
 			} else if event.Lifecycle == deployer_pb.StackLifecycle_MISSING {
-				tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_StackCreate_{
-					StackCreate: &deployer_pb.DeploymentEventType_StackCreate{},
-				}))
+				tb.ChainEvent(&deployer_pb.DeploymentEventType_StackCreate{})
 			} else {
-				tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_StackScale_{
-					StackScale: &deployer_pb.DeploymentEventType_StackScale{
-						DesiredCount: int32(0),
-					},
-				}))
+				tb.ChainEvent(&deployer_pb.DeploymentEventType_StackScale{
+					DesiredCount: int32(0),
+				})
 			}
 
 			return nil
@@ -179,7 +191,7 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 	},
 
 	// AVAILABLE --> UPSERTING : StackUpsert
-	TransitionSpec[*deployer_pb.DeploymentEventType_StackUpsert]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_StackUpsert]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_AVAILABLE,
 		},
@@ -190,12 +202,6 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			event *deployer_pb.DeploymentEventType_StackUpsert,
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_UPSERTING
-
-			// TODO: This should be part of the state
-			parameters, err := tb.ResolveParameters(deployment.Spec.Parameters)
-			if err != nil {
-				return err
-			}
 
 			topicNames := make([]string, len(deployment.Spec.SnsTopics))
 			for i, topic := range deployment.Spec.SnsTopics {
@@ -210,7 +216,7 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 						DeploymentId:    deployment.DeploymentId,
 						DeploymentPhase: "create",
 					},
-					Parameters:   parameters,
+					Parameters:   deployment.Spec.Parameters,
 					TemplateUrl:  deployment.Spec.TemplateUrl,
 					DesiredCount: 1, // TODO: Pull from spec
 					ExtraResources: &deployer_tpb.ExtraResources{
@@ -224,7 +230,7 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 						DeploymentId:    deployment.DeploymentId,
 						DeploymentPhase: "infra-migrate",
 					},
-					Parameters:   parameters,
+					Parameters:   deployment.Spec.Parameters,
 					TemplateUrl:  deployment.Spec.TemplateUrl,
 					DesiredCount: 1, // TODO: Pull from spec
 					ExtraResources: &deployer_tpb.ExtraResources{
@@ -238,7 +244,7 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 	},
 
 	// UPSERTING --> UPSERTED : StackStatus.Complete
-	TransitionSpec[*deployer_pb.DeploymentEventType_StackStatus]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_StackStatus]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_UPSERTING,
 		},
@@ -254,16 +260,14 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			deployment.Status = deployer_pb.DeploymentStatus_UPSERTED
 			deployment.StackOutput = event.StackOutput
 
-			tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_Done_{
-				Done: &deployer_pb.DeploymentEventType_Done{},
-			}))
+			tb.ChainEvent(&deployer_pb.DeploymentEventType_Done{})
 
 			return nil
 		},
 	},
 
 	// SCALING_DOWN --> SCALED_DOWN : StackStatus.Complete
-	TransitionSpec[*deployer_pb.DeploymentEventType_StackStatus]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_StackStatus]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_SCALING_DOWN,
 		},
@@ -279,18 +283,16 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			deployment.Status = deployer_pb.DeploymentStatus_SCALED_DOWN
 			deployment.StackOutput = event.StackOutput
 
-			tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_StackTrigger_{
-				StackTrigger: &deployer_pb.DeploymentEventType_StackTrigger{
-					Phase: "update",
-				},
-			}))
+			tb.ChainEvent(&deployer_pb.DeploymentEventType_StackTrigger{
+				Phase: "update",
+			})
 			return nil
 		},
 	},
 
 	// INFRA_MIGRATE --> INFRA_MIGRATED : StackStatus.Complete
 	// CREATING --> INFRA_MIGRATED : StackStatus.Complete
-	TransitionSpec[*deployer_pb.DeploymentEventType_StackStatus]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_StackStatus]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_INFRA_MIGRATE,
 			deployer_pb.DeploymentStatus_CREATING,
@@ -307,15 +309,13 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			deployment.Status = deployer_pb.DeploymentStatus_INFRA_MIGRATED
 			deployment.StackOutput = event.StackOutput
 
-			tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_MigrateData_{
-				MigrateData: &deployer_pb.DeploymentEventType_MigrateData{},
-			}))
+			tb.ChainEvent(&deployer_pb.DeploymentEventType_MigrateData{})
 
 			return nil
 		},
 	},
 	// ScalingUp --> ScaledUp : StackStatus.Complete
-	TransitionSpec[*deployer_pb.DeploymentEventType_StackStatus]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_StackStatus]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_SCALING_UP,
 		},
@@ -331,14 +331,12 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			deployment.Status = deployer_pb.DeploymentStatus_SCALED_UP
 			deployment.StackOutput = event.StackOutput
 
-			tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_Done_{
-				Done: &deployer_pb.DeploymentEventType_Done{},
-			}))
+			tb.ChainEvent(&deployer_pb.DeploymentEventType_Done{})
 			return nil
 		},
 	},
 	// Any Waiting --> Any Waiting : StackStatus.Progress
-	TransitionSpec[*deployer_pb.DeploymentEventType_StackStatus]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_StackStatus]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_WAITING,
 			deployer_pb.DeploymentStatus_CREATING,
@@ -360,9 +358,10 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			return nil
 		},
 	},
-	// Waiting --> Failed : StackStatus.Rollback In Progress.
+
+	// WAITING --> FAILED : StackStatus.Rollback In Progress.
 	// TODO: Needs an actual key
-	TransitionSpec[*deployer_pb.DeploymentEventType_StackStatus]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_StackStatus]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_WAITING,
 		},
@@ -384,7 +383,7 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 	// ScalingUp --> Failed : StackStatus.Failed
 	// ScalingDown --> Failed : StackStatus.Failed
 	// InfraMigrate --> Failed : StackStatus.Failed
-	TransitionSpec[*deployer_pb.DeploymentEventType_StackStatus]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_StackStatus]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_WAITING,
 			deployer_pb.DeploymentStatus_UPSERTING,
@@ -409,8 +408,9 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			return fmt.Errorf("stack failed: %s", event.FullStatus)
 		},
 	},
+
 	// INFRA_MIGRATED --> DB_MIGRATING : MigrateData
-	TransitionSpec[*deployer_pb.DeploymentEventType_MigrateData]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_MigrateData]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_INFRA_MIGRATED,
 		},
@@ -476,9 +476,7 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			}
 
 			if len(deployment.DataMigrations) == 0 {
-				tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_DataMigrated_{
-					DataMigrated: &deployer_pb.DeploymentEventType_DataMigrated{},
-				}))
+				tb.ChainEvent(&deployer_pb.DeploymentEventType_DataMigrated{})
 			}
 			return nil
 		},
@@ -489,7 +487,7 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 	// failed
 	// When all migrations are complete, and none failed, will transition to
 	// DataMigrated
-	TransitionSpec[*deployer_pb.DeploymentEventType_DBMigrateStatus]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_DBMigrateStatus]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_DB_MIGRATING,
 		},
@@ -525,23 +523,20 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			}
 
 			if anyFailed {
-				tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_Error_{
-					Error: &deployer_pb.DeploymentEventType_Error{
-						Error: "database migration failed",
-					},
-				}))
+				tb.ChainEvent(&deployer_pb.DeploymentEventType_Error{
+					Error: "database migration failed",
+				})
 				return nil
 			}
 
-			tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_DataMigrated_{
-				DataMigrated: &deployer_pb.DeploymentEventType_DataMigrated{},
-			}))
+			tb.ChainEvent(&deployer_pb.DeploymentEventType_DataMigrated{})
 
 			return nil
 		},
 	},
+
 	// DB_MIGRATING --> DB_MIGRATED : DataMigrated
-	TransitionSpec[*deployer_pb.DeploymentEventType_DataMigrated]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_DataMigrated]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_DB_MIGRATING,
 		},
@@ -552,16 +547,15 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			event *deployer_pb.DeploymentEventType_DataMigrated,
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_DB_MIGRATED
-			tb.ChainEvent(newEvent(deployment, &deployer_pb.DeploymentEventType_StackScale_{
-				StackScale: &deployer_pb.DeploymentEventType_StackScale{
-					DesiredCount: int32(1),
-				},
-			}))
+			tb.ChainEvent(&deployer_pb.DeploymentEventType_StackScale{
+				DesiredCount: int32(1),
+			})
 			return nil
 		},
 	},
+
 	// DB_MIGRATED --> SCALING_UP : StackScale
-	TransitionSpec[*deployer_pb.DeploymentEventType_StackScale]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_StackScale]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_DB_MIGRATED,
 		},
@@ -583,8 +577,9 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			return nil
 		},
 	},
+
 	// AVAILABLE --> SCALING_DOWN : StackScale
-	TransitionSpec[*deployer_pb.DeploymentEventType_StackScale]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_StackScale]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_AVAILABLE,
 		},
@@ -607,8 +602,9 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			return nil
 		},
 	},
+
 	// SCALED_DOWN --> INFRA_MIGRATE : StackTrigger
-	TransitionSpec[*deployer_pb.DeploymentEventType_StackTrigger]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_StackTrigger]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_SCALED_DOWN,
 		},
@@ -619,11 +615,6 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			event *deployer_pb.DeploymentEventType_StackTrigger,
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_INFRA_MIGRATE
-
-			parameters, err := tb.ResolveParameters(deployment.Spec.Parameters)
-			if err != nil {
-				return err
-			}
 
 			topicNames := make([]string, len(deployment.Spec.SnsTopics))
 			for i, topic := range deployment.Spec.SnsTopics {
@@ -636,7 +627,7 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 					DeploymentId:    deployment.DeploymentId,
 					DeploymentPhase: "infra-migrate",
 				},
-				Parameters:   parameters,
+				Parameters:   deployment.Spec.Parameters,
 				TemplateUrl:  deployment.Spec.TemplateUrl,
 				DesiredCount: 0,
 				ExtraResources: &deployer_tpb.ExtraResources{
@@ -649,9 +640,10 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 			return nil
 		},
 	},
+
 	// SCALED_UP --> DONE : Done
 	// UPSERTED --> DONE : Done
-	TransitionSpec[*deployer_pb.DeploymentEventType_Done]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_Done]{
 		FromStatus: []deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_SCALED_UP,
 			deployer_pb.DeploymentStatus_UPSERTED,
@@ -676,8 +668,7 @@ var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.D
 	},
 
 	// * --> FAILED : Error
-
-	TransitionSpec[*deployer_pb.DeploymentEventType_Error]{
+	DeploymentTransition[*deployer_pb.DeploymentEventType_Error]{
 		Transition: func(
 			ctx context.Context,
 			tb DeploymentTransitionBaton,
