@@ -8,6 +8,7 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type DeploymentTransition[Event deployer_pb.IsDeploymentEventTypeWrappedType] struct {
@@ -49,6 +50,40 @@ func (ts DeploymentTransition[Event]) Matches(deployment *deployer_pb.Deployment
 		return false
 	}
 	return true
+}
+
+var deploymentEventer = &Eventer[*deployer_pb.DeploymentEvent, deployer_pb.IsDeploymentEventTypeWrappedType, *deployer_pb.DeploymentState]{
+	wrapEvent: func(state *deployer_pb.DeploymentState, event deployer_pb.IsDeploymentEventTypeWrappedType) *deployer_pb.DeploymentEvent {
+		wrappedEvent := &deployer_pb.DeploymentEvent{
+			DeploymentId: state.DeploymentId,
+			Metadata: &deployer_pb.EventMetadata{
+				EventId:   uuid.NewString(),
+				Timestamp: timestamppb.Now(),
+			},
+			Event: &deployer_pb.DeploymentEventType{},
+		}
+		wrappedEvent.Event.Set(event)
+		return wrappedEvent
+	},
+	unwrapEvent: func(event *deployer_pb.DeploymentEvent) deployer_pb.IsDeploymentEventTypeWrappedType {
+		return event.Event.Get()
+	},
+	transitions: deploymentTransitions,
+	storeEvent: func(ctx context.Context, tx TransitionTransaction, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
+		return tx.StoreDeploymentEvent(ctx, deployment, event)
+	},
+	stateLabel: func(state *deployer_pb.DeploymentState) string {
+		return state.Status.ShortString()
+	},
+	eventLabel: func(event deployer_pb.IsDeploymentEventTypeWrappedType) string {
+		typeKey := string(event.TypeKey())
+
+		// TODO: This by generation and annotation
+		if stackStatus, ok := event.(*deployer_pb.DeploymentEventType_StackStatus); ok {
+			typeKey = fmt.Sprintf("%s.%s", typeKey, stackStatus.Lifecycle.ShortString())
+		}
+		return typeKey
+	},
 }
 
 type DeploymentTransitionBaton TransitionBaton[deployer_pb.IsDeploymentEventTypeWrappedType]

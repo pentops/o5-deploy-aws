@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type StackTransition[Event deployer_pb.IsStackEventTypeWrappedType] struct {
@@ -49,14 +51,32 @@ func (ts StackTransition[Event]) Matches(deployment *deployer_pb.StackState, eve
 	return true
 }
 
-func findStackTransition(stack *deployer_pb.StackState, event deployer_pb.IsStackEventTypeWrappedType) (ITransitionSpec[*deployer_pb.StackState, deployer_pb.IsStackEventTypeWrappedType], error) {
-	for _, search := range stackTransitions {
-		if search.Matches(stack, event) {
-			return search, nil
+var stackEventer = &Eventer[*deployer_pb.StackEvent, deployer_pb.IsStackEventTypeWrappedType, *deployer_pb.StackState]{
+	wrapEvent: func(state *deployer_pb.StackState, event deployer_pb.IsStackEventTypeWrappedType) *deployer_pb.StackEvent {
+		wrappedEvent := &deployer_pb.StackEvent{
+			StackId: state.StackId,
+			Metadata: &deployer_pb.EventMetadata{
+				EventId:   uuid.NewString(),
+				Timestamp: timestamppb.Now(),
+			},
+			Event: &deployer_pb.StackEventType{},
 		}
-	}
-	typeKey := event.TypeKey()
-	return nil, fmt.Errorf("no transition found for %s -> %s", stack.Status.String(), typeKey)
+		wrappedEvent.Event.Set(event)
+		return wrappedEvent
+	},
+	unwrapEvent: func(event *deployer_pb.StackEvent) deployer_pb.IsStackEventTypeWrappedType {
+		return event.Event.Get()
+	},
+	transitions: stackTransitions,
+	storeEvent: func(ctx context.Context, tx TransitionTransaction, stack *deployer_pb.StackState, event *deployer_pb.StackEvent) error {
+		return tx.StoreStackEvent(ctx, stack, event)
+	},
+	stateLabel: func(state *deployer_pb.StackState) string {
+		return state.Status.String()
+	},
+	eventLabel: func(event deployer_pb.IsStackEventTypeWrappedType) string {
+		return string(event.TypeKey())
+	},
 }
 
 type StackTransitionBaton TransitionBaton[deployer_pb.IsStackEventTypeWrappedType]
