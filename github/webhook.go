@@ -21,7 +21,7 @@ type IClient interface {
 }
 
 type IDeployer interface {
-	BuildTrigger(ctx context.Context, app *app.BuiltApplication, envName string) (*deployer_tpb.TriggerDeploymentMessage, error)
+	BuildTrigger(ctx context.Context, app *app.BuiltApplication, envName string) (*deployer_tpb.RequestDeploymentMessage, error)
 }
 
 type RefMatcher interface {

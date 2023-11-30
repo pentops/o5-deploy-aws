@@ -46,7 +46,7 @@ func NewTrigger(storage EnvironmentStore, cfTemplateBucket string, s3Client awsi
 	}, nil
 }
 
-func (dd *Trigger) BuildTrigger(ctx context.Context, app *app.BuiltApplication, envName string) (*deployer_tpb.TriggerDeploymentMessage, error) {
+func (dd *Trigger) BuildTrigger(ctx context.Context, app *app.BuiltApplication, envName string) (*deployer_tpb.RequestDeploymentMessage, error) {
 
 	ctx = log.WithFields(ctx, map[string]interface{}{
 		"appName":     app.Name,
@@ -115,7 +115,7 @@ func (dd *Trigger) BuildTrigger(ctx context.Context, app *app.BuiltApplication, 
 		EcsCluster: awsEnv.EcsClusterName,
 	}
 
-	return &deployer_tpb.TriggerDeploymentMessage{
+	return &deployer_tpb.RequestDeploymentMessage{
 		DeploymentId: deploymentID,
 		Spec:         spec,
 	}, nil

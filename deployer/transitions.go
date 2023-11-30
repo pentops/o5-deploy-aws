@@ -10,7 +10,9 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 )
 
-var transitions = []ITransitionSpec{
+type DeploymentTransitionBaton TransitionBaton[*deployer_pb.DeploymentEvent]
+
+var transitions = []ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.DeploymentEvent]{
 	// Ignore Events
 	TransitionSpec[*deployer_pb.DeploymentEventType_StackStatus]{
 		FromStatus: []deployer_pb.DeploymentStatus{
@@ -21,7 +23,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackStatus,
 		) error {
@@ -35,7 +37,7 @@ var transitions = []ITransitionSpec{
 			deployer_pb.DeploymentStatus_UNSPECIFIED,
 		},
 		Transition: func(ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_Created,
 		) error {
@@ -56,7 +58,7 @@ var transitions = []ITransitionSpec{
 			deployer_pb.DeploymentStatus_QUEUED,
 		},
 		Transition: func(ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_Triggered,
 		) error {
@@ -76,7 +78,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackWait,
 		) error {
@@ -101,7 +103,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackCreate,
 		) error {
@@ -149,7 +151,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackStatus,
 		) error {
@@ -183,7 +185,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackUpsert,
 		) error {
@@ -245,7 +247,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackStatus,
 		) error {
@@ -270,7 +272,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackStatus,
 		) error {
@@ -298,7 +300,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackStatus,
 		) error {
@@ -322,7 +324,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackStatus,
 		) error {
@@ -350,7 +352,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackStatus,
 		) error {
@@ -369,7 +371,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackStatus,
 		) error {
@@ -397,7 +399,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackStatus,
 		) error {
@@ -414,7 +416,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_MigrateData,
 		) error {
@@ -493,7 +495,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_DBMigrateStatus,
 		) error {
@@ -545,7 +547,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_DataMigrated,
 		) error {
@@ -565,7 +567,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackScale,
 		) error {
@@ -588,7 +590,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackScale,
 		) error {
@@ -612,7 +614,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackTrigger,
 		) error {
@@ -656,7 +658,7 @@ var transitions = []ITransitionSpec{
 		},
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_Done,
 		) error {
@@ -678,7 +680,7 @@ var transitions = []ITransitionSpec{
 	TransitionSpec[*deployer_pb.DeploymentEventType_Error]{
 		Transition: func(
 			ctx context.Context,
-			tb TransitionBaton,
+			tb DeploymentTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_Error,
 		) error {

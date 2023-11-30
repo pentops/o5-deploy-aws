@@ -7,16 +7,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/outbox.pg.go/outbox"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type TransitionSpec[Event deployer_pb.IsDeploymentEventTypeWrappedType] struct {
 	FromStatus  []deployer_pb.DeploymentStatus
 	EventFilter func(Event) bool
-	Transition  func(context.Context, TransitionBaton, *deployer_pb.DeploymentState, Event) error
+	Transition  func(context.Context, DeploymentTransitionBaton, *deployer_pb.DeploymentState, Event) error
 }
 
-func (ts TransitionSpec[Event]) RunTransition(ctx context.Context, tb TransitionBaton, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
+func (ts TransitionSpec[Event]) RunTransition(ctx context.Context, tb TransitionBaton[*deployer_pb.DeploymentEvent], deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
 
 	asType, ok := event.Event.Get().(Event)
 	if !ok {
@@ -52,13 +53,13 @@ func (ts TransitionSpec[Event]) Matches(deployment *deployer_pb.DeploymentState,
 	return true
 }
 
-type ITransitionSpec interface {
-	Matches(*deployer_pb.DeploymentState, *deployer_pb.DeploymentEvent) bool
-	RunTransition(context.Context, TransitionBaton, *deployer_pb.DeploymentState, *deployer_pb.DeploymentEvent) error
+type ITransitionSpec[State proto.Message, Event proto.Message] interface {
+	Matches(State, Event) bool
+	RunTransition(context.Context, TransitionBaton[Event], State, Event) error
 }
 
-type TransitionBaton interface {
-	ChainEvent(*deployer_pb.DeploymentEvent)
+type TransitionBaton[Event proto.Message] interface {
+	ChainEvent(Event)
 	SideEffect(outbox.OutboxMessage)
 
 	ResolveParameters([]*deployer_pb.Parameter) ([]*deployer_pb.CloudFormationStackParameter, error)
@@ -77,13 +78,13 @@ func newEvent(d *deployer_pb.DeploymentState, event deployer_pb.IsDeploymentEven
 	}
 }
 
-type TransitionData struct {
+type TransitionData[Event proto.Message] struct {
 	SideEffects       []outbox.OutboxMessage
-	ChainEvents       []*deployer_pb.DeploymentEvent
+	ChainEvents       []Event
 	ParameterResolver ParameterResolver
 }
 
-func (td *TransitionData) ResolveParameters(stackParameters []*deployer_pb.Parameter) ([]*deployer_pb.CloudFormationStackParameter, error) {
+func (td *TransitionData[Event]) ResolveParameters(stackParameters []*deployer_pb.Parameter) ([]*deployer_pb.CloudFormationStackParameter, error) {
 
 	parameters := make([]*deployer_pb.CloudFormationStackParameter, 0, len(stackParameters))
 
@@ -98,15 +99,15 @@ func (td *TransitionData) ResolveParameters(stackParameters []*deployer_pb.Param
 	return parameters, nil
 }
 
-func (td *TransitionData) ChainEvent(event *deployer_pb.DeploymentEvent) {
+func (td *TransitionData[Event]) ChainEvent(event Event) {
 	td.ChainEvents = append(td.ChainEvents, event)
 }
 
-func (td *TransitionData) SideEffect(msg outbox.OutboxMessage) {
+func (td *TransitionData[Event]) SideEffect(msg outbox.OutboxMessage) {
 	td.SideEffects = append(td.SideEffects, msg)
 }
 
-func FindTransition(ctx context.Context, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) (ITransitionSpec, error) {
+func FindTransition(ctx context.Context, deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) (ITransitionSpec[*deployer_pb.DeploymentState, *deployer_pb.DeploymentEvent], error) {
 	for _, search := range transitions {
 		if search.Matches(deployment, event) {
 			return search, nil

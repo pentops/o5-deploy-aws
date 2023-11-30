@@ -37,7 +37,7 @@ func NewEventLoop(awsRunner *InfraAdapter, stateStore *StateStore) *EventLoop {
 	}
 }
 
-func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.TriggerDeploymentMessage) error {
+func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage) error {
 	if err := lel.validator.Validate(trigger); err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.TriggerDepl
 			return err
 		}
 
-		baton := &deployer.TransitionData{
+		baton := &deployer.TransitionData[*deployer_pb.DeploymentEvent]{
 			ParameterResolver: deployerResolver,
 		}
 

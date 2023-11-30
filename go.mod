@@ -27,7 +27,7 @@ require (
 	github.com/pentops/genericstate v0.0.0-20231130060225-e454784f7fba
 	github.com/pentops/jsonapi v0.0.0-20231123011150-74903e21d297
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
-	github.com/pentops/o5-go v0.0.0-20231130060254-b16c26139788
+	github.com/pentops/o5-go v0.0.0-20231130065829-e542d37ae36c
 	github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8
 	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb
 	github.com/pressly/goose v2.7.0+incompatible

@@ -67,7 +67,7 @@ func registerEvent(ctx context.Context, tx TransitionTransaction, outerEvent *de
 		innerEvent := eventsToProcess[0]
 		eventsToProcess = eventsToProcess[1:]
 
-		baton := &TransitionData{
+		baton := &TransitionData[*deployer_pb.DeploymentEvent]{
 			ParameterResolver: deployerResolver,
 		}
 		typeKey, _ := innerEvent.Event.TypeKey()
@@ -111,8 +111,94 @@ func registerEvent(ctx context.Context, tx TransitionTransaction, outerEvent *de
 	return nil
 }
 
+func findStackTransition(stack *deployer_pb.StackState, event *deployer_pb.StackEvent) (ITransitionSpec[*deployer_pb.StackState, *deployer_pb.StackEvent], error) {
+	for _, search := range stackTransitions {
+		if search.Matches(stack, event) {
+			return search, nil
+		}
+	}
+	typeKey, ok := event.Event.TypeKey()
+	if !ok {
+		return nil, fmt.Errorf("unknown event type: %T", event.Event)
+	}
+	return nil, fmt.Errorf("no transition found for %s -> %s", stack.Status.String(), typeKey)
+}
+
+func stackTransition(ctx context.Context, tx TransitionTransaction, stack *deployer_pb.StackState, outerEvent *deployer_pb.StackEvent) error {
+	events := make([]*deployer_pb.StackEvent, 1, 2)
+	events[0] = outerEvent
+
+	for len(events) > 0 {
+		event := events[0]
+		events = events[1:]
+
+		baton := &TransitionData[*deployer_pb.StackEvent]{}
+
+		typeKey, _ := event.Event.TypeKey()
+
+		ctx = log.WithFields(ctx, map[string]interface{}{
+			"stackId":    event.StackId,
+			"eventType":  typeKey,
+			"transition": fmt.Sprintf("%s -> ? : %s", stack.Status.String(), typeKey),
+		})
+
+		log.Info(ctx, "Begin Stack Event")
+
+		transition, err := findStackTransition(stack, event)
+		if err != nil {
+			return err
+		}
+
+		if err := transition.RunTransition(ctx, baton, stack, event); err != nil {
+			return err
+		}
+
+		ctx = log.WithFields(ctx, map[string]interface{}{
+			"transition": fmt.Sprintf("%s -> %s : %s", stack.Status.String(), stack.Status.String(), typeKey),
+		})
+
+		log.Info(ctx, "Stack Event Handled")
+
+		if err := tx.StoreStackEvent(ctx, stack, event); err != nil {
+			return err
+		}
+
+		for _, se := range baton.SideEffects {
+			if err := tx.PublishEvent(ctx, se); err != nil {
+				return fmt.Errorf("publishEvent: %w", err)
+			}
+		}
+
+		events = append(events, baton.ChainEvents...)
+	}
+
+	return nil
+}
+
 func (dw *DeployerWorker) TriggerDeployment(ctx context.Context, msg *deployer_tpb.TriggerDeploymentMessage) (*emptypb.Empty, error) {
 
+	// SIDE EFFECT
+	triggerDeploymentEvent := &deployer_pb.DeploymentEvent{
+		DeploymentId: msg.DeploymentId,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+		Event: &deployer_pb.DeploymentEventType{
+			Type: &deployer_pb.DeploymentEventType_Triggered_{
+				Triggered: &deployer_pb.DeploymentEventType_Triggered{},
+			},
+		},
+	}
+
+	if err := dw.registerEvent(ctx, triggerDeploymentEvent); err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_tpb.RequestDeploymentMessage) (*emptypb.Empty, error) {
 	createDeploymentEvent := &deployer_pb.DeploymentEvent{
 		DeploymentId: msg.DeploymentId,
 		Metadata: &deployer_pb.EventMetadata{
@@ -128,101 +214,45 @@ func (dw *DeployerWorker) TriggerDeployment(ctx context.Context, msg *deployer_t
 		},
 	}
 
+	evt := &deployer_pb.StackEvent{
+		StackId: StackID(msg.Spec.EnvironmentName, msg.Spec.AppName),
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+		Event: &deployer_pb.StackEventType{
+			Type: &deployer_pb.StackEventType_Triggered_{
+				Triggered: &deployer_pb.StackEventType_Triggered{
+					Deployment: &deployer_pb.StackDeployment{
+						DeploymentId: msg.DeploymentId,
+						Version:      msg.Spec.Version,
+					},
+				},
+			},
+		},
+	}
+
 	if err := dw.storage.Transact(ctx, func(ctx context.Context, tx TransitionTransaction) error {
-
-		deploymentEvents := make([]*deployer_pb.DeploymentEvent, 1, 2)
-
-		deploymentEvents[0] = createDeploymentEvent
-
-		stackID := StackID(msg.Spec.EnvironmentName, msg.Spec.AppName)
-		stack, err := tx.GetStack(ctx, stackID)
+		stack, err := tx.GetStack(ctx, evt.StackId)
 		if errors.Is(err, StackNotFoundError) {
 			stack = &deployer_pb.StackState{
-				StackId:           stackID,
+				StackId:           evt.StackId,
 				Status:            deployer_pb.StackStatus_UNSPECIFIED, // New
 				CurrentDeployment: nil,
 				ApplicationName:   msg.Spec.AppName,
 				EnvironmentName:   msg.Spec.EnvironmentName,
 				QueuedDeployments: []*deployer_pb.StackDeployment{},
 			}
+
 		} else if err != nil {
 			return err
 		}
 
-		evt := &deployer_pb.StackEvent{
-			StackId:  stackID,
-			Metadata: &deployer_pb.EventMetadata{},
-			Event: &deployer_pb.StackEventType{
-				Type: &deployer_pb.StackEventType_Triggered_{
-					Triggered: &deployer_pb.StackEventType_Triggered{
-						Deployment: &deployer_pb.StackDeployment{
-							DeploymentId: msg.DeploymentId,
-							Version:      msg.Spec.Version,
-						},
-					},
-				},
-			},
-		}
-
-		shouldTrigger := false
-		switch stack.Status {
-		case deployer_pb.StackStatus_UNSPECIFIED:
-			stack.Status = deployer_pb.StackStatus_CREATING
-			shouldTrigger = true
-
-		case deployer_pb.StackStatus_STABLE:
-			stack.Status = deployer_pb.StackStatus_MIGRATING
-			shouldTrigger = true
-
-		case deployer_pb.StackStatus_BROKEN,
-			deployer_pb.StackStatus_CREATING,
-			deployer_pb.StackStatus_MIGRATING:
-
-			stack.QueuedDeployments = append(stack.QueuedDeployments, &deployer_pb.StackDeployment{
-				DeploymentId: msg.DeploymentId,
-				Version:      msg.Spec.Version,
-			})
-
-			if err := tx.StoreStackEvent(ctx, stack, evt); err != nil {
-				return err
-			}
-
-		default:
-			return fmt.Errorf("unexpected stack status: %s", stack.Status.String())
-
-		}
-
-		if err := tx.StoreStackEvent(ctx, stack, evt); err != nil {
+		if err := stackTransition(ctx, tx, stack, evt); err != nil {
 			return err
 		}
 
-		if err := registerEvent(ctx, tx, createDeploymentEvent); err != nil {
-			return err
-		}
-
-		if !shouldTrigger {
-			return nil
-		}
-
-		triggerDeploymentEvent := &deployer_pb.DeploymentEvent{
-			DeploymentId: msg.DeploymentId,
-			Metadata: &deployer_pb.EventMetadata{
-				EventId:   uuid.NewString(),
-				Timestamp: timestamppb.Now(),
-			},
-			Event: &deployer_pb.DeploymentEventType{
-				Type: &deployer_pb.DeploymentEventType_Triggered_{
-					Triggered: &deployer_pb.DeploymentEventType_Triggered{},
-				},
-			},
-		}
-
-		if err := registerEvent(ctx, tx, triggerDeploymentEvent); err != nil {
-			return err
-		}
-
-		return nil
-
+		return registerEvent(ctx, tx, createDeploymentEvent)
 	}); err != nil {
 		return nil, err
 	}
@@ -252,43 +282,7 @@ func (dw *DeployerWorker) DeploymentComplete(ctx context.Context, msg *deployer_
 		if err != nil {
 			return err
 		}
-
-		switch stack.Status {
-		case deployer_pb.StackStatus_CREATING, deployer_pb.StackStatus_MIGRATING:
-			stack.Status = deployer_pb.StackStatus_STABLE
-
-			if len(stack.QueuedDeployments) > 0 {
-				stack.CurrentDeployment = stack.QueuedDeployments[0]
-				stack.QueuedDeployments = stack.QueuedDeployments[1:]
-
-				triggerDeploymentEvent := &deployer_pb.DeploymentEvent{
-					DeploymentId: stack.CurrentDeployment.DeploymentId,
-					Metadata: &deployer_pb.EventMetadata{
-						EventId:   uuid.NewString(),
-						Timestamp: timestamppb.Now(),
-					},
-					Event: &deployer_pb.DeploymentEventType{
-						Type: &deployer_pb.DeploymentEventType_Triggered_{
-							Triggered: &deployer_pb.DeploymentEventType_Triggered{},
-						},
-					},
-				}
-
-				if err := registerEvent(ctx, tx, triggerDeploymentEvent); err != nil {
-					return err
-				}
-			}
-
-			if err := tx.StoreStackEvent(ctx, stack, stackEvent); err != nil {
-				return err
-			}
-
-		default:
-			return fmt.Errorf("unexpected stack status: %s", stack.Status.String())
-		}
-
-		return nil
-
+		return stackTransition(ctx, tx, stack, stackEvent)
 	}); err != nil {
 		return nil, err
 	}

@@ -171,3 +171,27 @@ func (uu *Universe) AssertDeploymentStatus(t flowtest.Asserter, deploymentID str
 		t.Fatalf("unexpected status: %v, want %s", deployment.State.Status.ShortString(), status.ShortString())
 	}
 }
+
+func (uu *Universe) AssertStackStatus(t flowtest.Asserter, stackID string, status deployer_pb.StackStatus, pendingDeployments []string) {
+	t.Helper()
+	ctx := context.Background()
+
+	stack, err := uu.DeployerQuery.GetStack(ctx, &deployer_spb.GetStackRequest{
+		StackId: stackID,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	t.Logf("stack: %v", stack)
+	if stack.State.Status != status {
+		t.Fatalf("unexpected status: %v, want %s", stack.State.Status.ShortString(), status.ShortString())
+	}
+	if len(stack.State.QueuedDeployments) != len(pendingDeployments) {
+		t.Fatalf("unexpected pending deployments: %v, want %v", stack.State.QueuedDeployments, pendingDeployments)
+	}
+	for i, deploymentID := range pendingDeployments {
+		if stack.State.QueuedDeployments[i].DeploymentId != deploymentID {
+			t.Fatalf("unexpected pending deployments: %v, want %v", stack.State.QueuedDeployments, pendingDeployments)
+		}
+	}
+}
