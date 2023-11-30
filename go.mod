@@ -23,11 +23,13 @@ require (
 	github.com/google/go-github/v47 v47.1.0
 	github.com/google/uuid v1.4.0
 	github.com/lib/pq v1.10.9
+	github.com/pentops/flowtest v0.0.0-20231130030311-2062110a52a1
 	github.com/pentops/genericstate v0.0.0-20231121014125-b51b708919ca
 	github.com/pentops/jsonapi v0.0.0-20231123011150-74903e21d297
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
 	github.com/pentops/o5-go v0.0.0-20231123034227-ac9197d1359d
 	github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8
+	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/rs/cors v1.10.1
 	github.com/stretchr/testify v1.8.4
@@ -67,6 +69,7 @@ require (
 	github.com/google/cel-go v0.18.2 // indirect
 	github.com/google/go-github/v29 v29.0.3 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
+	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/jhump/protoreflect v1.15.3 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
@@ -92,6 +95,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-// replace github.com/pentops/o5-go => ../o5-go
+replace github.com/pentops/o5-go => ../o5-go
 
-//replace github.com/pentops/genericstate => ../genericstate
+replace github.com/pentops/genericstate => ../genericstate

@@ -16,7 +16,6 @@ import (
 	"github.com/pentops/o5-deploy-aws/japi"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-deploy-aws/service"
-	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"

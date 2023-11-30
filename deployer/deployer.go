@@ -25,6 +25,7 @@ type Environment struct {
 type Trigger struct {
 	RotateSecrets bool
 	CancelUpdates bool
+	QuickMode     bool
 
 	s3Client         awsinfra.S3API
 	cfTemplateBucket string
@@ -109,7 +110,9 @@ func (dd *Trigger) BuildTrigger(ctx context.Context, app *app.BuiltApplication, 
 
 		CancelUpdates:     dd.CancelUpdates,
 		RotateCredentials: dd.RotateSecrets,
-		EcsCluster:        awsEnv.EcsClusterName,
+		QuickMode:         dd.QuickMode,
+
+		EcsCluster: awsEnv.EcsClusterName,
 	}
 
 	return &deployer_tpb.TriggerDeploymentMessage{

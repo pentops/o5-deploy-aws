@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
 	sq "github.com/elgris/sqrl"
 	"github.com/pentops/genericstate"
@@ -65,14 +64,6 @@ var DeploymentStateSpec = genericstate.StateSpec[*deployer_pb.DeploymentEvent, *
 		}
 	},
 	Transition: func(ctx context.Context, state *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
-		switch et := event.Event.Type.(type) {
-		case *deployer_pb.DeploymentEventType_Triggered_:
-			state.Status = deployer_pb.DeploymentStatus_QUEUED
-			state.Spec = et.Triggered.Spec
-
-		default:
-			return fmt.Errorf("unknown event type: %T", event.Event.Type)
-		}
 		return nil
 	},
 }

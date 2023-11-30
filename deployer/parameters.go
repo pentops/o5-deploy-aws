@@ -45,6 +45,7 @@ func BuildParameterResolver(ctx context.Context, environment *environment_pb.Env
 			app.MetaDeployAssumeRoleParameter: strings.Join(awsEnv.O5DeployerGrantRoles, ","),
 			app.JWKSParameter:                 strings.Join(environment.TrustJwks, ","),
 			app.SNSPrefixParameter:            awsEnv.SnsPrefix,
+			app.S3BucketNamespaceParameter:    awsEnv.S3BucketNamespace,
 		},
 		custom:              environment.Vars,
 		crossEnvSNSPrefixes: crossEnvSNS,
