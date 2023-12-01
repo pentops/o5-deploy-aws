@@ -27,9 +27,24 @@ func NewDeployerWorker(store DeployerStorage) (*DeployerWorker, error) {
 
 func (dw *DeployerWorker) doDeploymentEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
 	if err := dw.storage.Transact(ctx, func(ctx context.Context, tx TransitionTransaction) error {
-		return doDeploymentEvent(ctx, tx, event)
+		deployment, err := tx.GetDeployment(ctx, event.DeploymentId)
+		if errors.Is(err, DeploymentNotFoundError) {
+			trigger := event.Event.GetCreated()
+			if trigger == nil {
+				return fmt.Errorf("deployment %s not found, and the event is not an initiating event", event.DeploymentId)
+			}
+
+			deployment = &deployer_pb.DeploymentState{
+				DeploymentId: event.DeploymentId,
+				Spec:         trigger.Spec,
+			}
+		} else if err != nil {
+			return fmt.Errorf("GetDeployment: %w", err)
+		}
+
+		return doDeploymentEvent(ctx, tx, deployment, event)
 	}); err != nil {
-		return err
+		return fmt.Errorf("doDeploymentEvent: %w", err)
 	}
 	return nil
 }
@@ -115,24 +130,9 @@ func (ee Eventer[WrappedEvent, Event, State]) Run(ctx context.Context, tx Transi
 	return nil
 }
 
-func doDeploymentEvent(ctx context.Context, tx TransitionTransaction, outerEvent *deployer_pb.DeploymentEvent) error {
-
-	deployment, err := tx.GetDeployment(ctx, outerEvent.DeploymentId)
-	if errors.Is(err, DeploymentNotFoundError) {
-		trigger := outerEvent.Event.GetCreated()
-		if trigger == nil {
-			return fmt.Errorf("deployment %s not found, and the event is not an initiating event", outerEvent.DeploymentId)
-		}
-
-		deployment = &deployer_pb.DeploymentState{
-			DeploymentId: outerEvent.DeploymentId,
-			Spec:         trigger.Spec,
-		}
-	} else if err != nil {
-		return err
-	}
-
+func doDeploymentEvent(ctx context.Context, tx TransitionTransaction, deployment *deployer_pb.DeploymentState, outerEvent *deployer_pb.DeploymentEvent) error {
 	ctx = log.WithFields(ctx, map[string]interface{}{
+		"entityType":   "Deployment",
 		"deploymentId": deployment.DeploymentId,
 	})
 
@@ -141,9 +141,9 @@ func doDeploymentEvent(ctx context.Context, tx TransitionTransaction, outerEvent
 
 func doStackEvent(ctx context.Context, tx TransitionTransaction, stack *deployer_pb.StackState, outerEvent *deployer_pb.StackEvent) error {
 	ctx = log.WithFields(ctx, map[string]interface{}{
-		"stackId": stack.StackId,
+		"entityType": "Stack",
+		"stackId":    stack.StackId,
 	})
-
 	return stackEventer.Run(ctx, tx, stack, outerEvent)
 }
 
@@ -224,7 +224,12 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 			return err
 		}
 
-		return doDeploymentEvent(ctx, tx, createDeploymentEvent)
+		deployment := &deployer_pb.DeploymentState{
+			DeploymentId: msg.DeploymentId,
+			Spec:         msg.Spec,
+		}
+
+		return doDeploymentEvent(ctx, tx, deployment, createDeploymentEvent)
 	}); err != nil {
 		return nil, err
 	}
@@ -235,8 +240,11 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 func (dw *DeployerWorker) DeploymentComplete(ctx context.Context, msg *deployer_tpb.DeploymentCompleteMessage) (*emptypb.Empty, error) {
 
 	stackEvent := &deployer_pb.StackEvent{
-		StackId:  StackID(msg.EnvironmentName, msg.ApplicationName),
-		Metadata: &deployer_pb.EventMetadata{},
+		StackId: StackID(msg.EnvironmentName, msg.ApplicationName),
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
 		Event: &deployer_pb.StackEventType{
 			Type: &deployer_pb.StackEventType_DeploymentCompleted_{
 				DeploymentCompleted: &deployer_pb.StackEventType_DeploymentCompleted{
@@ -272,9 +280,10 @@ func TranslateStackStatusChanged(msg *deployer_tpb.StackStatusChangedMessage) (*
 		Event: &deployer_pb.DeploymentEventType{
 			Type: &deployer_pb.DeploymentEventType_StackStatus_{
 				StackStatus: &deployer_pb.DeploymentEventType_StackStatus{
-					Lifecycle:   msg.Lifecycle,
-					FullStatus:  msg.Status,
-					StackOutput: msg.Outputs,
+					Lifecycle:       msg.Lifecycle,
+					FullStatus:      msg.Status,
+					StackOutput:     msg.Outputs,
+					DeploymentPhase: msg.StackId.DeploymentPhase,
 				},
 			},
 		},
@@ -287,7 +296,42 @@ func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *deployer_
 	if err != nil {
 		return nil, err
 	}
-	return &emptypb.Empty{}, dw.doDeploymentEvent(ctx, event)
+
+	if err := dw.storage.Transact(ctx, func(ctx context.Context, tx TransitionTransaction) error {
+		deployment, err := tx.GetDeployment(ctx, event.DeploymentId)
+		if err != nil {
+			if errors.Is(err, DeploymentNotFoundError) {
+				log.WithError(ctx, err).Error("Deployment not found")
+				return nil
+			}
+			return err
+		}
+
+		if deployment.WaitingOnRemotePhase == nil || *deployment.WaitingOnRemotePhase != msg.StackId.DeploymentPhase {
+			waiting := ""
+			if deployment.WaitingOnRemotePhase != nil {
+				waiting = *deployment.WaitingOnRemotePhase
+			}
+
+			ctx := log.WithFields(ctx, map[string]interface{}{
+				"cfReturnPhase":        msg.StackId.DeploymentPhase,
+				"waitingOnRemotePhase": waiting,
+			})
+			if msg.Lifecycle == deployer_pb.StackLifecycle_COMPLETE || msg.Lifecycle == deployer_pb.StackLifecycle_PROGRESS {
+				log.Error(ctx, "Deployment phase mismatch, Ignoring")
+				return nil
+			} else {
+				log.Error(ctx, "Deployment phase mismatch")
+				return fmt.Errorf("deployment phase mismatch")
+			}
+		}
+
+		return doDeploymentEvent(ctx, tx, deployment, event)
+	}); err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
 }
 
 func TranslateMigrationStatusChanged(msg *deployer_tpb.MigrationStatusChangedMessage) (*deployer_pb.DeploymentEvent, error) {

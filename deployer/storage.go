@@ -120,7 +120,7 @@ func (ptw *postgresTxWrapper) GetDeployment(ctx context.Context, id string) (*de
 	}
 	var deployment deployer_pb.DeploymentState
 	if err := protojson.Unmarshal(deploymentJSON, &deployment); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal deployment: %w", err)
 	}
 	return &deployment, nil
 }
@@ -159,6 +159,23 @@ func (ptw *postgresTxWrapper) StoreStackEvent(ctx context.Context, stack *deploy
 		return err
 	}
 
+	eventJSON, err := protojson.Marshal(event)
+	if err != nil {
+		return err
+	}
+
+	insertEvent := sq.Insert("stack_event").SetMap(map[string]interface{}{
+		"stack_id":  stack.StackId,
+		"id":        event.Metadata.EventId,
+		"event":     eventJSON,
+		"timestamp": event.Metadata.Timestamp.AsTime(),
+	})
+
+	_, err = ptw.tx.Insert(ctx, insertEvent)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -178,17 +195,17 @@ func (ptw *postgresTxWrapper) StoreDeploymentEvent(ctx context.Context, state *d
 		return err
 	}
 
+	_, err = ptw.tx.Insert(ctx, upsertState)
+	if err != nil {
+		return err
+	}
+
 	insertEvent := sq.Insert("deployment_event").SetMap(map[string]interface{}{
 		"deployment_id": state.DeploymentId,
 		"id":            event.Metadata.EventId,
 		"event":         eventJSON,
 		"timestamp":     event.Metadata.Timestamp.AsTime(),
 	})
-
-	_, err = ptw.tx.Insert(ctx, upsertState)
-	if err != nil {
-		return err
-	}
 
 	_, err = ptw.tx.Insert(ctx, insertEvent)
 	if err != nil {

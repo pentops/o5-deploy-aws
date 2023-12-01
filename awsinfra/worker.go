@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
-	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
@@ -147,12 +146,14 @@ func (cf *InfraWorker) CreateNewStack(ctx context.Context, msg *deployer_tpb.Cre
 func (cf *InfraWorker) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateStackMessage) (*emptypb.Empty, error) {
 
 	err := cf.CFClient.UpdateStack(ctx, msg)
-	if err != nil && !IsNoUpdatesError(err) {
-		return nil, fmt.Errorf("UpdateStack: %w", err)
-	}
+	if err != nil {
+		if !IsNoUpdatesError(err) {
+			return nil, fmt.Errorf("UpdateStack: %w", err)
+		}
 
-	if err := cf.noUpdatesToBePerformed(ctx, msg.StackId); err != nil {
-		return nil, err
+		if err := cf.noUpdatesToBePerformed(ctx, msg.StackId); err != nil {
+			return nil, err
+		}
 	}
 
 	return &emptypb.Empty{}, nil
@@ -178,12 +179,14 @@ func (cf *InfraWorker) DeleteStack(ctx context.Context, msg *deployer_tpb.Delete
 
 func (cf *InfraWorker) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStackMessage) (*emptypb.Empty, error) {
 	err := cf.CFClient.ScaleStack(ctx, msg)
-	if err != nil && !IsNoUpdatesError(err) {
-		return nil, fmt.Errorf("ScaleStack: %w", err)
-	}
+	if err != nil {
+		if !IsNoUpdatesError(err) {
+			return nil, fmt.Errorf("ScaleStack: %w", err)
+		}
 
-	if err := cf.noUpdatesToBePerformed(ctx, msg.StackId); err != nil {
-		return nil, err
+		if err := cf.noUpdatesToBePerformed(ctx, msg.StackId); err != nil {
+			return nil, err
+		}
 	}
 
 	return &emptypb.Empty{}, nil
@@ -328,7 +331,7 @@ func (d *InfraWorker) RunDatabaseMigration(ctx context.Context, msg *deployer_tp
 		}); err != nil {
 			return nil, err
 		}
-		return &empty.Empty{}, nil
+		return &emptypb.Empty{}, nil
 	}
 
 	if err := d.messageHandler.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
@@ -339,5 +342,5 @@ func (d *InfraWorker) RunDatabaseMigration(ctx context.Context, msg *deployer_tp
 		return nil, err
 	}
 
-	return &empty.Empty{}, nil
+	return &emptypb.Empty{}, nil
 }

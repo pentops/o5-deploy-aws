@@ -8,6 +8,7 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -141,6 +142,8 @@ var deploymentTransitions = []ITransitionSpec[*deployer_pb.DeploymentState, depl
 			event *deployer_pb.DeploymentEventType_StackWait,
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_WAITING
+			deployment.WaitingOnRemotePhase = proto.String("wait")
+
 			tb.SideEffect(&deployer_tpb.StabalizeStackMessage{
 				StackId: &deployer_tpb.StackID{
 					StackName:       deployment.StackName,
@@ -171,6 +174,8 @@ var deploymentTransitions = []ITransitionSpec[*deployer_pb.DeploymentState, depl
 			for i, topic := range deployment.Spec.SnsTopics {
 				topicNames[i] = fmt.Sprintf("%s-%s", deployment.Spec.EnvironmentName, topic.Name)
 			}
+
+			deployment.WaitingOnRemotePhase = proto.String("create")
 
 			// Create, scale 0
 			tb.SideEffect(&deployer_tpb.CreateNewStackMessage{
@@ -210,6 +215,8 @@ var deploymentTransitions = []ITransitionSpec[*deployer_pb.DeploymentState, depl
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_AVAILABLE
 			deployment.StackOutput = event.StackOutput
+			deployment.LastStackLifecycle = event.Lifecycle
+			deployment.WaitingOnRemotePhase = nil
 
 			if deployment.Spec.QuickMode {
 				tb.ChainEvent(&deployer_pb.DeploymentEventType_StackUpsert{})
@@ -243,8 +250,9 @@ var deploymentTransitions = []ITransitionSpec[*deployer_pb.DeploymentState, depl
 				topicNames[i] = fmt.Sprintf("%s-%s", deployment.Spec.EnvironmentName, topic.Name)
 			}
 
-			if deployment.StackOutput == nil {
+			if deployment.LastStackLifecycle == deployer_pb.StackLifecycle_MISSING {
 				// Create a new stack
+				deployment.WaitingOnRemotePhase = proto.String("create")
 				tb.SideEffect(&deployer_tpb.CreateNewStackMessage{
 					StackId: &deployer_tpb.StackID{
 						StackName:       deployment.StackName,
@@ -259,6 +267,7 @@ var deploymentTransitions = []ITransitionSpec[*deployer_pb.DeploymentState, depl
 					},
 				})
 			} else {
+				deployment.WaitingOnRemotePhase = proto.String("infra-migrate")
 				tb.SideEffect(&deployer_tpb.UpdateStackMessage{
 					StackId: &deployer_tpb.StackID{
 						StackName:       deployment.StackName,
@@ -294,6 +303,7 @@ var deploymentTransitions = []ITransitionSpec[*deployer_pb.DeploymentState, depl
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_UPSERTED
 			deployment.StackOutput = event.StackOutput
+			deployment.WaitingOnRemotePhase = nil
 
 			tb.ChainEvent(&deployer_pb.DeploymentEventType_Done{})
 
@@ -317,6 +327,7 @@ var deploymentTransitions = []ITransitionSpec[*deployer_pb.DeploymentState, depl
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_SCALED_DOWN
 			deployment.StackOutput = event.StackOutput
+			deployment.WaitingOnRemotePhase = nil
 
 			tb.ChainEvent(&deployer_pb.DeploymentEventType_StackTrigger{
 				Phase: "update",
@@ -343,6 +354,7 @@ var deploymentTransitions = []ITransitionSpec[*deployer_pb.DeploymentState, depl
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_INFRA_MIGRATED
 			deployment.StackOutput = event.StackOutput
+			deployment.WaitingOnRemotePhase = nil
 
 			tb.ChainEvent(&deployer_pb.DeploymentEventType_MigrateData{})
 
@@ -365,6 +377,7 @@ var deploymentTransitions = []ITransitionSpec[*deployer_pb.DeploymentState, depl
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_SCALED_UP
 			deployment.StackOutput = event.StackOutput
+			deployment.WaitingOnRemotePhase = nil
 
 			tb.ChainEvent(&deployer_pb.DeploymentEventType_Done{})
 			return nil
@@ -439,6 +452,7 @@ var deploymentTransitions = []ITransitionSpec[*deployer_pb.DeploymentState, depl
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_FAILED
 			deployment.StackOutput = event.StackOutput
+			deployment.WaitingOnRemotePhase = nil
 
 			return fmt.Errorf("stack failed: %s", event.FullStatus)
 		},
@@ -601,6 +615,8 @@ var deploymentTransitions = []ITransitionSpec[*deployer_pb.DeploymentState, depl
 			event *deployer_pb.DeploymentEventType_StackScale,
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_SCALING_UP
+			deployment.WaitingOnRemotePhase = proto.String("scale-up")
+
 			tb.SideEffect(&deployer_tpb.ScaleStackMessage{
 				StackId: &deployer_tpb.StackID{
 					StackName:       deployment.StackName,
@@ -625,6 +641,7 @@ var deploymentTransitions = []ITransitionSpec[*deployer_pb.DeploymentState, depl
 			event *deployer_pb.DeploymentEventType_StackScale,
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_SCALING_DOWN
+			deployment.WaitingOnRemotePhase = proto.String("scale-down")
 
 			tb.SideEffect(&deployer_tpb.ScaleStackMessage{
 				DesiredCount: event.DesiredCount,
@@ -650,6 +667,7 @@ var deploymentTransitions = []ITransitionSpec[*deployer_pb.DeploymentState, depl
 			event *deployer_pb.DeploymentEventType_StackTrigger,
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_INFRA_MIGRATE
+			deployment.WaitingOnRemotePhase = proto.String("infra-migrate")
 
 			topicNames := make([]string, len(deployment.Spec.SnsTopics))
 			for i, topic := range deployment.Spec.SnsTopics {

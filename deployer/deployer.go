@@ -125,7 +125,7 @@ func (dd *Trigger) BuildTrigger(ctx context.Context, app *app.BuiltApplication, 
 
 		CancelUpdates:     dd.CancelUpdates,
 		RotateCredentials: dd.RotateSecrets,
-		QuickMode:         dd.QuickMode,
+		QuickMode:         dd.QuickMode || app.QuickMode,
 
 		EcsCluster: awsEnv.EcsClusterName,
 	}

@@ -68,6 +68,12 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 
 	stackTemplate := NewApplication(app.Name, versionTag)
 
+	if app.DeploymentConfig != nil {
+		if app.DeploymentConfig.QuickMode {
+			stackTemplate.quickMode = true
+		}
+	}
+
 	for _, key := range []string{
 		ECSClusterParameter,
 		ECSRepoParameter,
@@ -265,7 +271,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		if err := runtimeStack.Apply(stackTemplate); err != nil {
 			return nil, fmt.Errorf("adding %s: %w", runtime.Name, err)
 		}
-
+		stackTemplate.runtimes[runtime.Name] = runtimeStack
 	}
 
 	for _, listenerRule := range listener.Rules {

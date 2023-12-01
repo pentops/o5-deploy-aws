@@ -129,7 +129,27 @@ func (ds *DeployerService) GetDeployment(ctx context.Context, req *deployer_spb.
 	return res, ds.DeploymentQuery.Get(ctx, ds.db, req, res)
 }
 
+func (ds *DeployerService) ListDeployments(ctx context.Context, req *deployer_spb.ListDeploymentsRequest) (*deployer_spb.ListDeploymentsResponse, error) {
+	res := &deployer_spb.ListDeploymentsResponse{}
+	return res, ds.DeploymentQuery.List(ctx, ds.db, req, res)
+}
+
+func (ds *DeployerService) ListDeploymentEvents(ctx context.Context, req *deployer_spb.ListDeploymentEventsRequest) (*deployer_spb.ListDeploymentEventsResponse, error) {
+	res := &deployer_spb.ListDeploymentEventsResponse{}
+	return res, ds.DeploymentQuery.ListEvents(ctx, ds.db, req, res)
+}
+
 func (ds *DeployerService) GetStack(ctx context.Context, req *deployer_spb.GetStackRequest) (*deployer_spb.GetStackResponse, error) {
 	res := &deployer_spb.GetStackResponse{}
 	return res, ds.StackQuery.Get(ctx, ds.db, req, res)
+}
+
+func (ds *DeployerService) ListStacks(ctx context.Context, req *deployer_spb.ListStacksRequest) (*deployer_spb.ListStacksResponse, error) {
+	res := &deployer_spb.ListStacksResponse{}
+	return res, ds.StackQuery.List(ctx, ds.db, req, res)
+}
+
+func (ds *DeployerService) ListStackEvents(ctx context.Context, req *deployer_spb.ListStackEventsRequest) (*deployer_spb.ListStackEventsResponse, error) {
+	res := &deployer_spb.ListStackEventsResponse{}
+	return res, ds.StackQuery.ListEvents(ctx, ds.db, req, res)
 }

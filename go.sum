@@ -441,6 +441,8 @@ github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.25.1 h1:gQm31RBvxft4PYLy8
 github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.25.1/go.mod h1:N/QCLJS0Om2/uvAIQ/UCYW8BpJl0q3DiyyIgRq3WAT4=
 github.com/aws/aws-sdk-go-v2/service/sns v1.26.1 h1:gvr8xZY5sKAdkhUBVUUouAj3ReVGhfn+TL6Xm4HRWr8=
 github.com/aws/aws-sdk-go-v2/service/sns v1.26.1/go.mod h1:KLAzkDaVAUb/drCoW8qjTQ13WELkBfZ3q9YK865cR2c=
+github.com/aws/aws-sdk-go-v2/service/sqs v1.29.1 h1:OZI2aJxnfOZzB0uhyTaYIW6MeRMb1Qd2eLMjh0bFsRg=
+github.com/aws/aws-sdk-go-v2/service/sqs v1.29.1/go.mod h1:GiU88YWgOho2cyEyS2YZo3GYz/j4etRYKWbJdcYgpuQ=
 github.com/aws/aws-sdk-go-v2/service/sso v1.18.1 h1:V40g2daNO3l1J94JYwqfkyvQMYXi5I25fs3fNQW8iDs=
 github.com/aws/aws-sdk-go-v2/service/sso v1.18.1/go.mod h1:0ZWQJP/mBOUxkCvZKybZNz1XmdUKSBxoF0dzgfxtvDs=
 github.com/aws/aws-sdk-go-v2/service/ssooidc v1.21.1 h1:uQrj7SpUNC3r55vc1CDh3qV9wJC66lz546xM9dhSo5s=
@@ -633,6 +635,8 @@ github.com/googleapis/gax-go/v2 v2.6.0/go.mod h1:1mjbznJAPHFpesgE5ucqfYEscaz5kMd
 github.com/googleapis/gax-go/v2 v2.7.0/go.mod h1:TEop28CZZQ2y+c0VxMUmu1lV+fQx57QpBWsYpwqHJx8=
 github.com/googleapis/go-type-adapters v1.0.0/go.mod h1:zHW75FOG2aur7gAO2B+MLby+cLsWGBF62rFAi7WjWO4=
 github.com/googleapis/google-cloud-go-testing v0.0.0-20200911160855-bcd43fbb19e8/go.mod h1:dvDLG8qkwmyD9a/MJJN3XJcT3xFxOKAvTZGvuZmac9g=
+github.com/gorilla/mux v1.8.1 h1:TuBL49tXwgrFYWhqrNgrUNEY92u81SPhu7sTdzQEiWY=
+github.com/gorilla/mux v1.8.1/go.mod h1:AKf9I4AEqPTmMytcMc0KkNouC66V3BtZ4qD5fmWSiMQ=
 github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 h1:UH//fgunKIs4JdUbpDl1VZCDaL56wXCB/5+wF6uHfaI=
 github.com/grpc-ecosystem/go-grpc-middleware v1.4.0/go.mod h1:g5qyo/la0ALbONm6Vbp88Yd8NsDy6rZz+RcrMPxvld8=
 github.com/grpc-ecosystem/grpc-gateway v1.16.0/go.mod h1:BDjrQk3hbvj6Nolgz8mAMFbcEtjT1g+wF4CSlocrBnw=
@@ -684,14 +688,16 @@ github.com/pentops/genericstate v0.0.0-20231130060225-e454784f7fba h1:HkG2GL4AS9
 github.com/pentops/genericstate v0.0.0-20231130060225-e454784f7fba/go.mod h1:BuqnSKSkvrv9x9DfitN0H9k1/BpF/Kj9qE0V0fJpv1k=
 github.com/pentops/jsonapi v0.0.0-20231123011150-74903e21d297 h1:83wQZiK/z3yGmYNG3OFzRFJuX6+a1IoJTxaxmHWyeRs=
 github.com/pentops/jsonapi v0.0.0-20231123011150-74903e21d297/go.mod h1:4pM8Bce+a5BRegOqf8nksrJOBA4lZxJMU/eUGnJfUec=
+github.com/pentops/jwtauth v0.0.0-20231115224318-582b891a72f1 h1:tisiOF7hiwEee0+i+h0tZ0T1bgBJBnzUivQld7HhCeE=
+github.com/pentops/jwtauth v0.0.0-20231115224318-582b891a72f1/go.mod h1:PRDuIAxKC2AEwXlmn6fUMrjQkeWsw+bcPweqhpbjEbg=
 github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53 h1:Hbu66tModJqMeLJVQd5RBHfPQwrkYTaEDlliqEbnqx0=
 github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53/go.mod h1:Cd2eLUf4XY62DBSNyqZ347BGF5MOXyVoWmUGBZPoVxw=
 github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576 h1:A/vY7Qiv1S/1mUtacZQVoXicaYiiaSR7PInSUcaMOpA=
 github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576/go.mod h1:UXhrs+VZ6cWZ7b/v8AtuvBZc5nwS5WFHP94JoFrZQA8=
 github.com/pentops/o5-go v0.0.0-20231130065829-e542d37ae36c h1:g6s5MgPisc9jO82gSuYAKMmlqtqvTjeVaWj6oplACy8=
 github.com/pentops/o5-go v0.0.0-20231130065829-e542d37ae36c/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
-github.com/pentops/o5-runtime-sidecar v0.0.1-beta7 h1:TXSXmivdLYtPIhs+Wk+xpp5q3M77hWDUi3lnzgp5X+s=
-github.com/pentops/o5-runtime-sidecar v0.0.1-beta7/go.mod h1:T/1dCFuVMAmltRVTMzwp4wQfm19tSk6OrOy/mrCyTHk=
+github.com/pentops/o5-runtime-sidecar v0.0.5-0.20231201060536-7c6093ae876a h1:l+eKGNLohehUsuBoxxf9Zz5bjwurhqfgJtG/iY57qo8=
+github.com/pentops/o5-runtime-sidecar v0.0.5-0.20231201060536-7c6093ae876a/go.mod h1:dMxgjpv9ksE1mgR2zmbJ5ae6w2ewRXylXaA9zWT4pOQ=
 github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8 h1:u+7WnBJrBSVJOinXlRw7/io8gLSG7Xa4anS97B9o3EI=
 github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8/go.mod h1:ePQpGllAGCMQ0bu6poSnNjqWeTFu9bZzy0Y8NdPqL2k=
 github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb h1:1OIQFqb6RU4OmKXdonwvYHNex0JPQy5gOs0eZTeIwfI=
@@ -705,6 +711,8 @@ github.com/pkg/sftp v1.10.1/go.mod h1:lYOWFsE0bwd1+KfKJaKeuokY15vzFx25BLbzYYoAxZ
 github.com/pkg/sftp v1.13.1/go.mod h1:3HaPG6Dq1ILlpPZRO0HVMrsydcdLt6HRDccSgb87qRg=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+github.com/pquerna/cachecontrol v0.2.0 h1:vBXSNuE5MYP9IJ5kjsdo8uq+w41jSPgvba2DEnkRx9k=
+github.com/pquerna/cachecontrol v0.2.0/go.mod h1:NrUG3Z7Rdu85UNR3vm7SOsl1nFIeSiQnrHV5K9mBcUI=
 github.com/pressly/goose v2.7.0+incompatible h1:PWejVEv07LCerQEzMMeAtjuyCKbyprZ/LBa6K5P0OCQ=
 github.com/pressly/goose v2.7.0+incompatible/go.mod h1:m+QHWCqxR3k8D9l7qfzuC/djtlfzxr34mozWDYEu1z8=
 github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4/go.mod h1:xMI15A0UPsDsEKsMN9yxemIoYk6Tm2C1GtYGdfGttqA=
@@ -1326,6 +1334,8 @@ gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127/go.mod h1:Co6ibVJAznAaIkqp8
 gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 h1:YR8cESwS4TdDjEe65xsg0ogRM/Nc3DYOhEAlW+xobZo=
 gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/errgo.v2 v2.1.0/go.mod h1:hNsd1EY+bozCKY1Ytp96fpM3vjJbqLJn88ws8XvfDNI=
+gopkg.in/square/go-jose.v2 v2.6.0 h1:NGk74WTnPKBNUhNzQX7PYcTLUjoq7mzKk2OKbvwk2iI=
+gopkg.in/square/go-jose.v2 v2.6.0/go.mod h1:M9dMgbHiYLoDGQrXy7OpJDJWiKiU//h+vD76mk0e1AI=
 gopkg.in/yaml.v2 v2.2.2/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
 gopkg.in/yaml.v2 v2.2.3/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=
 gopkg.in/yaml.v2 v2.2.8/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=

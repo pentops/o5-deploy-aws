@@ -12,6 +12,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.47.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.25.1
 	github.com/aws/aws-sdk-go-v2/service/sns v1.26.1
+	github.com/aws/aws-sdk-go-v2/service/sqs v1.29.1
 	github.com/aws/aws-sdk-go-v2/service/sts v1.26.1
 	github.com/aws/smithy-go v1.18.1
 	github.com/awslabs/goformation/v7 v7.12.11
@@ -19,7 +20,6 @@ require (
 	github.com/bufbuild/protovalidate-go v0.4.3
 	github.com/elgris/sqrl v0.0.0-20210727210741-7e0198b30236
 	github.com/goccy/go-yaml v1.11.2
-	github.com/golang/protobuf v1.5.3
 	github.com/google/go-github/v47 v47.1.0
 	github.com/google/uuid v1.4.0
 	github.com/lib/pq v1.10.9
@@ -28,6 +28,7 @@ require (
 	github.com/pentops/jsonapi v0.0.0-20231123011150-74903e21d297
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
 	github.com/pentops/o5-go v0.0.0-20231130065829-e542d37ae36c
+	github.com/pentops/o5-runtime-sidecar v0.0.5-0.20231201060536-7c6093ae876a
 	github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8
 	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb
 	github.com/pressly/goose v2.7.0+incompatible
@@ -66,18 +67,22 @@ require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/fatih/color v1.16.0 // indirect
 	github.com/go-yaml/yaml v2.1.0+incompatible // indirect
+	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/cel-go v0.18.2 // indirect
 	github.com/google/go-github/v29 v29.0.3 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
+	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/jhump/protoreflect v1.15.3 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/pentops/jwtauth v0.0.0-20231115224318-582b891a72f1 // indirect
 	github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53 // indirect
 	github.com/pentops/sugar-go v0.0.0-20231029194349-ec12ec0132c5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/pquerna/cachecontrol v0.2.0 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/tidwall/gjson v1.17.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
@@ -91,10 +96,7 @@ require (
 	google.golang.org/genproto v0.0.0-20231127180814-3a041ad873d4 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20231127180814-3a041ad873d4 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20231127180814-3a041ad873d4 // indirect
+	gopkg.in/square/go-jose.v2 v2.6.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/pentops/o5-go => ../o5-go
-
-//replace github.com/pentops/genericstate => ../genericstate
