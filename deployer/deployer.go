@@ -37,6 +37,17 @@ type EnvironmentStore interface {
 	GetEnvironment(ctx context.Context, environmentName string) (*environment_pb.Environment, error)
 }
 
+type EnvList []*environment_pb.Environment
+
+func (es EnvList) GetEnvironment(ctx context.Context, name string) (*environment_pb.Environment, error) {
+	for _, env := range es {
+		if env.FullName == name {
+			return env, nil
+		}
+	}
+	return nil, fmt.Errorf("environment %q not found", name)
+}
+
 func NewTrigger(storage EnvironmentStore, cfTemplateBucket string, s3Client awsinfra.S3API) (*Trigger, error) {
 	cfTemplateBucket = strings.TrimPrefix(cfTemplateBucket, "s3://")
 	return &Trigger{
