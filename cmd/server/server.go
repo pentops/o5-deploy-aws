@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	sq "github.com/elgris/sqrl"
 	"github.com/pentops/log.go/grpc_log"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
@@ -21,11 +23,13 @@ import (
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_tpb"
+	"github.com/pentops/outbox.pg.go/outbox"
 	"github.com/pressly/goose"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"gopkg.daemonl.com/envconf"
+	"gopkg.daemonl.com/sqrlx"
 )
 
 var Version string
@@ -151,7 +155,7 @@ func runServe(ctx context.Context) error {
 		return err
 	}
 
-	environments := []*environment_pb.Environment{}
+	environments := deployer.EnvList([]*environment_pb.Environment{})
 
 	for _, envConfigFile := range configFile.TargetEnvironments {
 		env := &environment_pb.Environment{}
@@ -167,25 +171,24 @@ func runServe(ctx context.Context) error {
 		return err
 	}
 
-	pgStore, err := deployer.NewPostgresStateStore(db, environments)
-	if err != nil {
-		return err
-	}
-
 	clientSet := &awsinfra.ClientSet{
 		AssumeRoleARN: cfg.DeployerAssumeRole,
 		AWSConfig:     awsConfig,
 	}
 
-	awsInfraRunner := awsinfra.NewInfraWorker(clientSet, pgStore)
+	outbox, err := newOutboxSender(db)
+	if err != nil {
+		return err
+	}
+	awsInfraRunner := awsinfra.NewInfraWorker(clientSet, outbox)
 	awsInfraRunner.CallbackARNs = []string{cfg.CallbackARN}
 
-	deploymentWorker, err := deployer.NewDeployerWorker(pgStore)
+	deploymentWorker, err := deployer.NewDeployerWorker(db)
 	if err != nil {
 		return err
 	}
 
-	deploymentManager, err := deployer.NewTrigger(pgStore, cfg.CFTemplates, s3Client)
+	deploymentManager, err := deployer.NewTrigger(environments, cfg.CFTemplates, s3Client)
 	if err != nil {
 		return err
 	}
@@ -257,6 +260,31 @@ func runServe(ctx context.Context) error {
 	}
 
 	return eg.Wait()
+}
+
+type outboxSender struct {
+	db *sqrlx.Wrapper
+}
+
+func newOutboxSender(conn sqrlx.Connection) (*outboxSender, error) {
+	db, err := sqrlx.New(conn, sq.Dollar)
+	if err != nil {
+		return nil, err
+	}
+
+	return &outboxSender{
+		db: db,
+	}, nil
+}
+
+func (s *outboxSender) PublishEvent(ctx context.Context, msg outbox.OutboxMessage) error {
+	return s.db.Transact(ctx, &sqrlx.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+		ReadOnly:  false,
+		Retryable: true,
+	}, func(ctx context.Context, tx sqrlx.Transaction) error {
+		return outbox.Send(ctx, tx, msg)
+	})
 }
 
 type RefLookup []*github_pb.RefLink

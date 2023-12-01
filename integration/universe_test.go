@@ -94,14 +94,14 @@ func (uu *Universe) RunSteps(t *testing.T) {
 	ctx := context.Background()
 	conn := pgtest.GetTestDB(t, pgtest.WithDir("../ext/db"))
 
-	environments := []*environment_pb.Environment{{
+	environments := deployer.EnvList([]*environment_pb.Environment{{
 		FullName: "env",
 		Provider: &environment_pb.Environment_Aws{
 			Aws: &environment_pb.AWS{
 				ListenerArn: "arn:listener",
 			},
 		},
-	}}
+	}})
 
 	uu.Github = &GithubMock{
 		Configs: map[string][]*application_pb.Application{},
@@ -115,12 +115,7 @@ func (uu *Universe) RunSteps(t *testing.T) {
 
 	uu.Outbox = outboxtest.NewOutboxAsserter(t, conn)
 
-	pgStore, err := deployer.NewPostgresStateStore(conn, environments)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	trigger, err := deployer.NewTrigger(pgStore, "bucket", uu.S3)
+	trigger, err := deployer.NewTrigger(environments, "bucket", uu.S3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +123,7 @@ func (uu *Universe) RunSteps(t *testing.T) {
 	topicPair := flowtest.NewGRPCPair(t)
 	servicePair := flowtest.NewGRPCPair(t) // TODO: Middleware
 
-	deploymentWorker, err := deployer.NewDeployerWorker(pgStore)
+	deploymentWorker, err := deployer.NewDeployerWorker(conn)
 	if err != nil {
 		t.Fatal(err)
 	}

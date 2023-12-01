@@ -15,7 +15,6 @@ linters:
     - rowserrcheck
     - sqlclosecheck
     - staticcheck
-    - structcheck
     - typecheck
     - unused
     - varcheck
@@ -26,6 +25,7 @@ linters:
     - gochecknoglobals
     - scopelint
     - unparam
+    - structcheck
   disable-all: false
   presets:
     - bugs
