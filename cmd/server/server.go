@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/pentops/log.go/grpc_log"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-deploy-aws/deployer"
@@ -16,7 +17,6 @@ import (
 	"github.com/pentops/o5-deploy-aws/japi"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-deploy-aws/service"
-	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
@@ -211,7 +211,9 @@ func runServe(ctx context.Context) error {
 
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
-		grpcServer := grpc.NewServer()
+		grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(
+			grpc_log.UnaryServerInterceptor(log.DefaultContext, log.DefaultTrace, log.DefaultLogger),
+		))
 		github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
 		deployer_tpb.RegisterAWSCommandTopicServer(grpcServer, awsInfraRunner)
 		deployer_tpb.RegisterDeployerTopicServer(grpcServer, deploymentWorker)

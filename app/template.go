@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
+	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
+	"github.com/awslabs/goformation/v7/cloudformation/sqs"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/tidwall/sjson"
@@ -53,6 +55,7 @@ type BuiltApplication struct {
 	SNSTopics         []*deployer_pb.SNSTopic
 	Name              string
 	Version           string
+	QuickMode         bool
 }
 
 func (ba *BuiltApplication) TemplateJSON() ([]byte, error) {
@@ -67,16 +70,6 @@ func (ba *BuiltApplication) Parameters() []*deployer_pb.Parameter {
 	return ba.parameters
 }
 
-type Application struct {
-	appName           string
-	version           string
-	postgresDatabases []*PostgresDefinition
-	parameters        map[string]*deployer_pb.Parameter
-	resources         map[string]IResource
-	outputs           map[string]*Output
-	snsTopics         map[string]*SNSTopic
-}
-
 type SNSTopic struct {
 	Name string
 }
@@ -88,8 +81,20 @@ type PostgresDefinition struct {
 	SecretOutputName        *string
 }
 
-func NewApplication(name, version string) *Application {
+type Application struct {
+	appName           string
+	version           string
+	quickMode         bool
+	postgresDatabases []*PostgresDefinition
+	parameters        map[string]*deployer_pb.Parameter
+	resources         map[string]IResource
+	outputs           map[string]*Output
+	snsTopics         map[string]*SNSTopic
 
+	runtimes map[string]*RuntimeService
+}
+
+func NewApplication(name, version string) *Application {
 	return &Application{
 		appName:    name,
 		version:    version,
@@ -97,11 +102,42 @@ func NewApplication(name, version string) *Application {
 		resources:  map[string]IResource{},
 		outputs:    map[string]*Output{},
 		snsTopics:  map[string]*SNSTopic{},
+		runtimes:   map[string]*RuntimeService{},
 	}
 }
 
 func (ss *Application) AppName() string {
 	return ss.appName
+}
+
+func (ss *Application) GetRuntime(name string) *RuntimeService {
+	return ss.runtimes[name]
+}
+
+func (ss *Application) Parameters() map[string]*deployer_pb.Parameter {
+	return ss.parameters
+}
+
+func (ss *Application) Refs() map[string]string {
+
+	out := map[string]string{}
+	for _, obj := range ss.resources {
+		switch obj.AWSCloudFormationType() {
+		case "AWS::SecretsManager::Secret":
+			secret, ok := obj.(*Resource[*secretsmanager.Secret])
+			if !ok {
+				panic("Not a secret")
+			}
+			out[secret.name] = *secret.Resource.Name
+		case "AWS::SQS::Queue":
+			queue, ok := obj.(*Resource[*sqs.Queue])
+			if !ok {
+				panic("Not a queue")
+			}
+			out[queue.name] = *queue.Resource.QueueName
+		}
+	}
+	return out
 }
 
 func (ss *Application) Build() *BuiltApplication {
@@ -167,6 +203,7 @@ func (ss *Application) Build() *BuiltApplication {
 		SNSTopics:         snsToipcs,
 		Name:              ss.appName,
 		Version:           ss.version,
+		QuickMode:         ss.quickMode,
 	}
 }
 

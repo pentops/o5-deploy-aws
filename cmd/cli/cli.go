@@ -25,6 +25,7 @@ type flagConfig struct {
 	rotateSecrets bool
 	cancelUpdate  bool
 	scratchBucket string
+	quickMode     bool
 }
 
 func main() {
@@ -36,6 +37,7 @@ func main() {
 	flag.BoolVar(&cfg.dryRun, "dry", false, "dry run - print template and exit")
 	flag.BoolVar(&cfg.rotateSecrets, "rotate-secrets", false, "rotate secrets - rotate any existing secrets (e.g. db creds)")
 	flag.BoolVar(&cfg.cancelUpdate, "cancel-update", false, "cancel update - cancel any ongoing update prior to deployment")
+	flag.BoolVar(&cfg.quickMode, "quick", false, "Skips scale down/up, calls stack update with all changes once, and skips DB migration")
 
 	flag.Parse()
 
@@ -79,6 +81,10 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 	appConfig := &application_pb.Application{}
 	if err := protoread.PullAndParse(ctx, s3Client, flagConfig.appFilename, appConfig); err != nil {
 		return err
+	}
+
+	if appConfig.DeploymentConfig == nil {
+		appConfig.DeploymentConfig = &application_pb.DeploymentConfig{}
 	}
 
 	app, err := app.BuildApplication(appConfig, flagConfig.version)
@@ -127,6 +133,7 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 
 	deploymentManager.RotateSecrets = flagConfig.rotateSecrets
 	deploymentManager.CancelUpdates = flagConfig.cancelUpdate
+	deploymentManager.QuickMode = flagConfig.quickMode
 
 	trigger, err := deploymentManager.BuildTrigger(ctx, built, env.FullName)
 	if err != nil {

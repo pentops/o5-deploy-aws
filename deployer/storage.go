@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	sq "github.com/elgris/sqrl"
+	"github.com/google/uuid"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"google.golang.org/grpc/codes"
@@ -18,6 +19,13 @@ import (
 )
 
 var DeploymentNotFoundError = fmt.Errorf("deployment not found")
+var StackNotFoundError = fmt.Errorf("stack not found")
+
+var namespaceStackID = uuid.MustParse("C27983FD-BC4B-493F-A056-CC8C869A1999")
+
+func StackID(envName, appName string) string {
+	return uuid.NewMD5(namespaceStackID, []byte(fmt.Sprintf("%s-%s", envName, appName))).String()
+}
 
 type DeployerStorage interface {
 	Transact(context.Context, func(context.Context, TransitionTransaction) error) error
@@ -29,6 +37,9 @@ type TransitionTransaction interface {
 	GetEnvironment(ctx context.Context, environmentName string) (*environment_pb.Environment, error)
 
 	PublishEvent(ctx context.Context, msg outbox.OutboxMessage) error
+
+	GetStack(ctx context.Context, stackID string) (*deployer_pb.StackState, error)
+	StoreStackEvent(ctx context.Context, stack *deployer_pb.StackState, event *deployer_pb.StackEvent) error
 }
 
 type PostgresStateStore struct {
@@ -92,7 +103,7 @@ func (ptw *postgresTxWrapper) GetEnvironment(ctx context.Context, environmentNam
 		return env, nil
 	}
 
-	return nil, status.Errorf(codes.NotFound, "environment %s not found", environmentName)
+	return nil, status.Errorf(codes.NotFound, "environment '%s' not found", environmentName)
 }
 
 func (ptw *postgresTxWrapper) PublishEvent(ctx context.Context, evt outbox.OutboxMessage) error {
@@ -109,9 +120,63 @@ func (ptw *postgresTxWrapper) GetDeployment(ctx context.Context, id string) (*de
 	}
 	var deployment deployer_pb.DeploymentState
 	if err := protojson.Unmarshal(deploymentJSON, &deployment); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal deployment: %w", err)
 	}
 	return &deployment, nil
+}
+
+func (ptw *postgresTxWrapper) GetStack(ctx context.Context, stackID string) (*deployer_pb.StackState, error) {
+	var stackJSON []byte
+	err := ptw.tx.SelectRow(ctx, sq.Select("state").From("stack").Where("id = ?", stackID)).Scan(&stackJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, StackNotFoundError
+	}
+	if err != nil {
+		return nil, err
+	}
+	var stack deployer_pb.StackState
+	if err := protojson.Unmarshal(stackJSON, &stack); err != nil {
+		return nil, err
+	}
+	return &stack, nil
+}
+
+func (ptw *postgresTxWrapper) StoreStackEvent(ctx context.Context, stack *deployer_pb.StackState, event *deployer_pb.StackEvent) error {
+	stackJSON, err := protojson.Marshal(stack)
+	if err != nil {
+		return err
+	}
+
+	upsertStack := sqrlx.Upsert("stack").
+		Key("id", stack.StackId).SetMap(map[string]interface{}{
+		"env_name": stack.EnvironmentName,
+		"app_name": stack.ApplicationName,
+		"state":    stackJSON,
+	})
+
+	_, err = ptw.tx.Insert(ctx, upsertStack)
+	if err != nil {
+		return err
+	}
+
+	eventJSON, err := protojson.Marshal(event)
+	if err != nil {
+		return err
+	}
+
+	insertEvent := sq.Insert("stack_event").SetMap(map[string]interface{}{
+		"stack_id":  stack.StackId,
+		"id":        event.Metadata.EventId,
+		"event":     eventJSON,
+		"timestamp": event.Metadata.Timestamp.AsTime(),
+	})
+
+	_, err = ptw.tx.Insert(ctx, insertEvent)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (ptw *postgresTxWrapper) StoreDeploymentEvent(ctx context.Context, state *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
@@ -122,9 +187,15 @@ func (ptw *postgresTxWrapper) StoreDeploymentEvent(ctx context.Context, state *d
 
 	upsertState := sqrlx.Upsert("deployment").
 		Key("id", state.DeploymentId).
-		Set("state", deploymentJSON)
+		Set("state", deploymentJSON).
+		Set("stack_id", state.StackId)
 
 	eventJSON, err := protojson.Marshal(event)
+	if err != nil {
+		return err
+	}
+
+	_, err = ptw.tx.Insert(ctx, upsertState)
 	if err != nil {
 		return err
 	}
@@ -135,11 +206,6 @@ func (ptw *postgresTxWrapper) StoreDeploymentEvent(ctx context.Context, state *d
 		"event":         eventJSON,
 		"timestamp":     event.Metadata.Timestamp.AsTime(),
 	})
-
-	_, err = ptw.tx.Insert(ctx, upsertState)
-	if err != nil {
-		return err
-	}
 
 	_, err = ptw.tx.Insert(ctx, insertEvent)
 	if err != nil {

@@ -25,6 +25,7 @@ type Environment struct {
 type Trigger struct {
 	RotateSecrets bool
 	CancelUpdates bool
+	QuickMode     bool
 
 	s3Client         awsinfra.S3API
 	cfTemplateBucket string
@@ -45,7 +46,7 @@ func NewTrigger(storage EnvironmentStore, cfTemplateBucket string, s3Client awsi
 	}, nil
 }
 
-func (dd *Trigger) BuildTrigger(ctx context.Context, app *app.BuiltApplication, envName string) (*deployer_tpb.TriggerDeploymentMessage, error) {
+func (dd *Trigger) BuildTrigger(ctx context.Context, app *app.BuiltApplication, envName string) (*deployer_tpb.RequestDeploymentMessage, error) {
 
 	ctx = log.WithFields(ctx, map[string]interface{}{
 		"appName":     app.Name,
@@ -98,21 +99,38 @@ func (dd *Trigger) BuildTrigger(ctx context.Context, app *app.BuiltApplication, 
 
 	templateURL := fmt.Sprintf("https://s3.us-east-1.amazonaws.com/%s/%s", dd.cfTemplateBucket, templateKey)
 
+	deployerResolver, err := BuildParameterResolver(ctx, environment)
+	if err != nil {
+		return nil, err
+	}
+
+	appParameters := app.Parameters()
+	parameters := make([]*deployer_pb.CloudFormationStackParameter, 0, len(appParameters))
+	for _, param := range appParameters {
+		parameter, err := deployerResolver.ResolveParameter(param)
+		if err != nil {
+			return nil, fmt.Errorf("parameter '%s': %w", param.Name, err)
+		}
+		parameters = append(parameters, parameter)
+	}
+
 	spec := &deployer_pb.DeploymentSpec{
 		AppName:         app.Name,
 		Version:         app.Version,
 		EnvironmentName: environment.FullName,
 		TemplateUrl:     templateURL,
 		Databases:       postgresDatabases,
-		Parameters:      app.Parameters(),
+		Parameters:      parameters,
 		SnsTopics:       app.SNSTopics,
 
 		CancelUpdates:     dd.CancelUpdates,
 		RotateCredentials: dd.RotateSecrets,
-		EcsCluster:        awsEnv.EcsClusterName,
+		QuickMode:         dd.QuickMode || app.QuickMode,
+
+		EcsCluster: awsEnv.EcsClusterName,
 	}
 
-	return &deployer_tpb.TriggerDeploymentMessage{
+	return &deployer_tpb.RequestDeploymentMessage{
 		DeploymentId: deploymentID,
 		Spec:         spec,
 	}, nil

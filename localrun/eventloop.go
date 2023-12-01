@@ -6,12 +6,14 @@ import (
 	"fmt"
 
 	"github.com/bufbuild/protovalidate-go"
+	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // EventLoop emulates AWS infrastructure by running all handlers in the
@@ -35,49 +37,57 @@ func NewEventLoop(awsRunner *InfraAdapter, stateStore *StateStore) *EventLoop {
 	}
 }
 
-func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.TriggerDeploymentMessage) error {
+func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage) error {
 	if err := lel.validator.Validate(trigger); err != nil {
 		return err
 	}
 
-	outerEvent, err := deployer.TranslateTrigger(trigger)
-	if err != nil {
-		return err
-	}
+	deploymentId := trigger.DeploymentId
 
 	tx := lel.storage
 
-	environment, err := tx.GetEnvironment(ctx, trigger.Spec.EnvironmentName)
-	if err != nil {
-		return err
-	}
-
-	deployerResolver, err := deployer.BuildParameterResolver(ctx, environment)
-	if err != nil {
-		return err
-	}
-
-	eventQueue := make([]*deployer_pb.DeploymentEvent, 0)
-	eventQueue = append(eventQueue, outerEvent)
+	eventQueue := []*deployer_pb.DeploymentEvent{{
+		DeploymentId: trigger.DeploymentId,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+		Event: &deployer_pb.DeploymentEventType{
+			Type: &deployer_pb.DeploymentEventType_Created_{
+				Created: &deployer_pb.DeploymentEventType_Created{
+					Spec: trigger.Spec,
+				},
+			},
+		},
+	}, {
+		DeploymentId: trigger.DeploymentId,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+		Event: &deployer_pb.DeploymentEventType{
+			Type: &deployer_pb.DeploymentEventType_Triggered_{
+				Triggered: &deployer_pb.DeploymentEventType_Triggered{},
+			},
+		},
+	}}
 
 	for len(eventQueue) > 0 {
 		innerEvent := eventQueue[0]
 		eventQueue = eventQueue[1:]
 
-		deployment, err := tx.GetDeployment(ctx, outerEvent.DeploymentId)
+		deployment, err := tx.GetDeployment(ctx, deploymentId)
 		if errors.Is(err, deployer.DeploymentNotFoundError) {
 			deployment = &deployer_pb.DeploymentState{
-				DeploymentId: outerEvent.DeploymentId,
+				DeploymentId: deploymentId,
 			}
 		} else if err != nil {
 			return err
 		}
 
-		baton := &deployer.TransitionData{
-			ParameterResolver: deployerResolver,
-		}
+		baton := &deployer.TransitionData[deployer_pb.IsDeploymentEventTypeWrappedType]{}
 
-		typeKey, _ := outerEvent.Event.TypeKey()
+		typeKey, _ := innerEvent.Event.TypeKey()
 		stateBefore := deployment.Status.ShortString()
 
 		ctx = log.WithFields(ctx, map[string]interface{}{
@@ -87,11 +97,11 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.TriggerDepl
 		})
 		log.WithField(ctx, "event", protojson.Format(innerEvent.Event)).Debug("Begin Deployment Event")
 
-		transition, err := deployer.FindTransition(ctx, deployment, innerEvent)
+		transition, err := deployer.FindTransition(ctx, deployment, innerEvent.Event.Get())
 		if err != nil {
 			return err
 		}
-		if err := transition.RunTransition(ctx, baton, deployment, innerEvent); err != nil {
+		if err := transition.RunTransition(ctx, baton, deployment, innerEvent.Event.Get()); err != nil {
 			return err
 		}
 
@@ -118,20 +128,40 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.TriggerDepl
 		}
 
 		if len(baton.ChainEvents) > 0 {
-			eventQueue = append(eventQueue, baton.ChainEvents...)
+			if len(baton.ChainEvents) > 1 {
+				return fmt.Errorf("cannot have more than one chain event in local run mode")
+			}
+			evt := baton.ChainEvents[0]
+			wrappedEvent := &deployer_pb.DeploymentEvent{
+				DeploymentId: deployment.DeploymentId,
+				Metadata: &deployer_pb.EventMetadata{
+					EventId:   uuid.NewString(),
+					Timestamp: timestamppb.Now(),
+				},
+				Event: &deployer_pb.DeploymentEventType{},
+			}
+			wrappedEvent.Event.Set(evt)
+			log.WithField(ctx, "chainEvent", protojson.Format(wrappedEvent)).Debug("Chain Event")
+			eventQueue = append(eventQueue, wrappedEvent)
 			continue
 		}
 
 		for _, sideEffect := range baton.SideEffects {
+			ctx = log.WithField(ctx, "inputMessage", sideEffect.ProtoReflect().Descriptor().FullName())
+			log.Debug(ctx, "Side Effect")
 			result, err := lel.handleSideEffect(ctx, sideEffect)
 			if err != nil {
+				log.WithError(ctx, err).Error("Side Effect Error")
 				return err
 			}
 			mapped, err := mapSideEffectResult(result)
 			if err != nil {
 				return err
 			}
-			eventQueue = append(eventQueue, mapped)
+			if mapped != nil {
+				log.WithField(ctx, "nextEvent", protojson.Format(mapped)).Debug("Side Effect Result")
+				eventQueue = append(eventQueue, mapped)
+			}
 		}
 
 	}
@@ -148,6 +178,9 @@ func mapSideEffectResult(result proto.Message) (*deployer_pb.DeploymentEvent, er
 	case *deployer_tpb.MigrationStatusChangedMessage:
 		return deployer.TranslateMigrationStatusChanged(result)
 
+	case *deployer_tpb.DeploymentCompleteMessage:
+		return nil, nil
+
 	default:
 		return nil, fmt.Errorf("unknown side effect result type: %T", result)
 	}
@@ -155,7 +188,6 @@ func mapSideEffectResult(result proto.Message) (*deployer_pb.DeploymentEvent, er
 }
 
 func (lel *EventLoop) handleSideEffect(ctx context.Context, msg proto.Message) (proto.Message, error) {
-	log.WithField(ctx, "inputMessage", msg.ProtoReflect().Descriptor().FullName()).Debug("Side Effect")
 
 	switch msg := msg.(type) {
 	case *deployer_tpb.UpdateStackMessage:

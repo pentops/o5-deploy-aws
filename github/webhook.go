@@ -17,11 +17,11 @@ import (
 )
 
 type IClient interface {
-	PullO5Configs(ctx context.Context, org string, repo string, ref string) ([]*application_pb.Application, error)
+	PullO5Configs(ctx context.Context, org string, repo string, commit string) ([]*application_pb.Application, error)
 }
 
 type IDeployer interface {
-	BuildTrigger(ctx context.Context, app *app.BuiltApplication, envName string) (*deployer_tpb.TriggerDeploymentMessage, error)
+	BuildTrigger(ctx context.Context, app *app.BuiltApplication, envName string) (*deployer_tpb.RequestDeploymentMessage, error)
 }
 
 type RefMatcher interface {

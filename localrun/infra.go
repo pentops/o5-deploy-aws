@@ -90,6 +90,7 @@ func (cf *InfraAdapter) StabalizeStack(ctx context.Context, msg *deployer_tpb.St
 			StackId:   msg.StackId,
 			Status:    string(remoteStack.StackStatus),
 			Lifecycle: lifecycle,
+			Outputs:   remoteStack.Outputs,
 		}, nil
 
 	case types.StackStatusRollbackInProgress:
@@ -203,6 +204,7 @@ func (cf *InfraAdapter) pollStack(
 		log.WithFields(ctx, map[string]interface{}{
 			"lifecycle":   remoteStack.SummaryType.ShortString(),
 			"stackStatus": remoteStack.StackStatus,
+			"outputs":     remoteStack.Outputs,
 		}).Info("PollStack Final Result")
 
 		return &deployer_tpb.StackStatusChangedMessage{

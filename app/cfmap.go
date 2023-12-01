@@ -29,6 +29,9 @@ const (
 	JWKSParameter                 = "JWKS"
 	AWSRegionParameter            = "AWS::Region"
 	SNSPrefixParameter            = "SNSPrefix"
+	S3BucketNamespaceParameter    = "S3BucketNamespace"
+
+	AWSAccountIDParameter = "AWS::AccountId"
 
 	O5SidecarContainerName = "o5_runtime"
 	O5SidecarImageName     = "ghcr.io/pentops/o5-runtime-sidecar:latest"
@@ -65,6 +68,12 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 
 	stackTemplate := NewApplication(app.Name, versionTag)
 
+	if app.DeploymentConfig != nil {
+		if app.DeploymentConfig.QuickMode {
+			stackTemplate.quickMode = true
+		}
+	}
+
 	for _, key := range []string{
 		ECSClusterParameter,
 		ECSRepoParameter,
@@ -77,6 +86,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		MetaDeployAssumeRoleParameter,
 		JWKSParameter,
 		SNSPrefixParameter,
+		S3BucketNamespaceParameter,
 	} {
 		parameter := &deployer_pb.Parameter{
 			Name: key,
@@ -109,10 +119,12 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 
 	for _, blobstoreDef := range app.Blobstores {
 		bucket := NewResource(blobstoreDef.Name, &s3.Bucket{
-			BucketName: cloudformation.JoinPtr("-", []string{
-				cloudformation.Ref(EnvNameParameter),
-				app.Name,
+			BucketName: cloudformation.JoinPtr(".", []string{
 				blobstoreDef.Name,
+				app.Name,
+				cloudformation.Ref(EnvNameParameter),
+				cloudformation.Ref(AWSRegionParameter),
+				cloudformation.Ref(S3BucketNamespaceParameter),
 			}),
 		})
 		global.buckets[blobstoreDef.Name] = bucket
@@ -245,9 +257,9 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		for _, target := range app.Targets {
 			snsTopicARN := cloudformation.Join("", []string{
 				"arn:aws:sns:",
-				cloudformation.Ref("AWS::Region"),
+				cloudformation.Ref(AWSRegionParameter),
 				":",
-				cloudformation.Ref("AWS::AccountId"),
+				cloudformation.Ref(AWSAccountIDParameter),
 				":",
 				cloudformation.Ref(EnvNameParameter),
 				"-",
@@ -259,7 +271,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		if err := runtimeStack.Apply(stackTemplate); err != nil {
 			return nil, fmt.Errorf("adding %s: %w", runtime.Name, err)
 		}
-
+		stackTemplate.runtimes[runtime.Name] = runtimeStack
 	}
 
 	for _, listenerRule := range listener.Rules {
