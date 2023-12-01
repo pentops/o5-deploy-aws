@@ -694,8 +694,8 @@ github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53 h1:Hbu66tModJqM
 github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53/go.mod h1:Cd2eLUf4XY62DBSNyqZ347BGF5MOXyVoWmUGBZPoVxw=
 github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576 h1:A/vY7Qiv1S/1mUtacZQVoXicaYiiaSR7PInSUcaMOpA=
 github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576/go.mod h1:UXhrs+VZ6cWZ7b/v8AtuvBZc5nwS5WFHP94JoFrZQA8=
-github.com/pentops/o5-go v0.0.0-20231130065829-e542d37ae36c h1:g6s5MgPisc9jO82gSuYAKMmlqtqvTjeVaWj6oplACy8=
-github.com/pentops/o5-go v0.0.0-20231130065829-e542d37ae36c/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
+github.com/pentops/o5-go v0.0.0-20231201054913-58f0a43fdbea h1:Ri6EMwVVPwn6FaN6aLg5AxsiznFSLpD01ZmqLgRncBs=
+github.com/pentops/o5-go v0.0.0-20231201054913-58f0a43fdbea/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
 github.com/pentops/o5-runtime-sidecar v0.0.5-0.20231201060536-7c6093ae876a h1:l+eKGNLohehUsuBoxxf9Zz5bjwurhqfgJtG/iY57qo8=
 github.com/pentops/o5-runtime-sidecar v0.0.5-0.20231201060536-7c6093ae876a/go.mod h1:dMxgjpv9ksE1mgR2zmbJ5ae6w2ewRXylXaA9zWT4pOQ=
 github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8 h1:u+7WnBJrBSVJOinXlRw7/io8gLSG7Xa4anS97B9o3EI=

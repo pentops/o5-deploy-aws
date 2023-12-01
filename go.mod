@@ -27,7 +27,7 @@ require (
 	github.com/pentops/genericstate v0.0.0-20231130060225-e454784f7fba
 	github.com/pentops/jsonapi v0.0.0-20231123011150-74903e21d297
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
-	github.com/pentops/o5-go v0.0.0-20231130065829-e542d37ae36c
+	github.com/pentops/o5-go v0.0.0-20231201054913-58f0a43fdbea
 	github.com/pentops/o5-runtime-sidecar v0.0.5-0.20231201060536-7c6093ae876a
 	github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8
 	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb

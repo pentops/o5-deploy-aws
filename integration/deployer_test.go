@@ -155,6 +155,53 @@ func TestCreateHappy(t *testing.T) {
 	})
 }
 
+type cfMock struct {
+	lastRequest *deployer_tpb.StackID
+	uu          *Universe
+}
+
+func (cf *cfMock) ExpectStabalizeStack(t flowtest.TB) {
+	t.Helper()
+	stabalizeRequest := &deployer_tpb.StabalizeStackMessage{}
+	cf.uu.Outbox.PopMessage(t, stabalizeRequest)
+	cf.lastRequest = stabalizeRequest.StackId
+}
+
+func (cf *cfMock) ExpectCreateStack(t flowtest.TB) *deployer_tpb.CreateNewStackMessage {
+	t.Helper()
+	createRequest := &deployer_tpb.CreateNewStackMessage{}
+	cf.uu.Outbox.PopMessage(t, createRequest)
+	cf.lastRequest = createRequest.StackId
+	return createRequest
+}
+
+func (cf *cfMock) StackStatusMissing(t flowtest.TB) {
+	t.Helper()
+	_, err := cf.uu.DeployerTopic.StackStatusChanged(context.Background(), &deployer_tpb.StackStatusChangedMessage{
+		StackId:   cf.lastRequest,
+		Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_MISSING,
+		Status:    "",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func (cf *cfMock) StackCreateComplete(t flowtest.TB) {
+	_, err := cf.uu.DeployerTopic.StackStatusChanged(context.Background(), &deployer_tpb.StackStatusChangedMessage{
+		StackId:   cf.lastRequest,
+		Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_COMPLETE,
+		Status:    "CREATE_COMPLETE",
+		Outputs: []*deployer_pb.KeyValue{{
+			Name:  "foo",
+			Value: "bar",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestStackLock(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -171,7 +218,7 @@ func TestStackLock(t *testing.T) {
 		},
 	}
 
-	var awsStackID *deployer_tpb.StackID
+	awsStack := &cfMock{uu: uu}
 
 	firstTriggerMessage := &deployer_tpb.TriggerDeploymentMessage{}
 	uu.Step("Request First", func(t flowtest.Asserter) {
@@ -196,35 +243,24 @@ func TestStackLock(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		stabalizeRequest := &deployer_tpb.StabalizeStackMessage{}
-		uu.Outbox.PopMessage(t, stabalizeRequest)
-		uu.Outbox.AssertNoMessages(t)
+		awsStack.ExpectStabalizeStack(t)
 
-		awsStackID = stabalizeRequest.StackId
-
-		uu.AssertDeploymentStatus(t, awsStackID.DeploymentId, deployer_pb.DeploymentStatus_WAITING)
+		uu.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_WAITING)
 		uu.AssertStackStatus(t, deployer.StackID("env", "app"),
 			deployer_pb.StackStatus_CREATING,
 			[]string{})
+
+		uu.Outbox.AssertNoMessages(t)
 	})
 
 	uu.Step("First -> Upserting", func(t flowtest.Asserter) {
 		// Deployment WAITING --> AVAILABLE --> UPSERTING
 		// Stack: Stays CREATING
-		_, err := uu.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
-			StackId:   awsStackID,
-			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_MISSING,
-			Status:    "FOOBAR",
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		createRequest := &deployer_tpb.CreateNewStackMessage{}
-		uu.Outbox.PopMessage(t, createRequest)
+		awsStack.StackStatusMissing(t)
+		awsStack.ExpectCreateStack(t)
 		uu.Outbox.AssertNoMessages(t)
 
-		uu.AssertDeploymentStatus(t, awsStackID.DeploymentId, deployer_pb.DeploymentStatus_UPSERTING)
+		uu.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_UPSERTING)
 		uu.AssertStackStatus(t, deployer.StackID("env", "app"),
 			deployer_pb.StackStatus_CREATING,
 			[]string{})
@@ -262,20 +298,9 @@ func TestStackLock(t *testing.T) {
 	uu.Step("Complete the first deployment", func(t flowtest.Asserter) {
 		// Deployment: UPSERTING --> UPSERTED --> DONE
 		// Stack: CREATING --> STABLE --> MIGRATING
-		_, err := uu.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
-			StackId:   awsStackID,
-			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_COMPLETE,
-			Status:    "FOOBAR",
-			Outputs: []*deployer_pb.KeyValue{{
-				Name:  "foo",
-				Value: "bar",
-			}},
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		awsStack.StackCreateComplete(t)
 
-		uu.AssertDeploymentStatus(t, awsStackID.DeploymentId, deployer_pb.DeploymentStatus_DONE)
+		uu.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_DONE)
 		uu.AssertStackStatus(t, deployer.StackID("env", "app"),
 			deployer_pb.StackStatus_CREATING,
 			[]string{secondDeploymentRequest.DeploymentId})
@@ -308,30 +333,19 @@ func TestStackLock(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		stabalizeRequest := &deployer_tpb.StabalizeStackMessage{}
-		uu.Outbox.PopMessage(t, stabalizeRequest)
+		awsStack.ExpectStabalizeStack(t)
+
 		uu.Outbox.AssertNoMessages(t)
-
-		awsStackID = stabalizeRequest.StackId
-
 	})
 
 	uu.Step("Second -> Upserting", func(t flowtest.Asserter) {
 		// Deployment WAITING --> AVAILABLE --> UPSERTING
-		_, err := uu.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
-			StackId:   awsStackID,
-			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_MISSING,
-			Status:    "FOOBAR",
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		awsStack.StackStatusMissing(t)
 
-		createRequest := &deployer_tpb.CreateNewStackMessage{}
-		uu.Outbox.PopMessage(t, createRequest)
+		awsStack.ExpectCreateStack(t)
 		uu.Outbox.AssertNoMessages(t)
 
-		uu.AssertDeploymentStatus(t, awsStackID.DeploymentId, deployer_pb.DeploymentStatus_UPSERTING)
+		uu.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_UPSERTING)
 		uu.AssertStackStatus(t, deployer.StackID("env", "app"),
 			deployer_pb.StackStatus_MIGRATING,
 			[]string{})
@@ -342,18 +356,7 @@ func TestStackLock(t *testing.T) {
 	uu.Step("Complete the second deployment", func(t flowtest.Asserter) {
 		// Deployment: UPSERTING --> UPSERTED --> DONE
 		// Stack: CREATING --> STABLE --> MIGRATING
-		_, err := uu.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
-			StackId:   awsStackID,
-			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_COMPLETE,
-			Status:    "FOOBAR",
-			Outputs: []*deployer_pb.KeyValue{{
-				Name:  "foo",
-				Value: "bar",
-			}},
-		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+		awsStack.StackCreateComplete(t)
 
 		uu.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_DONE)
 		uu.AssertStackStatus(t, deployer.StackID("env", "app"),
