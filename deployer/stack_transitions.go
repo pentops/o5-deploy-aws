@@ -4,9 +4,16 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/google/uuid"
+	"github.com/pentops/genericstate/sm"
+	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
+	"gopkg.daemonl.com/sqrlx"
 )
+
+type StackTransitionBaton = sm.TransitionBaton[deployer_pb.IsStackEventTypeWrappedType]
 
 type StackTransition[Event deployer_pb.IsStackEventTypeWrappedType] struct {
 	FromStatus  []deployer_pb.StackStatus
@@ -16,7 +23,7 @@ type StackTransition[Event deployer_pb.IsStackEventTypeWrappedType] struct {
 
 func (ts StackTransition[Event]) RunTransition(
 	ctx context.Context,
-	tb TransitionBaton[deployer_pb.IsStackEventTypeWrappedType],
+	tb sm.TransitionBaton[deployer_pb.IsStackEventTypeWrappedType],
 	state *deployer_pb.StackState,
 	event deployer_pb.IsStackEventTypeWrappedType) error {
 	asType, ok := event.(Event)
@@ -49,15 +56,62 @@ func (ts StackTransition[Event]) Matches(deployment *deployer_pb.StackState, eve
 	return true
 }
 
-type StackTransitionBaton TransitionBaton[deployer_pb.IsStackEventTypeWrappedType]
+type StackEventer struct {
+	sm.Eventer[
+		*deployer_pb.StackState,
+		deployer_pb.StackStatus,
+		*deployer_pb.StackEvent,
+		deployer_pb.IsStackEventTypeWrappedType,
+	]
+}
 
-var stackTransitions = []ITransitionSpec[*deployer_pb.StackState, deployer_pb.IsStackEventTypeWrappedType]{
-	// [*] --> CREATING : Triggered
-	StackTransition[*deployer_pb.StackEventType_Triggered]{
-		FromStatus: []deployer_pb.StackStatus{
-			deployer_pb.StackStatus_UNSPECIFIED,
+func (se StackEventer) handleEvent(ctx context.Context, tx sqrlx.Transaction, stack *deployer_pb.StackState, outerEvent *deployer_pb.StackEvent) error {
+	ctx = log.WithFields(ctx, map[string]interface{}{
+		"entityType": "Stack",
+		"stackId":    stack.StackId,
+	})
+	wrapped := sm.NewSqrlxTransaction[*deployer_pb.StackState, *deployer_pb.StackEvent](tx, storeStackEvent)
+	return se.Eventer.Run(ctx, wrapped, stack, outerEvent)
+}
+
+func NewStackEventer() (*StackEventer, error) {
+
+	stackEventer := &StackEventer{
+		Eventer: sm.Eventer[
+			*deployer_pb.StackState,
+			deployer_pb.StackStatus,
+			*deployer_pb.StackEvent,
+			deployer_pb.IsStackEventTypeWrappedType,
+		]{
+			WrapEvent: func(state *deployer_pb.StackState, event deployer_pb.IsStackEventTypeWrappedType) *deployer_pb.StackEvent {
+				wrappedEvent := &deployer_pb.StackEvent{
+					StackId: state.StackId,
+					Metadata: &deployer_pb.EventMetadata{
+						EventId:   uuid.NewString(),
+						Timestamp: timestamppb.Now(),
+					},
+					Event: &deployer_pb.StackEventType{},
+				}
+				wrappedEvent.Event.Set(event)
+				return wrappedEvent
+			},
+			UnwrapEvent: func(event *deployer_pb.StackEvent) deployer_pb.IsStackEventTypeWrappedType {
+				return event.Event.Get()
+			},
+			StateLabel: func(state *deployer_pb.StackState) string {
+				return state.Status.String()
+			},
+			EventLabel: func(event deployer_pb.IsStackEventTypeWrappedType) string {
+				return string(event.TypeKey())
+			},
 		},
-		Transition: func(
+	}
+
+	// [*] --> CREATING : Triggered
+	stackEventer.Register(sm.NewTransition([]deployer_pb.StackStatus{
+		deployer_pb.StackStatus_UNSPECIFIED,
+	},
+		func(
 			ctx context.Context,
 			tb StackTransitionBaton,
 			state *deployer_pb.StackState,
@@ -76,16 +130,15 @@ var stackTransitions = []ITransitionSpec[*deployer_pb.StackState, deployer_pb.Is
 			return nil
 
 		},
-	},
+	))
 
 	// CREATING --> STABLE : DeploymentCompleted
 	// MIGRATING --> STABLE : DeploymentCompleted
-	StackTransition[*deployer_pb.StackEventType_DeploymentCompleted]{
-		FromStatus: []deployer_pb.StackStatus{
-			deployer_pb.StackStatus_CREATING,
-			deployer_pb.StackStatus_MIGRATING,
-		},
-		Transition: func(
+	stackEventer.Register(sm.NewTransition([]deployer_pb.StackStatus{
+		deployer_pb.StackStatus_CREATING,
+		deployer_pb.StackStatus_MIGRATING,
+	},
+		func(
 			ctx context.Context,
 			tb StackTransitionBaton,
 			state *deployer_pb.StackState,
@@ -104,14 +157,13 @@ var stackTransitions = []ITransitionSpec[*deployer_pb.StackState, deployer_pb.Is
 			})
 			return nil
 		},
-	},
+	))
 
 	// STABLE --> MIGRATING : Triggered (Int)
-	StackTransition[*deployer_pb.StackEventType_Triggered]{
-		FromStatus: []deployer_pb.StackStatus{
-			deployer_pb.StackStatus_STABLE,
-		},
-		Transition: func(
+	stackEventer.Register(sm.NewTransition([]deployer_pb.StackStatus{
+		deployer_pb.StackStatus_STABLE,
+	},
+		func(
 			ctx context.Context,
 			tb StackTransitionBaton,
 			state *deployer_pb.StackState,
@@ -131,14 +183,13 @@ var stackTransitions = []ITransitionSpec[*deployer_pb.StackState, deployer_pb.Is
 			})
 			return nil
 		},
-	},
+	))
 
 	// AVAILABLE --> MIGRATING : Triggered (Ext)
-	StackTransition[*deployer_pb.StackEventType_Triggered]{
-		FromStatus: []deployer_pb.StackStatus{
-			deployer_pb.StackStatus_AVAILABLE,
-		},
-		Transition: func(
+	stackEventer.Register(sm.NewTransition([]deployer_pb.StackStatus{
+		deployer_pb.StackStatus_AVAILABLE,
+	},
+		func(
 			ctx context.Context,
 			tb StackTransitionBaton,
 			state *deployer_pb.StackState,
@@ -157,14 +208,13 @@ var stackTransitions = []ITransitionSpec[*deployer_pb.StackState, deployer_pb.Is
 			})
 			return nil
 		},
-	},
+	))
 
 	// STABLE -> AVAILABLE : Available
-	StackTransition[*deployer_pb.StackEventType_Available]{
-		FromStatus: []deployer_pb.StackStatus{
-			deployer_pb.StackStatus_STABLE,
-		},
-		Transition: func(
+	stackEventer.Register(sm.NewTransition([]deployer_pb.StackStatus{
+		deployer_pb.StackStatus_STABLE,
+	},
+		func(
 			ctx context.Context,
 			tb StackTransitionBaton,
 			state *deployer_pb.StackState,
@@ -173,18 +223,17 @@ var stackTransitions = []ITransitionSpec[*deployer_pb.StackState, deployer_pb.Is
 			state.Status = deployer_pb.StackStatus_AVAILABLE
 			return nil
 		},
-	},
+	))
 
 	// BROKEN --> BROKEN : Triggered
 	// CREATING --> CREATING : Triggered
 	// MIGRATING --> MIGRATING : Triggered
-	StackTransition[*deployer_pb.StackEventType_Triggered]{
-		FromStatus: []deployer_pb.StackStatus{
-			deployer_pb.StackStatus_BROKEN,
-			deployer_pb.StackStatus_CREATING,
-			deployer_pb.StackStatus_MIGRATING,
-		},
-		Transition: func(
+	stackEventer.Register(sm.NewTransition([]deployer_pb.StackStatus{
+		deployer_pb.StackStatus_BROKEN,
+		deployer_pb.StackStatus_CREATING,
+		deployer_pb.StackStatus_MIGRATING,
+	},
+		func(
 			ctx context.Context,
 			tb StackTransitionBaton,
 			state *deployer_pb.StackState,
@@ -194,5 +243,6 @@ var stackTransitions = []ITransitionSpec[*deployer_pb.StackState, deployer_pb.Is
 			state.QueuedDeployments = append(state.QueuedDeployments, event.Deployment)
 			return nil
 		},
-	},
+	))
+	return stackEventer, nil
 }

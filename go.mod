@@ -24,7 +24,7 @@ require (
 	github.com/google/uuid v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/pentops/flowtest v0.0.0-20231130030311-2062110a52a1
-	github.com/pentops/genericstate v0.0.0-20231130060225-e454784f7fba
+	github.com/pentops/genericstate v0.0.0-20231202075347-f5c590b8f315
 	github.com/pentops/jsonapi v0.0.0-20231123011150-74903e21d297
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
 	github.com/pentops/o5-go v0.0.0-20231201054913-58f0a43fdbea
