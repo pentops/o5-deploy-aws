@@ -7,6 +7,7 @@ import (
 
 	"github.com/bufbuild/protovalidate-go"
 	"github.com/google/uuid"
+	"github.com/pentops/genericstate/sm"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
@@ -72,6 +73,11 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		},
 	}}
 
+	stateMachine, err := deployer.NewDeploymentEventer()
+	if err != nil {
+		return err
+	}
+
 	for len(eventQueue) > 0 {
 		innerEvent := eventQueue[0]
 		eventQueue = eventQueue[1:]
@@ -85,7 +91,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 			return err
 		}
 
-		baton := &deployer.TransitionData[deployer_pb.IsDeploymentEventTypeWrappedType]{}
+		baton := &sm.TransitionData[deployer_pb.IsDeploymentEventTypeWrappedType]{}
 
 		typeKey, _ := innerEvent.Event.TypeKey()
 		stateBefore := deployment.Status.ShortString()
@@ -97,7 +103,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		})
 		log.WithField(ctx, "event", protojson.Format(innerEvent.Event)).Debug("Begin Deployment Event")
 
-		transition, err := deployer.FindTransition(ctx, deployment, innerEvent.Event.Get())
+		transition, err := stateMachine.FindTransition(deployment, innerEvent.Event.Get())
 		if err != nil {
 			return err
 		}
