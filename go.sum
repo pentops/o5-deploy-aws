@@ -684,8 +684,6 @@ github.com/onsi/gomega v1.29.0/go.mod h1:9sxs+SwGrKI0+PWe4Fxa9tFQQBG5xSsSbMXOI8P
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/pentops/flowtest v0.0.0-20231130030311-2062110a52a1 h1:HlJmSoCLe6tTvzrJPPnkeXlSE6Dgw+NYSeG4YLwqkKk=
 github.com/pentops/flowtest v0.0.0-20231130030311-2062110a52a1/go.mod h1:kKWTzTsI+Qbe29nHI0YFlxtQ+llD+ZGeTvd75JsY9/0=
-github.com/pentops/genericstate v0.0.0-20231202075347-f5c590b8f315 h1:xK60REp2dYhTaC5XysWKhj+Zrxlo+85kzVCgeXVBKUg=
-github.com/pentops/genericstate v0.0.0-20231202075347-f5c590b8f315/go.mod h1:dTIl0hsJxziy8HlrWL4YzlxgbwC52F310rr4nNgaJJ8=
 github.com/pentops/jsonapi v0.0.0-20231204062219-2da2a5ddb804 h1:GbyRd7eU+oEqycnIWpQLYlE5QFMqE+Nf+uWAO7tfqPY=
 github.com/pentops/jsonapi v0.0.0-20231204062219-2da2a5ddb804/go.mod h1:8iA9Ifg+d99rf40DNQlypq8sNKZFsAzPcLG7yFJJTUY=
 github.com/pentops/jwtauth v0.0.0-20231204231621-e2e260cae555 h1:98kGSvbd0XHzZn11rQ5VVhmKN7ou6oecy8fnSYaBBo8=
@@ -694,14 +692,16 @@ github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53 h1:Hbu66tModJqM
 github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53/go.mod h1:Cd2eLUf4XY62DBSNyqZ347BGF5MOXyVoWmUGBZPoVxw=
 github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576 h1:A/vY7Qiv1S/1mUtacZQVoXicaYiiaSR7PInSUcaMOpA=
 github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576/go.mod h1:UXhrs+VZ6cWZ7b/v8AtuvBZc5nwS5WFHP94JoFrZQA8=
-github.com/pentops/o5-go v0.0.0-20231201054913-58f0a43fdbea h1:Ri6EMwVVPwn6FaN6aLg5AxsiznFSLpD01ZmqLgRncBs=
-github.com/pentops/o5-go v0.0.0-20231201054913-58f0a43fdbea/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
+github.com/pentops/o5-go v0.0.0-20231205005940-869171d74dc5 h1:PQ6AsKArWVCUpzeEHGetIkLTMj5ytzcoWdWErN32z/U=
+github.com/pentops/o5-go v0.0.0-20231205005940-869171d74dc5/go.mod h1:O+4h8TLk1cKGt/xDX1ThMg57ppoQXXPhxs57fxQK2ZE=
 github.com/pentops/o5-runtime-sidecar v0.0.5-0.20231201060536-7c6093ae876a h1:l+eKGNLohehUsuBoxxf9Zz5bjwurhqfgJtG/iY57qo8=
 github.com/pentops/o5-runtime-sidecar v0.0.5-0.20231201060536-7c6093ae876a/go.mod h1:dMxgjpv9ksE1mgR2zmbJ5ae6w2ewRXylXaA9zWT4pOQ=
 github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8 h1:u+7WnBJrBSVJOinXlRw7/io8gLSG7Xa4anS97B9o3EI=
 github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8/go.mod h1:ePQpGllAGCMQ0bu6poSnNjqWeTFu9bZzy0Y8NdPqL2k=
 github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb h1:1OIQFqb6RU4OmKXdonwvYHNex0JPQy5gOs0eZTeIwfI=
 github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb/go.mod h1:BgX0+UvohWaq7Vr3McsBWt8FpzerKaNRsmG2uH7L1FE=
+github.com/pentops/protostate v0.0.0-20231204235056-3e47fc09574a h1:DtkgHdk1Mn2vjhuRVSlmF6YPkLzrKDMMDacdcvGKTI0=
+github.com/pentops/protostate v0.0.0-20231204235056-3e47fc09574a/go.mod h1:1l1yoGtfbKDX1G5WkfFm0xFI5tZTtFwCgd5GPT5/0CQ=
 github.com/pentops/sugar-go v0.0.0-20231029194349-ec12ec0132c5 h1:09bSwWuVlJ2ac3caVja4LBLhywvs6Rhev7uijnBzyAs=
 github.com/pentops/sugar-go v0.0.0-20231029194349-ec12ec0132c5/go.mod h1:8ggrY3eTtY+8xMOge3jXeMQTCe59lr3Hmi/H5PRNEL0=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=

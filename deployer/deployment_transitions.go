@@ -5,19 +5,19 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/pentops/genericstate/sm"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"github.com/pentops/protostate/psm"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.daemonl.com/sqrlx"
 )
 
-type DeploymentTransitionBaton = sm.TransitionBaton[deployer_pb.IsDeploymentEventTypeWrappedType]
+type DeploymentTransitionBaton = psm.TransitionBaton[deployer_pb.IsDeploymentEventTypeWrappedType]
 
 type DeploymentEventer struct {
-	*sm.Eventer[
+	*psm.Eventer[
 		*deployer_pb.DeploymentState,
 		deployer_pb.DeploymentStatus,
 		*deployer_pb.DeploymentEvent,
@@ -35,7 +35,7 @@ func (se DeploymentEventer) handleEvent(
 		"entityType":   "Deployment",
 		"deploymentId": state.DeploymentId,
 	})
-	wrapped := sm.NewSqrlxTransaction[
+	wrapped := psm.NewSqrlxTransaction[
 		*deployer_pb.DeploymentState,
 		*deployer_pb.DeploymentEvent,
 	](tx, storeDeploymentEvent)
@@ -45,13 +45,14 @@ func (se DeploymentEventer) handleEvent(
 
 func NewDeploymentEventer() (*DeploymentEventer, error) {
 	deploymentEventer := &DeploymentEventer{
-		Eventer: &sm.Eventer[
+		Eventer: &psm.Eventer[
 			*deployer_pb.DeploymentState,
 			deployer_pb.DeploymentStatus,
 			*deployer_pb.DeploymentEvent,
 			deployer_pb.IsDeploymentEventTypeWrappedType,
 		]{
 			WrapEvent: func(
+				ctx context.Context,
 				state *deployer_pb.DeploymentState,
 				event deployer_pb.IsDeploymentEventTypeWrappedType,
 			) *deployer_pb.DeploymentEvent {
@@ -86,7 +87,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 
 	// [*] --> QUEUED : Created
 	deploymentEventer.Register(
-		sm.NewTransition([]deployer_pb.DeploymentStatus{
+		psm.NewTransition([]deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_UNSPECIFIED,
 		}, func(
 			ctx context.Context,
@@ -106,7 +107,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 
 	// QUEUED --> TRIGGERED : Trigger
 	deploymentEventer.Register(
-		sm.NewTransition([]deployer_pb.DeploymentStatus{
+		psm.NewTransition([]deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_QUEUED,
 		},
 			func(ctx context.Context,
@@ -124,7 +125,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 
 	// TRIGGERED --> WAITING : StackWait
 	deploymentEventer.Register(
-		sm.NewTransition([]deployer_pb.DeploymentStatus{
+		psm.NewTransition([]deployer_pb.DeploymentStatus{
 			deployer_pb.DeploymentStatus_TRIGGERED,
 		},
 			func(
@@ -150,7 +151,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 		))
 
 	// AVAILABLE --> CREATING : StackCreate
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_AVAILABLE,
 	},
 		func(
@@ -189,7 +190,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 	// WAITING --> AVAILABLE : StackStatus.Complete
 	// WAITING --> AVAILABLE : StackStatus.Missing
 	// WAITING --> AVAILABLE : StackStatus.Terminal + UPDATE_ROLLBACK_COMPLETE
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_WAITING,
 	},
 		func(
@@ -222,7 +223,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 	}))
 
 	// AVAILABLE --> UPSERTING : StackUpsert
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_AVAILABLE,
 	},
 		func(
@@ -276,7 +277,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 	))
 
 	// UPSERTING --> UPSERTED : StackStatus.Complete
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_UPSERTING,
 	},
 		func(
@@ -298,7 +299,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 	}))
 
 	// SCALING_DOWN --> SCALED_DOWN : StackStatus.Complete
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_SCALING_DOWN,
 	},
 		func(
@@ -322,7 +323,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 
 	// INFRA_MIGRATE --> INFRA_MIGRATED : StackStatus.Complete
 	// CREATING --> INFRA_MIGRATED : StackStatus.Complete
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_INFRA_MIGRATE,
 		deployer_pb.DeploymentStatus_CREATING,
 	},
@@ -345,7 +346,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 	}))
 
 	// ScalingUp --> ScaledUp : StackStatus.Complete
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_SCALING_UP,
 	},
 		func(
@@ -366,7 +367,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 	}))
 
 	// Any Waiting --> Any Waiting : StackStatus.Progress
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_WAITING,
 		deployer_pb.DeploymentStatus_CREATING,
 		deployer_pb.DeploymentStatus_UPSERTING,
@@ -389,7 +390,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 
 	// WAITING --> FAILED : StackStatus.Rollback In Progress.
 	// TODO: Needs an actual key
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_WAITING,
 	},
 		func(
@@ -409,7 +410,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 	// ScalingUp --> Failed : StackStatus.Failed
 	// ScalingDown --> Failed : StackStatus.Failed
 	// InfraMigrate --> Failed : StackStatus.Failed
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_WAITING,
 		deployer_pb.DeploymentStatus_UPSERTING,
 		deployer_pb.DeploymentStatus_SCALING_UP,
@@ -435,7 +436,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 	}))
 
 	// INFRA_MIGRATED --> DB_MIGRATING : MigrateData
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_INFRA_MIGRATED,
 	},
 		func(
@@ -512,7 +513,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 	// failed
 	// When all migrations are complete, and none failed, will transition to
 	// DataMigrated
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_DB_MIGRATING,
 	},
 		func(
@@ -560,7 +561,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 	))
 
 	// DB_MIGRATING --> DB_MIGRATED : DataMigrated
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_DB_MIGRATING,
 	},
 		func(
@@ -578,7 +579,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 	))
 
 	// DB_MIGRATED --> SCALING_UP : StackScale
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_DB_MIGRATED,
 	},
 		func(
@@ -603,7 +604,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 	))
 
 	// AVAILABLE --> SCALING_DOWN : StackScale
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_AVAILABLE,
 	},
 		func(
@@ -628,7 +629,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 	))
 
 	// SCALED_DOWN --> INFRA_MIGRATE : StackTrigger
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_SCALED_DOWN,
 	},
 		func(
@@ -667,7 +668,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 
 	// SCALED_UP --> DONE : Done
 	// UPSERTED --> DONE : Done
-	deploymentEventer.Register(sm.NewTransition([]deployer_pb.DeploymentStatus{
+	deploymentEventer.Register(psm.NewTransition([]deployer_pb.DeploymentStatus{
 		deployer_pb.DeploymentStatus_SCALED_UP,
 		deployer_pb.DeploymentStatus_UPSERTED,
 	},
@@ -691,7 +692,7 @@ func NewDeploymentEventer() (*DeploymentEventer, error) {
 	))
 
 	// * --> FAILED : Error
-	deploymentEventer.Register(sm.NewTransition(nil,
+	deploymentEventer.Register(psm.NewTransition(nil,
 		func(
 			ctx context.Context,
 			tb DeploymentTransitionBaton,

@@ -24,13 +24,13 @@ require (
 	github.com/google/uuid v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/pentops/flowtest v0.0.0-20231130030311-2062110a52a1
-	github.com/pentops/genericstate v0.0.0-20231202075347-f5c590b8f315
 	github.com/pentops/jsonapi v0.0.0-20231204062219-2da2a5ddb804
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
-	github.com/pentops/o5-go v0.0.0-20231201054913-58f0a43fdbea
+	github.com/pentops/o5-go v0.0.0-20231205005940-869171d74dc5
 	github.com/pentops/o5-runtime-sidecar v0.0.5-0.20231201060536-7c6093ae876a
 	github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8
 	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb
+	github.com/pentops/protostate v0.0.0-20231204235056-3e47fc09574a
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/rs/cors v1.10.1
 	github.com/stretchr/testify v1.8.4
