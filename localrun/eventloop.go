@@ -7,7 +7,7 @@ import (
 
 	"github.com/bufbuild/protovalidate-go"
 	"github.com/google/uuid"
-	"github.com/pentops/genericstate/sm"
+	"github.com/pentops/protostate/psm"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
@@ -91,7 +91,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 			return err
 		}
 
-		baton := &sm.TransitionData[deployer_pb.IsDeploymentEventTypeWrappedType]{}
+		baton := &psm.TransitionData[deployer_pb.IsDeploymentEventTypeWrappedType]{}
 
 		typeKey, _ := innerEvent.Event.TypeKey()
 		stateBefore := deployment.Status.ShortString()

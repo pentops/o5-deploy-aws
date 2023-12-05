@@ -7,7 +7,7 @@ import (
 
 	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
-	"github.com/pentops/genericstate/sm"
+	"github.com/pentops/protostate/psm"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
@@ -48,7 +48,7 @@ func NewDeployerWorker(conn sqrlx.Connection) (*DeployerWorker, error) {
 }
 
 func (dw *DeployerWorker) doDeploymentEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
-	if err := dw.db.Transact(ctx, sm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
+	if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
 		deployment, err := getDeployment(ctx, tx, event.DeploymentId)
 		if errors.Is(err, DeploymentNotFoundError) {
 			trigger := event.Event.GetCreated()
@@ -128,7 +128,7 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 		},
 	}
 
-	if err := dw.db.Transact(ctx, sm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
+	if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
 		stack, err := getStack(ctx, tx, evt.StackId)
 		if errors.Is(err, StackNotFoundError) {
 			stack = &deployer_pb.StackState{
@@ -181,7 +181,7 @@ func (dw *DeployerWorker) DeploymentComplete(ctx context.Context, msg *deployer_
 		},
 	}
 
-	if err := dw.db.Transact(ctx, sm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
+	if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
 		stack, err := getStack(ctx, tx, stackEvent.StackId)
 		if err != nil {
 			return err
@@ -221,7 +221,7 @@ func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *deployer_
 		return nil, err
 	}
 
-	if err := dw.db.Transact(ctx, sm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
+	if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
 		deployment, err := getDeployment(ctx, tx, event.DeploymentId)
 		if err != nil {
 			if errors.Is(err, DeploymentNotFoundError) {

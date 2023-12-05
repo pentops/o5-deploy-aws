@@ -7,9 +7,9 @@ import (
 	"time"
 
 	sq "github.com/elgris/sqrl"
-	"github.com/pentops/genericstate"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
+	"github.com/pentops/protostate/pquery"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"gopkg.daemonl.com/envconf"
 	"gopkg.daemonl.com/sqrlx"
@@ -42,8 +42,8 @@ func OpenDatabase(ctx context.Context) (*sql.DB, error) {
 }
 
 type DeployerService struct {
-	DeploymentQuery *genericstate.StateQuerySet
-	StackQuery      *genericstate.StateQuerySet
+	DeploymentQuery *pquery.StateQuerySet
+	StackQuery      *pquery.StateQuerySet
 
 	db *sqrlx.Wrapper
 	*deployer_spb.UnimplementedDeploymentQueryServiceServer
@@ -55,29 +55,29 @@ func NewDeployerService(conn sqrlx.Connection) (*DeployerService, error) {
 		return nil, err
 	}
 
-	deploymentQuery, err := genericstate.NewStateQuery(genericstate.StateQuerySpec{
+	deploymentQuery, err := pquery.NewStateQuery(pquery.StateQuerySpec{
 		TableName:              "deployment",
 		DataColumn:             "state",
 		PrimaryKeyColumn:       "id",
 		PrimaryKeyRequestField: protoreflect.Name("deployment_id"),
-		Events: &genericstate.GetJoinSpec{
+		Events: &pquery.GetJoinSpec{
 			TableName:        "deployment_event",
 			DataColumn:       "event",
 			FieldInParent:    "events",
 			ForeignKeyColumn: "deployment_id",
 		},
 
-		Get: &genericstate.MethodDescriptor{
+		Get: &pquery.MethodDescriptor{
 			Request:  (&deployer_spb.GetDeploymentRequest{}).ProtoReflect().Descriptor(),
 			Response: (&deployer_spb.GetDeploymentResponse{}).ProtoReflect().Descriptor(),
 		},
 
-		List: &genericstate.MethodDescriptor{
+		List: &pquery.MethodDescriptor{
 			Request:  (&deployer_spb.ListDeploymentsRequest{}).ProtoReflect().Descriptor(),
 			Response: (&deployer_spb.ListDeploymentsResponse{}).ProtoReflect().Descriptor(),
 		},
 
-		ListEvents: &genericstate.MethodDescriptor{
+		ListEvents: &pquery.MethodDescriptor{
 			Request:  (&deployer_spb.ListDeploymentEventsRequest{}).ProtoReflect().Descriptor(),
 			Response: (&deployer_spb.ListDeploymentEventsResponse{}).ProtoReflect().Descriptor(),
 		},
@@ -86,29 +86,29 @@ func NewDeployerService(conn sqrlx.Connection) (*DeployerService, error) {
 		return nil, err
 	}
 
-	stackQuery, err := genericstate.NewStateQuery(genericstate.StateQuerySpec{
+	stackQuery, err := pquery.NewStateQuery(pquery.StateQuerySpec{
 		TableName:              "stack",
 		DataColumn:             "state",
 		PrimaryKeyColumn:       "id",
 		PrimaryKeyRequestField: protoreflect.Name("stack_id"),
-		Events: &genericstate.GetJoinSpec{
+		Events: &pquery.GetJoinSpec{
 			TableName:        "stack_event",
 			DataColumn:       "event",
 			FieldInParent:    "events",
 			ForeignKeyColumn: "stack_id",
 		},
 
-		Get: &genericstate.MethodDescriptor{
+		Get: &pquery.MethodDescriptor{
 			Request:  (&deployer_spb.GetStackRequest{}).ProtoReflect().Descriptor(),
 			Response: (&deployer_spb.GetStackResponse{}).ProtoReflect().Descriptor(),
 		},
 
-		List: &genericstate.MethodDescriptor{
+		List: &pquery.MethodDescriptor{
 			Request:  (&deployer_spb.ListStacksRequest{}).ProtoReflect().Descriptor(),
 			Response: (&deployer_spb.ListStacksResponse{}).ProtoReflect().Descriptor(),
 		},
 
-		ListEvents: &genericstate.MethodDescriptor{
+		ListEvents: &pquery.MethodDescriptor{
 			Request:  (&deployer_spb.ListStackEventsRequest{}).ProtoReflect().Descriptor(),
 			Response: (&deployer_spb.ListStackEventsResponse{}).ProtoReflect().Descriptor(),
 		},

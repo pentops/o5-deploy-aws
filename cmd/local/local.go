@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -142,20 +143,22 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	var mainCommand *exec.Cmd
-	{
-		container := mainRuntime.Containers[0]
+
+	container := mainRuntime.Containers[0]
+	mainEnvVars, err := buildEnvironment(ctx, container.Container, refs, secretsManagerClient)
+	if err != nil {
+		return err
+	}
+	buildMain := func() *exec.Cmd {
 		parts := strings.Split(flagConfig.command, " ")
 		cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
 		cmd.Dir = flagConfig.workdir
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		envVars, err := buildEnvironment(ctx, container.Container, refs, secretsManagerClient)
-		if err != nil {
-			return err
-		}
-		cmd.Env = envVars
-		mainCommand = cmd
+		cmd.Env = mainEnvVars
+		return cmd
 	}
+	mainCommand = buildMain()
 
 	eg.Go(func() error {
 		err := mainCommand.Run()
@@ -164,6 +167,34 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		}
 		log.Info(ctx, "command exited with no error")
 		return nil
+	})
+
+	eg.Go(func() error {
+		reader := bufio.NewReader(os.Stdin)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				return err
+			}
+			fmt.Printf("read line: %s-\n", line)
+			switch line {
+			case "reload\n":
+				fmt.Printf("reloading\n")
+				if err := mainCommand.Process.Signal(os.Interrupt); err != nil {
+					return err
+				}
+				mainCommand = buildMain()
+				eg.Go(func() error {
+					err := mainCommand.Run()
+					if err != nil {
+						return fmt.Errorf("command failed: %w", err)
+					}
+					log.Info(ctx, "command exited with no error")
+					return nil
+				})
+			}
+
+		}
 	})
 
 	{
@@ -272,11 +303,14 @@ func buildEnvironment(ctx context.Context, container *ecs.TaskDefinition_Contain
 	}
 
 	for _, secret := range container.Secrets {
+		ctx := log.WithField(ctx, "secretName", secret.Name)
 		key := secret.Name
 		value, err := decodeIntrinsic(secret.ValueFrom, refs)
 		if err != nil {
 			return nil, err
 		}
+		ctx = log.WithField(ctx, "secretFrom", value)
+		log.Debug(ctx, "fetching secret")
 
 		parts := strings.Split(value, ":")
 		// secret-name:json-key:version-stage:version-id
@@ -290,11 +324,14 @@ func buildEnvironment(ctx context.Context, container *ecs.TaskDefinition_Contain
 		secretString := *secretValueResponse.SecretString
 		if len(parts) > 1 {
 			jsonKey := parts[1]
-			secretMap := map[string]interface{}{}
-			if err := json.Unmarshal([]byte(secretString), &secretMap); err != nil {
-				return nil, err
+			if jsonKey != "" {
+
+				secretMap := map[string]interface{}{}
+				if err := json.Unmarshal([]byte(secretString), &secretMap); err != nil {
+					return nil, fmt.Errorf("decoding secret %s: %w", value, err)
+				}
+				secretString = secretMap[jsonKey].(string)
 			}
-			secretString = secretMap[jsonKey].(string)
 		}
 
 		fmt.Printf("%s=(SECRET)\n", key)

@@ -5,15 +5,15 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/pentops/genericstate/sm"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"github.com/pentops/protostate/psm"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.daemonl.com/sqrlx"
 )
 
-type StackTransitionBaton = sm.TransitionBaton[deployer_pb.IsStackEventTypeWrappedType]
+type StackTransitionBaton = psm.TransitionBaton[deployer_pb.IsStackEventTypeWrappedType]
 
 type StackTransition[Event deployer_pb.IsStackEventTypeWrappedType] struct {
 	FromStatus  []deployer_pb.StackStatus
@@ -23,7 +23,7 @@ type StackTransition[Event deployer_pb.IsStackEventTypeWrappedType] struct {
 
 func (ts StackTransition[Event]) RunTransition(
 	ctx context.Context,
-	tb sm.TransitionBaton[deployer_pb.IsStackEventTypeWrappedType],
+	tb psm.TransitionBaton[deployer_pb.IsStackEventTypeWrappedType],
 	state *deployer_pb.StackState,
 	event deployer_pb.IsStackEventTypeWrappedType) error {
 	asType, ok := event.(Event)
@@ -57,7 +57,7 @@ func (ts StackTransition[Event]) Matches(deployment *deployer_pb.StackState, eve
 }
 
 type StackEventer struct {
-	sm.Eventer[
+	psm.Eventer[
 		*deployer_pb.StackState,
 		deployer_pb.StackStatus,
 		*deployer_pb.StackEvent,
@@ -70,20 +70,24 @@ func (se StackEventer) handleEvent(ctx context.Context, tx sqrlx.Transaction, st
 		"entityType": "Stack",
 		"stackId":    stack.StackId,
 	})
-	wrapped := sm.NewSqrlxTransaction[*deployer_pb.StackState, *deployer_pb.StackEvent](tx, storeStackEvent)
+	wrapped := psm.NewSqrlxTransaction[*deployer_pb.StackState, *deployer_pb.StackEvent](tx, storeStackEvent)
 	return se.Eventer.Run(ctx, wrapped, stack, outerEvent)
 }
 
 func NewStackEventer() (*StackEventer, error) {
 
 	stackEventer := &StackEventer{
-		Eventer: sm.Eventer[
+		Eventer: psm.Eventer[
 			*deployer_pb.StackState,
 			deployer_pb.StackStatus,
 			*deployer_pb.StackEvent,
 			deployer_pb.IsStackEventTypeWrappedType,
 		]{
-			WrapEvent: func(state *deployer_pb.StackState, event deployer_pb.IsStackEventTypeWrappedType) *deployer_pb.StackEvent {
+			WrapEvent: func(
+				ctx context.Context,
+				state *deployer_pb.StackState,
+				event deployer_pb.IsStackEventTypeWrappedType,
+			) *deployer_pb.StackEvent {
 				wrappedEvent := &deployer_pb.StackEvent{
 					StackId: state.StackId,
 					Metadata: &deployer_pb.EventMetadata{
@@ -108,7 +112,7 @@ func NewStackEventer() (*StackEventer, error) {
 	}
 
 	// [*] --> CREATING : Triggered
-	stackEventer.Register(sm.NewTransition([]deployer_pb.StackStatus{
+	stackEventer.Register(psm.NewTransition([]deployer_pb.StackStatus{
 		deployer_pb.StackStatus_UNSPECIFIED,
 	},
 		func(
@@ -134,7 +138,7 @@ func NewStackEventer() (*StackEventer, error) {
 
 	// CREATING --> STABLE : DeploymentCompleted
 	// MIGRATING --> STABLE : DeploymentCompleted
-	stackEventer.Register(sm.NewTransition([]deployer_pb.StackStatus{
+	stackEventer.Register(psm.NewTransition([]deployer_pb.StackStatus{
 		deployer_pb.StackStatus_CREATING,
 		deployer_pb.StackStatus_MIGRATING,
 	},
@@ -160,7 +164,7 @@ func NewStackEventer() (*StackEventer, error) {
 	))
 
 	// STABLE --> MIGRATING : Triggered (Int)
-	stackEventer.Register(sm.NewTransition([]deployer_pb.StackStatus{
+	stackEventer.Register(psm.NewTransition([]deployer_pb.StackStatus{
 		deployer_pb.StackStatus_STABLE,
 	},
 		func(
@@ -186,7 +190,7 @@ func NewStackEventer() (*StackEventer, error) {
 	))
 
 	// AVAILABLE --> MIGRATING : Triggered (Ext)
-	stackEventer.Register(sm.NewTransition([]deployer_pb.StackStatus{
+	stackEventer.Register(psm.NewTransition([]deployer_pb.StackStatus{
 		deployer_pb.StackStatus_AVAILABLE,
 	},
 		func(
@@ -211,7 +215,7 @@ func NewStackEventer() (*StackEventer, error) {
 	))
 
 	// STABLE -> AVAILABLE : Available
-	stackEventer.Register(sm.NewTransition([]deployer_pb.StackStatus{
+	stackEventer.Register(psm.NewTransition([]deployer_pb.StackStatus{
 		deployer_pb.StackStatus_STABLE,
 	},
 		func(
@@ -228,7 +232,7 @@ func NewStackEventer() (*StackEventer, error) {
 	// BROKEN --> BROKEN : Triggered
 	// CREATING --> CREATING : Triggered
 	// MIGRATING --> MIGRATING : Triggered
-	stackEventer.Register(sm.NewTransition([]deployer_pb.StackStatus{
+	stackEventer.Register(psm.NewTransition([]deployer_pb.StackStatus{
 		deployer_pb.StackStatus_BROKEN,
 		deployer_pb.StackStatus_CREATING,
 		deployer_pb.StackStatus_MIGRATING,

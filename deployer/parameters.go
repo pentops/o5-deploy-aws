@@ -11,6 +11,11 @@ import (
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
 
+const (
+	DefaultO5SidecarImageName = "ghcr.io/pentops/o5-runtime-sidecar"
+	DefaultO5SidecarVersion   = "latest"
+)
+
 type ParameterResolver interface {
 	ResolveParameter(param *deployer_pb.Parameter) (*deployer_pb.CloudFormationStackParameter, error)
 }
@@ -33,6 +38,16 @@ func BuildParameterResolver(ctx context.Context, environment *environment_pb.Env
 		crossEnvSNS[envLink.FullName] = envLink.SnsPrefix
 	}
 
+	sidecarImageName := DefaultO5SidecarImageName
+	if awsEnv.SidecarImageRepo != nil {
+		sidecarImageName = *awsEnv.SidecarImageRepo
+	}
+
+	sidecarImageVersion := DefaultO5SidecarVersion
+	if awsEnv.SidecarImageVersion != nil {
+		sidecarImageVersion = *awsEnv.SidecarImageVersion
+	}
+
 	dr := &deployerResolver{
 		wellKnown: map[string]string{
 			app.ListenerARNParameter:          awsEnv.ListenerArn,
@@ -46,6 +61,7 @@ func BuildParameterResolver(ctx context.Context, environment *environment_pb.Env
 			app.JWKSParameter:                 strings.Join(environment.TrustJwks, ","),
 			app.SNSPrefixParameter:            awsEnv.SnsPrefix,
 			app.S3BucketNamespaceParameter:    awsEnv.S3BucketNamespace,
+			app.O5SidecarImageParameter:       fmt.Sprintf("%s:%s", sidecarImageName, sidecarImageVersion),
 		},
 		custom:              environment.Vars,
 		crossEnvSNSPrefixes: crossEnvSNS,
