@@ -56,7 +56,7 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 	runtimeSidecar := &ecs.TaskDefinition_ContainerDefinition{
 		Name:      O5SidecarContainerName,
 		Essential: Bool(true),
-		Image:     O5SidecarImageName,
+		Image:     cloudformation.Ref(O5SidecarImageParameter),
 		Cpu:       Int(128),
 		Memory:    Int(128),
 		PortMappings: []ecs.TaskDefinition_PortMapping{{

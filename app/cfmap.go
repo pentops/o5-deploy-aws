@@ -30,12 +30,13 @@ const (
 	AWSRegionParameter            = "AWS::Region"
 	SNSPrefixParameter            = "SNSPrefix"
 	S3BucketNamespaceParameter    = "S3BucketNamespace"
+	O5SidecarImageParameter       = "O5SidecarImage"
 
 	AWSAccountIDParameter = "AWS::AccountId"
 
 	O5SidecarContainerName = "o5_runtime"
-	O5SidecarImageName     = "ghcr.io/pentops/o5-runtime-sidecar:latest"
-	DeadLetterTargetName   = "dead-letter"
+	//O5SidecarImageName     = "ghcr.io/pentops/o5-runtime-sidecar:latest"
+	DeadLetterTargetName = "dead-letter"
 )
 
 type globalData struct {
@@ -87,6 +88,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		JWKSParameter,
 		SNSPrefixParameter,
 		S3BucketNamespaceParameter,
+		O5SidecarImageParameter,
 	} {
 		parameter := &deployer_pb.Parameter{
 			Name: key,
