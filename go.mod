@@ -25,7 +25,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/pentops/flowtest v0.0.0-20231130030311-2062110a52a1
 	github.com/pentops/genericstate v0.0.0-20231202075347-f5c590b8f315
-	github.com/pentops/jsonapi v0.0.0-20231123011150-74903e21d297
+	github.com/pentops/jsonapi v0.0.0-20231204062219-2da2a5ddb804
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
 	github.com/pentops/o5-go v0.0.0-20231201054913-58f0a43fdbea
 	github.com/pentops/o5-runtime-sidecar v0.0.5-0.20231201060536-7c6093ae876a
@@ -77,7 +77,7 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/pentops/jwtauth v0.0.0-20231115224318-582b891a72f1 // indirect
+	github.com/pentops/jwtauth v0.0.0-20231204231621-e2e260cae555 // indirect
 	github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53 // indirect
 	github.com/pentops/sugar-go v0.0.0-20231029194349-ec12ec0132c5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
