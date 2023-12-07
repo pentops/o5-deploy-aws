@@ -700,8 +700,8 @@ github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8 h1:u+7WnBJrBS
 github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8/go.mod h1:ePQpGllAGCMQ0bu6poSnNjqWeTFu9bZzy0Y8NdPqL2k=
 github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb h1:1OIQFqb6RU4OmKXdonwvYHNex0JPQy5gOs0eZTeIwfI=
 github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb/go.mod h1:BgX0+UvohWaq7Vr3McsBWt8FpzerKaNRsmG2uH7L1FE=
-github.com/pentops/protostate v0.0.0-20231207070650-9abd1ff20c02 h1:/YNLGgxE88WrPTOs7/4PHB4k4h7MEED1UWgjNo3npeE=
-github.com/pentops/protostate v0.0.0-20231207070650-9abd1ff20c02/go.mod h1:S+UbVJMOw6EaNVMhL6eZegVNODqTZCl6CcVsYzQCzTI=
+github.com/pentops/protostate v0.0.0-20231207070729-0cc0d9a881cc h1:kilvMT3at+S1Ctv39KlusTKrt5IywR/mB/NDG9bpiIY=
+github.com/pentops/protostate v0.0.0-20231207070729-0cc0d9a881cc/go.mod h1:S+UbVJMOw6EaNVMhL6eZegVNODqTZCl6CcVsYzQCzTI=
 github.com/pentops/sugar-go v0.0.0-20231029194349-ec12ec0132c5 h1:09bSwWuVlJ2ac3caVja4LBLhywvs6Rhev7uijnBzyAs=
 github.com/pentops/sugar-go v0.0.0-20231029194349-ec12ec0132c5/go.mod h1:8ggrY3eTtY+8xMOge3jXeMQTCe59lr3Hmi/H5PRNEL0=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
