@@ -7,10 +7,10 @@ import (
 
 	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
-	"github.com/pentops/protostate/psm"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"github.com/pentops/protostate/psm"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.daemonl.com/sqrlx"
@@ -20,8 +20,8 @@ type DeployerWorker struct {
 	*deployer_tpb.UnimplementedDeployerTopicServer
 	db *sqrlx.Wrapper
 
-	stackEventer      *StackEventer
-	deploymentEventer *DeploymentEventer
+	stackEventer      *deployer_pb.StackPSM
+	deploymentEventer *deployer_pb.DeploymentPSM
 }
 
 func NewDeployerWorker(conn sqrlx.Connection) (*DeployerWorker, error) {
@@ -30,12 +30,12 @@ func NewDeployerWorker(conn sqrlx.Connection) (*DeployerWorker, error) {
 		return nil, err
 	}
 
-	stackEventer, err := NewStackEventer()
+	stackEventer, err := NewStackEventer(db)
 	if err != nil {
 		return nil, fmt.Errorf("NewStackEventer: %w", err)
 	}
 
-	deploymentEventer, err := NewDeploymentEventer()
+	deploymentEventer, err := NewDeploymentEventer(db)
 	if err != nil {
 		return nil, fmt.Errorf("NewDeploymentEventer: %w", err)
 	}
@@ -48,27 +48,32 @@ func NewDeployerWorker(conn sqrlx.Connection) (*DeployerWorker, error) {
 }
 
 func (dw *DeployerWorker) doDeploymentEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
-	if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
-		deployment, err := getDeployment(ctx, tx, event.DeploymentId)
-		if errors.Is(err, DeploymentNotFoundError) {
-			trigger := event.Event.GetCreated()
-			if trigger == nil {
-				return fmt.Errorf("deployment %s not found, and the event is not an initiating event", event.DeploymentId)
+	_, err := dw.deploymentEventer.Transition(ctx, event)
+	return err
+
+	/*
+
+		if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
+			deployment, err := getDeployment(ctx, tx, event.DeploymentId)
+			if errors.Is(err, DeploymentNotFoundError) {
+				trigger := event.Event.GetCreated()
+				if trigger == nil {
+					return fmt.Errorf("deployment %s not found, and the event is not an initiating event", event.DeploymentId)
+				}
+
+				deployment = &deployer_pb.DeploymentState{
+					DeploymentId: event.DeploymentId,
+					Spec:         trigger.Spec,
+				}
+			} else if err != nil {
+				return fmt.Errorf("GetDeployment: %w", err)
 			}
 
-			deployment = &deployer_pb.DeploymentState{
-				DeploymentId: event.DeploymentId,
-				Spec:         trigger.Spec,
-			}
-		} else if err != nil {
-			return fmt.Errorf("GetDeployment: %w", err)
+			return dw.deploymentEventer.handleEvent(ctx, tx, deployment, event)
+		}); err != nil {
+			return fmt.Errorf("doDeploymentEvent: %w", err)
 		}
-
-		return dw.deploymentEventer.handleEvent(ctx, tx, deployment, event)
-	}); err != nil {
-		return fmt.Errorf("doDeploymentEvent: %w", err)
-	}
-	return nil
+		return nil*/
 }
 
 func (dw *DeployerWorker) TriggerDeployment(ctx context.Context, msg *deployer_tpb.TriggerDeploymentMessage) (*emptypb.Empty, error) {
@@ -129,31 +134,15 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 	}
 
 	if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
-		stack, err := getStack(ctx, tx, evt.StackId)
-		if errors.Is(err, StackNotFoundError) {
-			stack = &deployer_pb.StackState{
-				StackId:           evt.StackId,
-				Status:            deployer_pb.StackStatus_UNSPECIFIED, // New
-				CurrentDeployment: nil,
-				ApplicationName:   msg.Spec.AppName,
-				EnvironmentName:   msg.Spec.EnvironmentName,
-				QueuedDeployments: []*deployer_pb.StackDeployment{},
-			}
-
-		} else if err != nil {
+		if _, err := dw.stackEventer.TransitionInTx(ctx, tx, evt); err != nil {
 			return err
 		}
 
-		if err := dw.stackEventer.handleEvent(ctx, tx, stack, evt); err != nil {
+		if _, err := dw.deploymentEventer.TransitionInTx(ctx, tx, createDeploymentEvent); err != nil {
 			return err
 		}
 
-		deployment := &deployer_pb.DeploymentState{
-			DeploymentId: msg.DeploymentId,
-			Spec:         msg.Spec,
-		}
-
-		return dw.deploymentEventer.handleEvent(ctx, tx, deployment, createDeploymentEvent)
+		return nil
 	}); err != nil {
 		return nil, err
 	}
@@ -181,17 +170,8 @@ func (dw *DeployerWorker) DeploymentComplete(ctx context.Context, msg *deployer_
 		},
 	}
 
-	if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
-		stack, err := getStack(ctx, tx, stackEvent.StackId)
-		if err != nil {
-			return err
-		}
-		return dw.stackEventer.handleEvent(ctx, tx, stack, stackEvent)
-	}); err != nil {
-		return nil, err
-	}
-
-	return &emptypb.Empty{}, nil
+	_, err := dw.stackEventer.Transition(ctx, stackEvent)
+	return &emptypb.Empty{}, err
 }
 
 func TranslateStackStatusChanged(msg *deployer_tpb.StackStatusChangedMessage) (*deployer_pb.DeploymentEvent, error) {
@@ -250,7 +230,10 @@ func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *deployer_
 			}
 		}
 
-		return dw.deploymentEventer.handleEvent(ctx, tx, deployment, event)
+		if _, err := dw.deploymentEventer.TransitionInTx(ctx, tx, event); err != nil {
+			return err
+		}
+		return nil
 	}); err != nil {
 		return nil, err
 	}

@@ -43,6 +43,9 @@ var stackStatusesTerminal = []types.StackStatus{
 	types.StackStatusImportRollbackInProgress,
 	types.StackStatusImportRollbackFailed,
 	types.StackStatusImportRollbackComplete,
+}
+
+var stackStatusesTerminalRollback = []types.StackStatus{
 	types.StackStatusUpdateRollbackComplete,
 }
 
@@ -59,6 +62,12 @@ func stackLifecycle(remoteStatus types.StackStatus) (deployer_pb.StackLifecycle,
 	for _, status := range stackStatusesTerminal {
 		if remoteStatus == status {
 			return deployer_pb.StackLifecycle_TERMINAL, nil
+		}
+	}
+
+	for _, status := range stackStatusesTerminalRollback {
+		if remoteStatus == status {
+			return deployer_pb.StackLifecycle_ROLLED_BACK, nil
 		}
 	}
 
@@ -140,6 +149,10 @@ func summarizeStackStatus(stack *types.Stack) (StackStatus, error) {
 	case deployer_pb.StackLifecycle_ROLLING_BACK:
 		out.IsOK = false
 		out.Stable = false
+
+	case deployer_pb.StackLifecycle_ROLLED_BACK:
+		out.IsOK = false
+		out.Stable = true
 
 	case deployer_pb.StackLifecycle_PROGRESS:
 		out.IsOK = true

@@ -8,9 +8,9 @@ import (
 
 	sq "github.com/elgris/sqrl"
 	"github.com/pentops/log.go/log"
+	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
-	"github.com/pentops/protostate/pquery"
-	"google.golang.org/protobuf/reflect/protoreflect"
+	"github.com/pentops/protostate/psm"
 	"gopkg.daemonl.com/envconf"
 	"gopkg.daemonl.com/sqrlx"
 )
@@ -42,8 +42,8 @@ func OpenDatabase(ctx context.Context) (*sql.DB, error) {
 }
 
 type DeployerService struct {
-	DeploymentQuery *pquery.StateQuerySet
-	StackQuery      *pquery.StateQuerySet
+	DeploymentQuery *deployer_spb.DeploymentPSMStateQuerySet
+	StackQuery      *deployer_spb.StackPSMStateQuerySet
 
 	db *sqrlx.Wrapper
 	*deployer_spb.UnimplementedDeploymentQueryServiceServer
@@ -55,67 +55,86 @@ func NewDeployerService(conn sqrlx.Connection) (*DeployerService, error) {
 		return nil, err
 	}
 
-	deploymentQuery, err := pquery.NewStateQuery(pquery.StateQuerySpec{
-		TableName:              "deployment",
-		DataColumn:             "state",
-		PrimaryKeyColumn:       "id",
-		PrimaryKeyRequestField: protoreflect.Name("deployment_id"),
-		Events: &pquery.GetJoinSpec{
-			TableName:        "deployment_event",
-			DataColumn:       "event",
-			FieldInParent:    "events",
-			ForeignKeyColumn: "deployment_id",
-		},
-
-		Get: &pquery.MethodDescriptor{
-			Request:  (&deployer_spb.GetDeploymentRequest{}).ProtoReflect().Descriptor(),
-			Response: (&deployer_spb.GetDeploymentResponse{}).ProtoReflect().Descriptor(),
-		},
-
-		List: &pquery.MethodDescriptor{
-			Request:  (&deployer_spb.ListDeploymentsRequest{}).ProtoReflect().Descriptor(),
-			Response: (&deployer_spb.ListDeploymentsResponse{}).ProtoReflect().Descriptor(),
-		},
-
-		ListEvents: &pquery.MethodDescriptor{
-			Request:  (&deployer_spb.ListDeploymentEventsRequest{}).ProtoReflect().Descriptor(),
-			Response: (&deployer_spb.ListDeploymentEventsResponse{}).ProtoReflect().Descriptor(),
-		},
-	})
+	deploymentQuery, err := psm.BuildStateQuerySet(
+		deployer.DeploymentTableSpec().QuerySpec(),
+		deployer_spb.DeploymentPSMStateQuerySpec{},
+	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to build deployment query: %w", err)
 	}
 
-	stackQuery, err := pquery.NewStateQuery(pquery.StateQuerySpec{
-		TableName:              "stack",
-		DataColumn:             "state",
-		PrimaryKeyColumn:       "id",
-		PrimaryKeyRequestField: protoreflect.Name("stack_id"),
-		Events: &pquery.GetJoinSpec{
-			TableName:        "stack_event",
-			DataColumn:       "event",
-			FieldInParent:    "events",
-			ForeignKeyColumn: "stack_id",
-		},
-
-		Get: &pquery.MethodDescriptor{
-			Request:  (&deployer_spb.GetStackRequest{}).ProtoReflect().Descriptor(),
-			Response: (&deployer_spb.GetStackResponse{}).ProtoReflect().Descriptor(),
-		},
-
-		List: &pquery.MethodDescriptor{
-			Request:  (&deployer_spb.ListStacksRequest{}).ProtoReflect().Descriptor(),
-			Response: (&deployer_spb.ListStacksResponse{}).ProtoReflect().Descriptor(),
-		},
-
-		ListEvents: &pquery.MethodDescriptor{
-			Request:  (&deployer_spb.ListStackEventsRequest{}).ProtoReflect().Descriptor(),
-			Response: (&deployer_spb.ListStackEventsResponse{}).ProtoReflect().Descriptor(),
-		},
-	})
+	stackQuery, err := psm.BuildStateQuerySet(
+		deployer.StackTableSpec().QuerySpec(),
+		deployer_spb.StackPSMStateQuerySpec{},
+	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to build stack query: %w", err)
 	}
+
+	/*
+
+		deploymentQuery, err := pquery.NewStateQuery(pquery.StateQuerySpec{
+			TableName:              "deployment",
+			DataColumn:             "state",
+			PrimaryKeyColumn:       "id",
+			PrimaryKeyRequestField: protoreflect.Name("deployment_id"),
+			Events: &pquery.GetJoinSpec{
+				TableName:        "deployment_event",
+				DataColumn:       "event",
+				FieldInParent:    "events",
+				ForeignKeyColumn: "deployment_id",
+			},
+
+			Get: &pquery.MethodDescriptor{
+				Request:  (&deployer_spb.GetDeploymentRequest{}).ProtoReflect().Descriptor(),
+				Response: (&deployer_spb.GetDeploymentResponse{}).ProtoReflect().Descriptor(),
+			},
+
+			List: &pquery.MethodDescriptor{
+				Request:  (&deployer_spb.ListDeploymentsRequest{}).ProtoReflect().Descriptor(),
+				Response: (&deployer_spb.ListDeploymentsResponse{}).ProtoReflect().Descriptor(),
+			},
+
+			ListEvents: &pquery.MethodDescriptor{
+				Request:  (&deployer_spb.ListDeploymentEventsRequest{}).ProtoReflect().Descriptor(),
+				Response: (&deployer_spb.ListDeploymentEventsResponse{}).ProtoReflect().Descriptor(),
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		stackQuery, err := pquery.NewStateQuery(pquery.StateQuerySpec{
+			TableName:              "stack",
+			DataColumn:             "state",
+			PrimaryKeyColumn:       "id",
+			PrimaryKeyRequestField: protoreflect.Name("stack_id"),
+			Events: &pquery.GetJoinSpec{
+				TableName:        "stack_event",
+				DataColumn:       "event",
+				FieldInParent:    "events",
+				ForeignKeyColumn: "stack_id",
+			},
+
+			Get: &pquery.MethodDescriptor{
+				Request:  (&deployer_spb.GetStackRequest{}).ProtoReflect().Descriptor(),
+				Response: (&deployer_spb.GetStackResponse{}).ProtoReflect().Descriptor(),
+			},
+
+			List: &pquery.MethodDescriptor{
+				Request:  (&deployer_spb.ListStacksRequest{}).ProtoReflect().Descriptor(),
+				Response: (&deployer_spb.ListStacksResponse{}).ProtoReflect().Descriptor(),
+			},
+
+			ListEvents: &pquery.MethodDescriptor{
+				Request:  (&deployer_spb.ListStackEventsRequest{}).ProtoReflect().Descriptor(),
+				Response: (&deployer_spb.ListStackEventsResponse{}).ProtoReflect().Descriptor(),
+			},
+		})
+		if err != nil {
+			return nil, err
+		}
+	*/
 
 	return &DeployerService{
 		db:              db,

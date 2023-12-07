@@ -159,7 +159,7 @@ func (uu *Universe) AssertDeploymentStatus(t flowtest.Asserter, deploymentID str
 		DeploymentId: deploymentID,
 	})
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("GetDeployment: %v", err)
 	}
 	t.Logf("deployment: %v", deployment)
 	if deployment.State.Status != status {

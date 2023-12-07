@@ -7,11 +7,11 @@ import (
 
 	"github.com/bufbuild/protovalidate-go"
 	"github.com/google/uuid"
-	"github.com/pentops/protostate/psm"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"github.com/pentops/outbox.pg.go/outbox"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -36,6 +36,24 @@ func NewEventLoop(awsRunner *InfraAdapter, stateStore *StateStore) *EventLoop {
 		storage:   stateStore,
 		validator: validator,
 	}
+}
+
+type TransitionData struct {
+	CausedBy    *deployer_pb.DeploymentEvent
+	SideEffects []outbox.OutboxMessage
+	ChainEvents []*deployer_pb.DeploymentEvent
+}
+
+func (td *TransitionData) ChainEvent(event *deployer_pb.DeploymentEvent) {
+	td.ChainEvents = append(td.ChainEvents, event)
+}
+
+func (td *TransitionData) SideEffect(msg outbox.OutboxMessage) {
+	td.SideEffects = append(td.SideEffects, msg)
+}
+
+func (td *TransitionData) FullCause() *deployer_pb.DeploymentEvent {
+	return td.CausedBy
 }
 
 func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage) error {
@@ -73,7 +91,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		},
 	}}
 
-	stateMachine, err := deployer.NewDeploymentEventer()
+	stateMachine, err := deployer.NewDeploymentEventer(nil)
 	if err != nil {
 		return err
 	}
@@ -91,7 +109,9 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 			return err
 		}
 
-		baton := &psm.TransitionData[deployer_pb.IsDeploymentEventTypeWrappedType]{}
+		baton := &TransitionData{
+			CausedBy: innerEvent,
+		}
 
 		typeKey, _ := innerEvent.Event.TypeKey()
 		stateBefore := deployment.Status.ShortString()
@@ -103,11 +123,12 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		})
 		log.WithField(ctx, "event", protojson.Format(innerEvent.Event)).Debug("Begin Deployment Event")
 
-		transition, err := stateMachine.FindTransition(deployment, innerEvent.Event.Get())
+		transition, err := stateMachine.FindTransition(deployment, innerEvent)
 		if err != nil {
 			return err
 		}
-		if err := transition.RunTransition(ctx, baton, deployment, innerEvent.Event.Get()); err != nil {
+		unwrapped := stateMachine.UnwrapEvent(innerEvent)
+		if err := transition.RunTransition(ctx, baton, deployment, unwrapped); err != nil {
 			return err
 		}
 
@@ -138,17 +159,8 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 				return fmt.Errorf("cannot have more than one chain event in local run mode")
 			}
 			evt := baton.ChainEvents[0]
-			wrappedEvent := &deployer_pb.DeploymentEvent{
-				DeploymentId: deployment.DeploymentId,
-				Metadata: &deployer_pb.EventMetadata{
-					EventId:   uuid.NewString(),
-					Timestamp: timestamppb.Now(),
-				},
-				Event: &deployer_pb.DeploymentEventType{},
-			}
-			wrappedEvent.Event.Set(evt)
-			log.WithField(ctx, "chainEvent", protojson.Format(wrappedEvent)).Debug("Chain Event")
-			eventQueue = append(eventQueue, wrappedEvent)
+			log.WithField(ctx, "chainEvent", protojson.Format(evt)).Debug("Chain Event")
+			eventQueue = append(eventQueue, evt)
 			continue
 		}
 

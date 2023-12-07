@@ -23,14 +23,14 @@ require (
 	github.com/google/go-github/v47 v47.1.0
 	github.com/google/uuid v1.4.0
 	github.com/lib/pq v1.10.9
-	github.com/pentops/flowtest v0.0.0-20231130030311-2062110a52a1
-	github.com/pentops/jsonapi v0.0.0-20231204062219-2da2a5ddb804
+	github.com/pentops/flowtest v0.0.0-20231207025638-a8f7c46b7ce6
+	github.com/pentops/jsonapi v0.0.0-20231204063925-7b8e60efa2d6
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
-	github.com/pentops/o5-go v0.0.0-20231205005940-869171d74dc5
-	github.com/pentops/o5-runtime-sidecar v0.0.5-0.20231201060536-7c6093ae876a
+	github.com/pentops/o5-go v0.0.0-20231207061619-6abebc4cc62a
+	github.com/pentops/o5-runtime-sidecar v0.0.6-0.20231205021239-a1b5bd043ad2
 	github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8
 	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb
-	github.com/pentops/protostate v0.0.0-20231204235056-3e47fc09574a
+	github.com/pentops/protostate v0.0.0-20231207070650-9abd1ff20c02
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/rs/cors v1.10.1
 	github.com/stretchr/testify v1.8.4
@@ -77,7 +77,7 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/pentops/jwtauth v0.0.0-20231204231621-e2e260cae555 // indirect
+	github.com/pentops/jwtauth v0.0.0-20231205014011-d7e6a902638d // indirect
 	github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53 // indirect
 	github.com/pentops/sugar-go v0.0.0-20231029194349-ec12ec0132c5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
