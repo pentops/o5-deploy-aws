@@ -34,6 +34,12 @@ func (cf *CFClient) GetOneStack(ctx context.Context, stackName string) (*StackSt
 	if err != nil {
 		return nil, err
 	}
+	if stack == nil {
+		// We'll get here when we're creating a stack for the first time, but also
+		// if we expect a stack to exist and it doesn't.
+		// Either way, we got a response from AWS, let the caller sort it out.
+		return nil, nil
+	}
 	summary, err := summarizeStackStatus(stack)
 	if err != nil {
 		return nil, err
@@ -51,6 +57,7 @@ func (cf *CFClient) getOneStack(ctx context.Context, stackName string) (*types.S
 	res, err := client.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
 		StackName: aws.String(stackName),
 	})
+
 	if err != nil {
 		var awsErr smithy.APIError
 		if errors.As(err, &awsErr) {
