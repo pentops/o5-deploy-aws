@@ -30,7 +30,7 @@ require (
 	github.com/pentops/o5-runtime-sidecar v0.0.6-0.20231205021239-a1b5bd043ad2
 	github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8
 	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb
-	github.com/pentops/protostate v0.0.0-20231207070650-9abd1ff20c02
+	github.com/pentops/protostate v0.0.0-20231207070729-0cc0d9a881cc
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/rs/cors v1.10.1
 	github.com/stretchr/testify v1.8.4
