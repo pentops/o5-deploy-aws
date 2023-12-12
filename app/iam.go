@@ -3,6 +3,7 @@ package app
 import (
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/iam"
+	"github.com/pentops/o5-go/application/v1/application_pb"
 )
 
 type PolicyBuilder struct {
@@ -12,7 +13,7 @@ type PolicyBuilder struct {
 	sqsSubscribe   []string
 	sqsPublish     []string
 	snsPublish     []string
-	sesSend        []string
+	ses            *application_pb.AWSConfig_SES
 
 	metaDeployPermissions bool
 }
@@ -45,8 +46,8 @@ func (pb *PolicyBuilder) AddSNSPublish(arn string) {
 	pb.snsPublish = append(pb.snsPublish, arn)
 }
 
-func (pb *PolicyBuilder) AddSESSend(email string) {
-	pb.sesSend = append(pb.sesSend, email)
+func (pb *PolicyBuilder) AddSES(policy *application_pb.AWSConfig_SES) {
+	pb.ses = policy
 }
 
 func (pb *PolicyBuilder) AddMetaDeployPermissions() {
@@ -93,31 +94,36 @@ func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Po
 		},
 	})
 
-	if len(pb.sesSend) > 0 {
-		resources := make([]string, len(pb.sesSend))
-		for idx, email := range pb.sesSend {
-			resources[idx] = cloudformation.Join("", []string{
-				"arn:aws:ses:us-east-1:",
-				accountIDRef,
-				":identity/",
-				email,
+	if pb.ses != nil {
+		if pb.ses.SendEmail {
+			rolePolicies = append(rolePolicies, iam.Role_Policy{
+				PolicyName:     uniqueName("ses"),
+				PolicyDocument: cloudformation.Ref(SESConditionsParameter),
+				/* TODO: Partially build the policy document here with a ref to
+				* the conditions. Unclear why the below did not work, the error
+				* given is "Resource handler returned message: "Syntax errors in policy.
+				* providing no use at all...
+
+				* When fixing, also make sure the parameter is only the
+				* condition subet, currently the parameter is set to the whole
+				* policy which is not ideal
+
+					map[string]interface{}{
+						"Version": "2012-10-17",
+						"Statement": []interface{}{
+							map[string]interface{}{
+								"Effect":   "Allow",
+								"Resource": []interface{}{"*"}, // constrained by conditions
+								"Action": []interface{}{
+									"ses:SendEmail",
+								},
+								"Condition": cloudformation.Ref(SESConditionsParameter),
+							},
+						},
+					},
+				*/
 			})
 		}
-		rolePolicies = append(rolePolicies, iam.Role_Policy{
-			PolicyName: uniqueName("ses"),
-			PolicyDocument: map[string]interface{}{
-				"Version": "2012-10-17",
-				"Statement": []interface{}{
-					map[string]interface{}{
-						"Effect": "Allow",
-						"Action": []interface{}{
-							"ses:SendEmail",
-						},
-						"Resource": resources,
-					},
-				},
-			},
-		})
 	}
 
 	if len(pb.snsPublish) > 0 {

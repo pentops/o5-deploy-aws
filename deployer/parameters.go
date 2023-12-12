@@ -2,6 +2,7 @@ package deployer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -48,6 +49,57 @@ func BuildParameterResolver(ctx context.Context, environment *environment_pb.Env
 		sidecarImageVersion = *awsEnv.SidecarImageVersion
 	}
 
+	sesIdentityCondition := ""
+	if awsEnv.SesIdentity != nil {
+		// awsEnv.SesConditionsJSON,
+		stringLikeCondition := map[string]interface{}{}
+		nullCondition := map[string]interface{}{}
+
+		if len(awsEnv.SesIdentity.Recipients) != 1 || awsEnv.SesIdentity.Recipients[0] != "*" {
+			stringLikeCondition["ses:Recipients"] = awsEnv.SesIdentity.Recipients
+			nullCondition["ses:Recipients"] = false
+		}
+
+		if len(awsEnv.SesIdentity.Senders) != 1 || awsEnv.SesIdentity.Senders[0] != "*" {
+			stringLikeCondition["ses:FromAddress"] = awsEnv.SesIdentity.Senders
+			nullCondition["ses:FromAddress"] = false
+		}
+
+		if len(stringLikeCondition) != 0 {
+			policyDocument := map[string]interface{}{
+				"Version": "2012-10-17",
+				"Statement": []interface{}{
+					map[string]interface{}{
+						"Effect":   "Allow",
+						"Resource": []interface{}{"*"}, // constrained by conditions
+						"Action": []interface{}{
+							"ses:SendEmail",
+						},
+						"Condition": map[string]interface{}{
+							"ForAllValues:StringLike": stringLikeCondition,
+							"Null":                    nullCondition,
+							// https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-single-vs-multi-valued-context-keys.html#reference_policies_condition-multi-valued-context-keys#reference_policies_condition-multi-valued-context-keys
+							// "Use caution if you use ForAllValues with an Allow effect
+							// because it can be overly permissive if the presence of
+							// missing context keys or context keys with empty values in the
+							// request context is unexpected. You can include the Null
+							// condition operator in your policy with a false value to check
+							// if the context key exists and its value is not null. For an
+							// example, see Controlling access based on tag keys."
+							//
+							// I have no idea if this actually applies to SES - DW
+						},
+					},
+				},
+			}
+			sesIdentityConditionBytes, err := json.Marshal(policyDocument)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal SES conditions: %w", err)
+			}
+			sesIdentityCondition = string(sesIdentityConditionBytes)
+		}
+	}
+
 	dr := &deployerResolver{
 		wellKnown: map[string]string{
 			app.ListenerARNParameter:          awsEnv.ListenerArn,
@@ -62,6 +114,7 @@ func BuildParameterResolver(ctx context.Context, environment *environment_pb.Env
 			app.SNSPrefixParameter:            awsEnv.SnsPrefix,
 			app.S3BucketNamespaceParameter:    awsEnv.S3BucketNamespace,
 			app.O5SidecarImageParameter:       fmt.Sprintf("%s:%s", sidecarImageName, sidecarImageVersion),
+			app.SESConditionsParameter:        sesIdentityCondition,
 		},
 		custom:              environment.Vars,
 		crossEnvSNSPrefixes: crossEnvSNS,

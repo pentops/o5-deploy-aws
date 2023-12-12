@@ -112,6 +112,15 @@ func mapOutputs(outputs []types.Output) []*deployer_pb.KeyValue {
 
 func summarizeStackStatus(stack *types.Stack) (StackStatus, error) {
 
+	if stack == nil {
+		return StackStatus{
+			StackStatus: "MISSING",
+			SummaryType: deployer_pb.StackLifecycle_MISSING,
+			Stable:      true,
+			IsOK:        false,
+		}, nil
+	}
+
 	lifecycle, err := stackLifecycle(stack.StackStatus)
 	if err != nil {
 		return StackStatus{}, err
