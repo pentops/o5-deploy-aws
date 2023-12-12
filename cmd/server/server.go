@@ -24,12 +24,12 @@ import (
 	"github.com/pentops/o5-go/github/v1/github_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_tpb"
 	"github.com/pentops/outbox.pg.go/outbox"
+	"github.com/pentops/sqrlx.go/sqrlx"
 	"github.com/pressly/goose"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"gopkg.daemonl.com/envconf"
-	"gopkg.daemonl.com/sqrlx"
 )
 
 var Version string

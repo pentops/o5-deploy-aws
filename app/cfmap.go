@@ -31,6 +31,7 @@ const (
 	SNSPrefixParameter            = "SNSPrefix"
 	S3BucketNamespaceParameter    = "S3BucketNamespace"
 	O5SidecarImageParameter       = "O5SidecarImage"
+	SESConditionsParameter        = "SESConditions"
 
 	AWSAccountIDParameter = "AWS::AccountId"
 
@@ -89,6 +90,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		SNSPrefixParameter,
 		S3BucketNamespaceParameter,
 		O5SidecarImageParameter,
+		SESConditionsParameter,
 	} {
 		parameter := &deployer_pb.Parameter{
 			Name: key,
@@ -268,6 +270,12 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 				target.Name,
 			})
 			runtimeStack.Policy.AddSNSPublish(snsTopicARN)
+		}
+
+		if app.AwsConfig != nil {
+			if app.AwsConfig.Ses != nil {
+				runtimeStack.Policy.AddSES(app.AwsConfig.Ses)
+			}
 		}
 
 		if err := runtimeStack.Apply(stackTemplate); err != nil {

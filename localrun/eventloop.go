@@ -222,6 +222,9 @@ func (lel *EventLoop) handleSideEffect(ctx context.Context, msg proto.Message) (
 
 	case *deployer_tpb.RunDatabaseMigrationMessage:
 		return lel.awsRunner.RunDatabaseMigration(ctx, msg)
+
+	case *deployer_tpb.DeploymentCompleteMessage:
+		return msg, nil
 	}
 
 	return nil, fmt.Errorf("unknown side effect message type: %T", msg)

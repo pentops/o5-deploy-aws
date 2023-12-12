@@ -26,11 +26,12 @@ require (
 	github.com/pentops/flowtest v0.0.0-20231207025638-a8f7c46b7ce6
 	github.com/pentops/jsonapi v0.0.0-20231204063925-7b8e60efa2d6
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
-	github.com/pentops/o5-go v0.0.0-20231207061619-6abebc4cc62a
+	github.com/pentops/o5-go v0.0.0-20231211234932-9e9c4d039e8d
 	github.com/pentops/o5-runtime-sidecar v0.0.6-0.20231205021239-a1b5bd043ad2
-	github.com/pentops/outbox.pg.go v0.0.0-20230801052616-dc5e96f581f8
+	github.com/pentops/outbox.pg.go v0.0.0-20231212041111-be5dfe6bec65
 	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb
-	github.com/pentops/protostate v0.0.0-20231207070729-0cc0d9a881cc
+	github.com/pentops/protostate v0.0.0-20231212043328-0ceaea83a523
+	github.com/pentops/sqrlx.go v0.0.0-20231212035131-ba083cf9eeb0
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/rs/cors v1.10.1
 	github.com/stretchr/testify v1.8.4
@@ -41,7 +42,6 @@ require (
 	google.golang.org/grpc v1.59.0
 	google.golang.org/protobuf v1.31.1-0.20231027082548-f4a6c1f6e5c1
 	gopkg.daemonl.com/envconf v0.0.0-20220909014755-d65ec77bd452
-	gopkg.daemonl.com/sqrlx v0.0.26-0.20231109230408-4e2718f3736f
 )
 
 require (
@@ -96,6 +96,7 @@ require (
 	google.golang.org/genproto v0.0.0-20231127180814-3a041ad873d4 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20231127180814-3a041ad873d4 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20231127180814-3a041ad873d4 // indirect
+	gopkg.daemonl.com/sqrlx v0.0.26-0.20231109230408-4e2718f3736f // indirect
 	gopkg.in/square/go-jose.v2 v2.6.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

@@ -11,8 +11,8 @@ import (
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/protostate/psm"
+	"github.com/pentops/sqrlx.go/sqrlx"
 	"gopkg.daemonl.com/envconf"
-	"gopkg.daemonl.com/sqrlx"
 )
 
 func OpenDatabase(ctx context.Context) (*sql.DB, error) {
