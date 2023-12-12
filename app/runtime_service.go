@@ -172,7 +172,7 @@ func (rs *RuntimeService) Apply(template *Application) error {
 				sub.TargetContainer = rs.spec.Containers[0].Name
 			}
 			if sub.Port == 0 {
-				sub.Port = 8081
+				sub.Port = 8080
 			}
 
 			// TODO: This registers the whole endpoint for proto reflection, but isn't hard-linked to
