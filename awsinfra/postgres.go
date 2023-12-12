@@ -17,7 +17,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
-	"gopkg.daemonl.com/sqrlx"
+	"github.com/pentops/sqrlx.go/sqrlx"
 )
 
 type DBMigrator struct {

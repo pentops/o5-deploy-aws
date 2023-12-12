@@ -139,6 +139,7 @@ func (cf *InfraAdapter) RunDatabaseMigration(ctx context.Context, msg *deployer_
 	migrateErr := cf.dbClient.RunDatabaseMigration(ctx, msg)
 
 	if migrateErr != nil {
+		log.WithError(ctx, migrateErr).Error("DB Migration Failed")
 		return &deployer_tpb.MigrationStatusChangedMessage{
 			MigrationId:  msg.MigrationId,
 			DeploymentId: msg.DeploymentId,

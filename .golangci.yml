@@ -17,7 +17,6 @@ linters:
     - staticcheck
     - typecheck
     - unused
-    - varcheck
   disable:
     - wsl
     - maligned

@@ -11,9 +11,9 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/protostate/psm"
+	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"gopkg.daemonl.com/sqrlx"
 )
 
 type DeployerWorker struct {

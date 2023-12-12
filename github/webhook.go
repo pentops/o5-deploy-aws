@@ -12,8 +12,8 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
 	"github.com/pentops/outbox.pg.go/outbox"
+	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"gopkg.daemonl.com/sqrlx"
 )
 
 type IClient interface {
