@@ -63,6 +63,13 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 			ContainerPort: Int(8080),
 		}},
 		Links: serviceLinks,
+		Environment: []ecs.TaskDefinition_KeyValuePair{{
+			Name:  String("SNS_PREFIX"),
+			Value: String(cloudformation.Ref(SNSPrefixParameter)),
+		}, {
+			Name:  String("AWS_REGION"),
+			Value: String(cloudformation.Ref(AWSRegionParameter)),
+		}},
 	}
 
 	addLogs(runtimeSidecar, globals.appName)
@@ -265,9 +272,6 @@ func (rs *RuntimeService) Apply(template *Application) error {
 			Name:  String("SERVICE_ENDPOINT"),
 			Value: String(strings.Join(ingressEndpoints, ",")),
 		}, ecs.TaskDefinition_KeyValuePair{
-			Name:  String("AWS_REGION"),
-			Value: String(cloudformation.Ref(AWSRegionParameter)),
-		}, ecs.TaskDefinition_KeyValuePair{
 			Name:  String("JWKS"),
 			Value: String(cloudformation.Ref(JWKSParameter)),
 		})
@@ -288,10 +292,6 @@ func (rs *RuntimeService) Apply(template *Application) error {
 		rs.IngressContainer.Secrets = append(rs.IngressContainer.Secrets, ecs.TaskDefinition_Secret{
 			Name:      "POSTGRES_OUTBOX",
 			ValueFrom: db.SecretValueFrom(),
-		})
-		rs.IngressContainer.Environment = append(rs.IngressContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  String("SNS_PREFIX"),
-			Value: String(cloudformation.Ref(SNSPrefixParameter)),
 		})
 	}
 

@@ -231,7 +231,7 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		postgresURL := envMap["POSTGRES_OUTBOX"]
 		sqsURL := envMap["SQS_URL"]
 		snsPrefix := envMap["SNS_PREFIX"]
-		jwks := strings.Split(envMap["JWKS"], ",")
+		jwks := cleanStringSplit(envMap["JWKS"], ",")
 		service := envMap["SERVICE_ENDPOINT"]
 
 		if postgresURL != "" || sqsURL != "" {
@@ -285,6 +285,19 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 	}
 
 	return eg.Wait()
+}
+
+func cleanStringSplit(src string, delim string) []string {
+	parts := strings.Split(src, delim)
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		out = append(out, part)
+	}
+	return out
 }
 
 func buildEnvironment(ctx context.Context, container *ecs.TaskDefinition_ContainerDefinition, refs map[string]string, ssm *secretsmanager.Client) ([]string, error) {
