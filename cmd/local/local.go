@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -9,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -140,6 +140,15 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 	refs["AWS::Region"] = awsTarget.Region
 	refs["AWS::StackName"] = fmt.Sprintf("%s-%s", env.FullName, app.AppName())
 
+	ctx, cancel := context.WithCancel(ctx)
+	go func() {
+		sigInt := make(chan os.Signal, 1)
+		signal.Notify(sigInt, os.Interrupt)
+		<-sigInt
+		log.Info(ctx, "Got Interrupt, Shutting down")
+		cancel()
+	}()
+
 	eg, ctx := errgroup.WithContext(ctx)
 
 	var mainCommand *exec.Cmd
@@ -151,11 +160,21 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 	}
 	buildMain := func() *exec.Cmd {
 		parts := strings.Split(flagConfig.command, " ")
-		cmd := exec.CommandContext(ctx, parts[0], parts[1:]...)
+		cmd := exec.Command(parts[0], parts[1:]...)
 		cmd.Dir = flagConfig.workdir
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Env = mainEnvVars
+
+		go func() {
+			<-ctx.Done()
+			log.Info(ctx, "context canceled, killing command")
+			if err := cmd.Process.Signal(os.Interrupt); err != nil {
+				log.WithError(ctx, err).Error("failed to kill process")
+			} else {
+				log.Info(ctx, "killed process")
+			}
+		}()
 		return cmd
 	}
 	mainCommand = buildMain()
@@ -167,34 +186,6 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		}
 		log.Info(ctx, "command exited with no error")
 		return nil
-	})
-
-	eg.Go(func() error {
-		reader := bufio.NewReader(os.Stdin)
-		for {
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				return err
-			}
-			fmt.Printf("read line: %s-\n", line)
-			switch line {
-			case "reload\n":
-				fmt.Printf("reloading\n")
-				if err := mainCommand.Process.Signal(os.Interrupt); err != nil {
-					return err
-				}
-				mainCommand = buildMain()
-				eg.Go(func() error {
-					err := mainCommand.Run()
-					if err != nil {
-						return fmt.Errorf("command failed: %w", err)
-					}
-					log.Info(ctx, "command exited with no error")
-					return nil
-				})
-			}
-
-		}
 	})
 
 	{
@@ -231,7 +222,7 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		postgresURL := envMap["POSTGRES_OUTBOX"]
 		sqsURL := envMap["SQS_URL"]
 		snsPrefix := envMap["SNS_PREFIX"]
-		jwks := strings.Split(envMap["JWKS"], ",")
+		jwks := cleanStringSplit(envMap["JWKS"], ",")
 		service := envMap["SERVICE_ENDPOINT"]
 
 		if postgresURL != "" || sqsURL != "" {
@@ -277,6 +268,7 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		eg.Go(func() error {
 			err := runner.Run(ctx)
 			if err != nil {
+				log.WithError(ctx, err).Error("runner failed")
 				return fmt.Errorf("runner failed: %w", err)
 			}
 			log.Info(ctx, "runner exited with no error")
@@ -285,6 +277,19 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 	}
 
 	return eg.Wait()
+}
+
+func cleanStringSplit(src string, delim string) []string {
+	parts := strings.Split(src, delim)
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		out = append(out, part)
+	}
+	return out
 }
 
 func buildEnvironment(ctx context.Context, container *ecs.TaskDefinition_ContainerDefinition, refs map[string]string, ssm *secretsmanager.Client) ([]string, error) {

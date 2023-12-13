@@ -33,7 +33,7 @@ type Universe struct {
 	S3     *S3Mock
 
 	Outbox *outboxtest.OutboxAsserter
-	*flowtest.Stepper
+	*flowtest.Stepper[*testing.T]
 }
 
 type S3Mock struct {
@@ -82,7 +82,7 @@ func (gm *GithubMock) PullO5Configs(ctx context.Context, org string, repo string
 
 func NewUniverse(ctx context.Context, t testing.TB) *Universe {
 	name := t.Name()
-	stepper := flowtest.NewStepper(name)
+	stepper := flowtest.NewStepper[*testing.T](name)
 	uu := &Universe{
 		Stepper: stepper,
 	}

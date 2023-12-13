@@ -208,6 +208,11 @@ func (ss *Application) Build() *BuiltApplication {
 }
 
 func (ss *Application) AddSNSTopic(name string) {
+	for _, topic := range ss.snsTopics {
+		if topic.Name == name {
+			return
+		}
+	}
 	ss.snsTopics[name] = &SNSTopic{
 		Name: name,
 	}

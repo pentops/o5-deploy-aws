@@ -23,11 +23,11 @@ require (
 	github.com/google/go-github/v47 v47.1.0
 	github.com/google/uuid v1.4.0
 	github.com/lib/pq v1.10.9
-	github.com/pentops/flowtest v0.0.0-20231207025638-a8f7c46b7ce6
-	github.com/pentops/jsonapi v0.0.0-20231204063925-7b8e60efa2d6
+	github.com/pentops/flowtest v0.0.0-20231208213652-010393b9641f
+	github.com/pentops/jsonapi v0.0.0-20231213035817-fca84e684305
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
 	github.com/pentops/o5-go v0.0.0-20231211234932-9e9c4d039e8d
-	github.com/pentops/o5-runtime-sidecar v0.0.6-0.20231205021239-a1b5bd043ad2
+	github.com/pentops/o5-runtime-sidecar v0.0.6-0.20231213040929-fa29c94f9a12
 	github.com/pentops/outbox.pg.go v0.0.0-20231212041111-be5dfe6bec65
 	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb
 	github.com/pentops/protostate v0.0.0-20231212043328-0ceaea83a523
@@ -79,6 +79,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/pentops/jwtauth v0.0.0-20231205014011-d7e6a902638d // indirect
 	github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53 // indirect
+	github.com/pentops/runner v0.0.0-20231213035841-aa3959800a1b // indirect
 	github.com/pentops/sugar-go v0.0.0-20231029194349-ec12ec0132c5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
@@ -88,7 +89,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	golang.org/x/crypto v0.16.0 // indirect
-	golang.org/x/exp v0.0.0-20231127185646-65229373498e // indirect
+	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb // indirect
 	golang.org/x/net v0.19.0 // indirect
 	golang.org/x/sys v0.15.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
