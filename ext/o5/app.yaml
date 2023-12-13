@@ -39,6 +39,9 @@ runtimes:
         protocol: ROUTE_PROTOCOL_HTTP
         bypass_ingress: true
         port: 8081
+      - prefix: "/deployer/v1/"
+        protocol: ROUTE_PROTOCOL_HTTP
+        port: 8080
 
     subscriptions:
       - name: "webhook-github"

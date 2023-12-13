@@ -26,7 +26,7 @@ require (
 	github.com/pentops/flowtest v0.0.0-20231208213652-010393b9641f
 	github.com/pentops/jsonapi v0.0.0-20231213035817-fca84e684305
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
-	github.com/pentops/o5-go v0.0.0-20231213044825-98cac41db220
+	github.com/pentops/o5-go v0.0.0-20231213232036-0c995a3b33e6
 	github.com/pentops/o5-runtime-sidecar v0.0.6-0.20231213060634-d7af96f1d448
 	github.com/pentops/outbox.pg.go v0.0.0-20231212041111-be5dfe6bec65
 	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb
@@ -102,9 +102,3 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/pentops/runner => /Users/daemonl/pentops/runner
-
-replace github.com/pentops/o5-runtime-sidecar => /Users/daemonl/pentops/o5-runtime-sidecar
-
-replace github.com/pentops/jwtauth => /Users/daemonl/pentops/jwtauth

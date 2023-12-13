@@ -14,6 +14,17 @@ type ContainerDefinition struct {
 	Parameters map[string]*deployer_pb.Parameter
 }
 
+func ensureEnvVar(envVars *[]ecs.TaskDefinition_KeyValuePair, name string, value *string) {
+	for _, envVar := range *envVars {
+		if *envVar.Name == name {
+			return
+		}
+	}
+	*envVars = append(*envVars, ecs.TaskDefinition_KeyValuePair{
+		Name:  &name,
+		Value: value,
+	})
+}
 func buildContainer(globals globalData, def *application_pb.Container) (*ContainerDefinition, error) {
 	container := &ecs.TaskDefinition_ContainerDefinition{
 		Name:      def.Name,
@@ -100,10 +111,7 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 				Name:  String(envVar.Name),
 				Value: value,
 			})
-			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  String("AWS_REGION"),
-				Value: cloudformation.RefPtr("AWS::Region"),
-			})
+			ensureEnvVar(&container.Environment, "AWS_REGION", cloudformation.RefPtr("AWS::Region"))
 
 		case *application_pb.EnvironmentVariable_Secret:
 			secretName := varType.Secret.SecretName
