@@ -38,7 +38,7 @@ runtimes:
       - prefix: "/registry/v1/"
         protocol: ROUTE_PROTOCOL_HTTP
         bypass_ingress: true
-        port: 8080
+        port: 8081
 
     subscriptions:
       - name: "webhook-github"
@@ -75,6 +75,8 @@ runtimes:
               name: cf-templates
               s3_direct: true
           - name: REGISTRY_PORT
+            value: "8081"
+          - name: GRPC_PORT
             value: "8080"
           - name: REGISTRY_BUCKET
             blobstore:

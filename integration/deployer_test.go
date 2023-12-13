@@ -41,12 +41,6 @@ func TestCreateHappy(t *testing.T) {
 
 		uu.Outbox.PopMessage(t, initialTrigger)
 		t.Log(protojson.Format(initialTrigger))
-
-		templateContent, ok := uu.S3.MockGetHTTP(initialTrigger.Spec.TemplateUrl)
-		if !ok {
-			t.Fatalf("template not found: %s", initialTrigger.Spec.TemplateUrl)
-		}
-		t.Log(string(templateContent))
 	})
 
 	triggerMessage := &deployer_tpb.TriggerDeploymentMessage{}
@@ -210,18 +204,18 @@ func TestStackLock(t *testing.T) {
 
 	firstDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
 		DeploymentId: uuid.NewString(),
-		Spec: &deployer_pb.DeploymentSpec{
-			AppName:         "app",
-			Version:         "1",
-			EnvironmentName: "env",
-			QuickMode:       true,
+		Application: &application_pb.Application{
+			Name: "app",
 		},
+		Version:         "1",
+		EnvironmentName: "env",
 	}
 
 	awsStack := &cfMock{uu: uu}
 
 	firstTriggerMessage := &deployer_tpb.TriggerDeploymentMessage{}
 	uu.Step("Request First", func(t flowtest.Asserter) {
+		uu.SpecBuilder.QuickMode = true
 		// Stack:  [*] --> CREATING : Trigger
 		// Deployment: [*] --> QUEUED : Created
 		_, err := uu.DeployerTopic.RequestDeployment(ctx, firstDeploymentRequest)
@@ -268,13 +262,10 @@ func TestStackLock(t *testing.T) {
 	})
 
 	secondDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
-		DeploymentId: uuid.NewString(),
-		Spec: &deployer_pb.DeploymentSpec{
-			AppName:         "app",
-			Version:         "2",
-			EnvironmentName: "env",
-			QuickMode:       true,
-		},
+		DeploymentId:    uuid.NewString(),
+		Application:     firstDeploymentRequest.Application,
+		Version:         "2",
+		EnvironmentName: "env",
 	}
 
 	uu.Step("Request a second deployment", func(t flowtest.Asserter) {
@@ -383,13 +374,10 @@ func TestStackLock(t *testing.T) {
 	uu.Step("A third deployment should begin immediately", func(t flowtest.Asserter) {
 
 		thirdDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
-			DeploymentId: uuid.NewString(),
-			Spec: &deployer_pb.DeploymentSpec{
-				AppName:         "app",
-				Version:         "3",
-				EnvironmentName: "env",
-				QuickMode:       true,
-			},
+			DeploymentId:    uuid.NewString(),
+			Application:     firstDeploymentRequest.Application,
+			Version:         "3",
+			EnvironmentName: "env",
 		}
 
 		// Stack: AVAILABLE --> MIGRATING : Trigger

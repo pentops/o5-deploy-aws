@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	sq "github.com/elgris/sqrl"
+	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
@@ -20,33 +20,27 @@ type IClient interface {
 	PullO5Configs(ctx context.Context, org string, repo string, commit string) ([]*application_pb.Application, error)
 }
 
-type IDeployer interface {
-	BuildTrigger(ctx context.Context, app *app.BuiltApplication, envName string) (*deployer_tpb.RequestDeploymentMessage, error)
-}
-
 type RefMatcher interface {
 	PushTargets(*github_pb.PushMessage) []string
 }
 
 type WebhookWorker struct {
-	github   IClient
-	deployer IDeployer
-	refs     RefMatcher
-	db       *sqrlx.Wrapper
+	github IClient
+	refs   RefMatcher
+	db     *sqrlx.Wrapper
 
 	github_pb.UnimplementedWebhookTopicServer
 }
 
-func NewWebhookWorker(conn sqrlx.Connection, githubClient IClient, deployer IDeployer, refs RefMatcher) (*WebhookWorker, error) {
+func NewWebhookWorker(conn sqrlx.Connection, githubClient IClient, refs RefMatcher) (*WebhookWorker, error) {
 	db, err := sqrlx.New(conn, sq.Dollar)
 	if err != nil {
 		return nil, err
 	}
 	return &WebhookWorker{
-		github:   githubClient,
-		deployer: deployer,
-		refs:     refs,
-		db:       db,
+		github: githubClient,
+		refs:   refs,
+		db:     db,
 	}, nil
 }
 
@@ -79,21 +73,16 @@ func (ww *WebhookWorker) Push(ctx context.Context, event *github_pb.PushMessage)
 		return nil, fmt.Errorf("multiple applications found in push event, not yet supported")
 	}
 
-	appStack, err := app.BuildApplication(apps[0], event.After)
-	if err != nil {
-		return nil, err
-	}
-
-	built := appStack.Build()
-
 	var triggers []outbox.OutboxMessage
 
 	for _, envName := range targetEnvNames {
-		trigger, err := ww.deployer.BuildTrigger(ctx, built, envName)
-		if err != nil {
-			return nil, err
-		}
-		triggers = append(triggers, trigger)
+
+		triggers = append(triggers, &deployer_tpb.RequestDeploymentMessage{
+			DeploymentId:    uuid.NewString(),
+			Application:     apps[0],
+			Version:         event.After,
+			EnvironmentName: envName,
+		})
 	}
 
 	err = ww.db.Transact(ctx, &sqrlx.TxOptions{

@@ -29,6 +29,8 @@ type Universe struct {
 	GithubWebhookTopic github_pb.WebhookTopicClient
 	DeployerQuery      deployer_spb.DeploymentQueryServiceClient
 
+	SpecBuilder *deployer.SpecBuilder
+
 	Github *GithubMock
 	S3     *S3Mock
 
@@ -115,22 +117,23 @@ func (uu *Universe) RunSteps(t *testing.T) {
 
 	uu.Outbox = outboxtest.NewOutboxAsserter(t, conn)
 
-	trigger, err := deployer.NewTrigger(environments, "bucket", uu.S3)
+	trigger, err := deployer.NewSpecBuilder(environments, "bucket", uu.S3)
 	if err != nil {
 		t.Fatal(err)
 	}
+	uu.SpecBuilder = trigger
 
 	topicPair := flowtest.NewGRPCPair(t)
 	servicePair := flowtest.NewGRPCPair(t) // TODO: Middleware
 
-	deploymentWorker, err := deployer.NewDeployerWorker(conn)
+	deploymentWorker, err := deployer.NewDeployerWorker(conn, trigger)
 	if err != nil {
 		t.Fatal(err)
 	}
 	deployer_tpb.RegisterDeployerTopicServer(topicPair.Server, deploymentWorker)
 	uu.DeployerTopic = deployer_tpb.NewDeployerTopicClient(topicPair.Client)
 
-	githubWorker, err := github.NewWebhookWorker(conn, uu.Github, trigger, uu.Github)
+	githubWorker, err := github.NewWebhookWorker(conn, uu.Github, uu.Github)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +141,7 @@ func (uu *Universe) RunSteps(t *testing.T) {
 	github_pb.RegisterWebhookTopicServer(topicPair.Server, githubWorker)
 	uu.GithubWebhookTopic = github_pb.NewWebhookTopicClient(topicPair.Client)
 
-	deployerQuery, err := service.NewDeployerService(conn)
+	deployerQuery, err := service.NewDeployerService(conn, uu.Github)
 	if err != nil {
 		t.Fatal(err)
 	}

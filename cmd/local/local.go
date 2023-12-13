@@ -25,9 +25,9 @@ import (
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-runtime-sidecar/outbox"
-	"github.com/pentops/o5-runtime-sidecar/runner"
+	sidecar_runner "github.com/pentops/o5-runtime-sidecar/runner"
 	"github.com/pentops/o5-runtime-sidecar/sqslink"
-	"golang.org/x/sync/errgroup"
+	"github.com/pentops/runner"
 )
 
 type flagConfig struct {
@@ -149,7 +149,7 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		cancel()
 	}()
 
-	eg, ctx := errgroup.WithContext(ctx)
+	runGroup := runner.NewGroup(runner.WithName("local"), runner.WithCancelOnSignals())
 
 	var mainCommand *exec.Cmd
 
@@ -166,20 +166,20 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		cmd.Stderr = os.Stderr
 		cmd.Env = mainEnvVars
 
+		return cmd
+	}
+	mainCommand = buildMain()
+
+	runGroup.Add("main", func(ctx context.Context) error {
 		go func() {
 			<-ctx.Done()
 			log.Info(ctx, "context canceled, killing command")
-			if err := cmd.Process.Signal(os.Interrupt); err != nil {
+			if err := mainCommand.Process.Signal(os.Interrupt); err != nil {
 				log.WithError(ctx, err).Error("failed to kill process")
 			} else {
 				log.Info(ctx, "killed process")
 			}
 		}()
-		return cmd
-	}
-	mainCommand = buildMain()
-
-	eg.Go(func() error {
 		err := mainCommand.Run()
 		if err != nil {
 			return fmt.Errorf("command failed: %w", err)
@@ -191,7 +191,7 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 	{
 
 		ctx := log.WithField(ctx, "runtime", "sidecar")
-		runner := runner.NewRuntime()
+		sidecar := sidecar_runner.NewRuntime()
 
 		container := mainRuntime.IngressContainer
 
@@ -229,26 +229,26 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 			if snsPrefix == "" {
 				return fmt.Errorf("missing SNS_PREFIX for Postgres outbox")
 			}
-			runner.Sender = outbox.NewSNSBatcher(sns.NewFromConfig(awsConfig), snsPrefix)
+			sidecar.Sender = outbox.NewSNSBatcher(sns.NewFromConfig(awsConfig), snsPrefix)
 		}
 
 		if postgresURL != "" {
-			if err := runner.AddOutbox(ctx, postgresURL); err != nil {
+			if err := sidecar.AddOutbox(ctx, postgresURL); err != nil {
 				return err
 			}
 		}
 
 		if sqsURL != "" {
 			sqsClient := sqs.NewFromConfig(awsConfig)
-			runner.Worker = sqslink.NewWorker(sqsClient, sqsURL, runner.Sender)
+			sidecar.Worker = sqslink.NewWorker(sqsClient, sqsURL, sidecar.Sender)
 		}
 
-		if err := runner.AddRouter(8888, codecOptions); err != nil {
+		if err := sidecar.AddRouter(8888, codecOptions); err != nil {
 			return fmt.Errorf("add router: %w", err)
 		}
 
 		if len(jwks) > 0 {
-			if err := runner.AddJWKS(ctx, jwks...); err != nil {
+			if err := sidecar.AddJWKS(ctx, jwks...); err != nil {
 				return fmt.Errorf("add JWKS: %w", err)
 			}
 		}
@@ -260,23 +260,15 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 				continue
 			}
 			endpoint = strings.ReplaceAll(endpoint, "main", "localhost")
-			if err := runner.AddEndpoint(ctx, endpoint); err != nil {
+			if err := sidecar.AddEndpoint(ctx, endpoint); err != nil {
 				return fmt.Errorf("add endpoint %s: %w", endpoint, err)
 			}
 		}
 
-		eg.Go(func() error {
-			err := runner.Run(ctx)
-			if err != nil {
-				log.WithError(ctx, err).Error("runner failed")
-				return fmt.Errorf("runner failed: %w", err)
-			}
-			log.Info(ctx, "runner exited with no error")
-			return nil
-		})
+		runGroup.Add("sidecar", sidecar.Run)
 	}
 
-	return eg.Wait()
+	return runGroup.Run(ctx)
 }
 
 func cleanStringSplit(src string, delim string) []string {

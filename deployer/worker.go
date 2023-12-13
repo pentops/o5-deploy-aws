@@ -20,11 +20,12 @@ type DeployerWorker struct {
 	*deployer_tpb.UnimplementedDeployerTopicServer
 	db *sqrlx.Wrapper
 
+	specBuilder       *SpecBuilder
 	stackEventer      *deployer_pb.StackPSM
 	deploymentEventer *deployer_pb.DeploymentPSM
 }
 
-func NewDeployerWorker(conn sqrlx.Connection) (*DeployerWorker, error) {
+func NewDeployerWorker(conn sqrlx.Connection, specBuilder *SpecBuilder) (*DeployerWorker, error) {
 	db, err := sqrlx.New(conn, sq.Dollar)
 	if err != nil {
 		return nil, err
@@ -42,6 +43,7 @@ func NewDeployerWorker(conn sqrlx.Connection) (*DeployerWorker, error) {
 
 	return &DeployerWorker{
 		db:                db,
+		specBuilder:       specBuilder,
 		stackEventer:      stackEventer,
 		deploymentEventer: deploymentEventer,
 	}, nil
@@ -100,6 +102,12 @@ func (dw *DeployerWorker) TriggerDeployment(ctx context.Context, msg *deployer_t
 }
 
 func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_tpb.RequestDeploymentMessage) (*emptypb.Empty, error) {
+
+	spec, err := dw.specBuilder.BuildSpec(ctx, msg)
+	if err != nil {
+		return nil, err
+	}
+
 	createDeploymentEvent := &deployer_pb.DeploymentEvent{
 		DeploymentId: msg.DeploymentId,
 		Metadata: &deployer_pb.EventMetadata{
@@ -109,14 +117,14 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 		Event: &deployer_pb.DeploymentEventType{
 			Type: &deployer_pb.DeploymentEventType_Created_{
 				Created: &deployer_pb.DeploymentEventType_Created{
-					Spec: msg.Spec,
+					Spec: spec,
 				},
 			},
 		},
 	}
 
 	evt := &deployer_pb.StackEvent{
-		StackId: StackID(msg.Spec.EnvironmentName, msg.Spec.AppName),
+		StackId: StackID(spec.EnvironmentName, spec.AppName),
 		Metadata: &deployer_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
@@ -126,7 +134,7 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 				Triggered: &deployer_pb.StackEventType_Triggered{
 					Deployment: &deployer_pb.StackDeployment{
 						DeploymentId: msg.DeploymentId,
-						Version:      msg.Spec.Version,
+						Version:      spec.Version,
 					},
 				},
 			},

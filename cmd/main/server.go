@@ -19,14 +19,15 @@ import (
 	"github.com/pentops/o5-deploy-aws/japi"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-deploy-aws/service"
+	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_tpb"
 	"github.com/pentops/outbox.pg.go/outbox"
+	"github.com/pentops/runner"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"github.com/pressly/goose"
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"gopkg.daemonl.com/envconf"
@@ -127,7 +128,7 @@ func runRegistry(ctx context.Context) error {
 func runServe(ctx context.Context) error {
 	type envConfig struct {
 		ConfigFile string `env:"CONFIG_FILE"`
-		WorkerPort int    `env:"WORKER_PORT" default:"8081"`
+		GRPCPort   int    `env:"GRPC_PORT" default:"8081"`
 
 		RegistryPort   int    `env:"REGISTRY_PORT" default:""`
 		RegistryBucket string `env:"REGISTRY_BUCKET" default:""`
@@ -141,7 +142,7 @@ func runServe(ctx context.Context) error {
 		return err
 	}
 
-	log.WithField(ctx, "PORT", cfg.WorkerPort).Info("Boot")
+	log.WithField(ctx, "PORT", cfg.GRPCPort).Info("Boot")
 
 	awsConfig, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -183,12 +184,12 @@ func runServe(ctx context.Context) error {
 	awsInfraRunner := awsinfra.NewInfraWorker(clientSet, outbox)
 	awsInfraRunner.CallbackARNs = []string{cfg.CallbackARN}
 
-	deploymentWorker, err := deployer.NewDeployerWorker(db)
+	specBuilder, err := deployer.NewSpecBuilder(environments, cfg.CFTemplates, s3Client)
 	if err != nil {
 		return err
 	}
 
-	deploymentManager, err := deployer.NewTrigger(environments, cfg.CFTemplates, s3Client)
+	deploymentWorker, err := deployer.NewDeployerWorker(db, specBuilder)
 	if err != nil {
 		return err
 	}
@@ -205,30 +206,37 @@ func runServe(ctx context.Context) error {
 	githubWorker, err := github.NewWebhookWorker(
 		db,
 		githubClient,
-		deploymentManager,
 		refLookup,
 	)
 	if err != nil {
 		return err
 	}
 
-	eg, ctx := errgroup.WithContext(ctx)
-	eg.Go(func() error {
+	service, err := service.NewDeployerService(db, githubClient)
+	if err != nil {
+		return err
+	}
+
+	runGroup := runner.NewGroup(runner.WithName("main"), runner.WithCancelOnSignals())
+
+	runGroup.Add("grpcServer", func(ctx context.Context) error {
 		grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(
 			grpc_log.UnaryServerInterceptor(log.DefaultContext, log.DefaultTrace, log.DefaultLogger),
 		))
 		github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
+		deployer_spb.RegisterDeploymentQueryServiceServer(grpcServer, service)
+		deployer_spb.RegisterDeploymentCommandServiceServer(grpcServer, service)
 		deployer_tpb.RegisterAWSCommandTopicServer(grpcServer, awsInfraRunner)
 		deployer_tpb.RegisterDeployerTopicServer(grpcServer, deploymentWorker)
 		messaging_tpb.RegisterRawMessageTopicServer(grpcServer, awsInfraRunner)
 
 		reflection.Register(grpcServer)
 
-		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.WorkerPort))
+		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
 		if err != nil {
 			return err
 		}
-		log.WithField(ctx, "port", cfg.WorkerPort).Info("Begin Worker Server")
+		log.WithField(ctx, "port", cfg.GRPCPort).Info("Begin Worker Server")
 		go func() {
 			<-ctx.Done()
 			grpcServer.GracefulStop() // nolint:errcheck
@@ -238,7 +246,7 @@ func runServe(ctx context.Context) error {
 	})
 
 	if cfg.RegistryPort != 0 {
-		eg.Go(func() error {
+		runGroup.Add("registryServer", func(ctx context.Context) error {
 			handler, err := japi.NewRegistry(ctx, s3Client, cfg.RegistryBucket)
 			if err != nil {
 				return err
@@ -259,7 +267,7 @@ func runServe(ctx context.Context) error {
 		})
 	}
 
-	return eg.Wait()
+	return runGroup.Run(ctx)
 }
 
 type outboxSender struct {

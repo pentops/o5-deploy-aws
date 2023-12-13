@@ -22,7 +22,7 @@ type Environment struct {
 	AWS         *environment_pb.AWS
 }
 
-type Trigger struct {
+type SpecBuilder struct {
 	RotateSecrets bool
 	CancelUpdates bool
 	QuickMode     bool
@@ -48,30 +48,37 @@ func (es EnvList) GetEnvironment(ctx context.Context, name string) (*environment
 	return nil, fmt.Errorf("environment %q not found", name)
 }
 
-func NewTrigger(storage EnvironmentStore, cfTemplateBucket string, s3Client awsinfra.S3API) (*Trigger, error) {
+func NewSpecBuilder(storage EnvironmentStore, cfTemplateBucket string, s3Client awsinfra.S3API) (*SpecBuilder, error) {
 	cfTemplateBucket = strings.TrimPrefix(cfTemplateBucket, "s3://")
-	return &Trigger{
+	return &SpecBuilder{
 		s3Client:         s3Client,
 		storage:          storage,
 		cfTemplateBucket: cfTemplateBucket,
 	}, nil
 }
 
-func (dd *Trigger) BuildTrigger(ctx context.Context, app *app.BuiltApplication, envName string) (*deployer_tpb.RequestDeploymentMessage, error) {
+func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage) (*deployer_pb.DeploymentSpec, error) {
+
+	appStack, err := app.BuildApplication(trigger.Application, trigger.Version)
+	if err != nil {
+		return nil, err
+	}
+
+	app := appStack.Build()
 
 	ctx = log.WithFields(ctx, map[string]interface{}{
 		"appName":     app.Name,
-		"environment": envName,
+		"environment": trigger.EnvironmentName,
 	})
 
-	environment, err := dd.storage.GetEnvironment(ctx, envName)
+	environment, err := dd.storage.GetEnvironment(ctx, trigger.EnvironmentName)
 	if err != nil {
 		return nil, err
 	}
 
 	awsEnv := environment.GetAws()
 	if awsEnv == nil {
-		return nil, fmt.Errorf("environment %s is not an AWS environment", envName)
+		return nil, fmt.Errorf("environment %s is not an AWS environment", trigger.EnvironmentName)
 	}
 
 	deploymentID := uuid.NewString()
@@ -141,8 +148,5 @@ func (dd *Trigger) BuildTrigger(ctx context.Context, app *app.BuiltApplication, 
 		EcsCluster: awsEnv.EcsClusterName,
 	}
 
-	return &deployer_tpb.RequestDeploymentMessage{
-		DeploymentId: deploymentID,
-		Spec:         spec,
-	}, nil
+	return spec, nil
 }

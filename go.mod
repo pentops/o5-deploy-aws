@@ -26,18 +26,18 @@ require (
 	github.com/pentops/flowtest v0.0.0-20231208213652-010393b9641f
 	github.com/pentops/jsonapi v0.0.0-20231213035817-fca84e684305
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
-	github.com/pentops/o5-go v0.0.0-20231211234932-9e9c4d039e8d
-	github.com/pentops/o5-runtime-sidecar v0.0.6-0.20231213040929-fa29c94f9a12
+	github.com/pentops/o5-go v0.0.0-20231213044825-98cac41db220
+	github.com/pentops/o5-runtime-sidecar v0.0.6-0.20231213060634-d7af96f1d448
 	github.com/pentops/outbox.pg.go v0.0.0-20231212041111-be5dfe6bec65
 	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb
 	github.com/pentops/protostate v0.0.0-20231212043328-0ceaea83a523
+	github.com/pentops/runner v0.0.0-20231213223209-1b3a097f761d
 	github.com/pentops/sqrlx.go v0.0.0-20231212035131-ba083cf9eeb0
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/rs/cors v1.10.1
 	github.com/stretchr/testify v1.8.4
 	github.com/tidwall/sjson v1.2.5
 	golang.org/x/oauth2 v0.15.0
-	golang.org/x/sync v0.5.0
 	golang.org/x/text v0.14.0
 	google.golang.org/grpc v1.59.0
 	google.golang.org/protobuf v1.31.1-0.20231027082548-f4a6c1f6e5c1
@@ -77,9 +77,8 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/pentops/jwtauth v0.0.0-20231205014011-d7e6a902638d // indirect
+	github.com/pentops/jwtauth v0.0.0-20231213223244-afbf4e9e3283 // indirect
 	github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53 // indirect
-	github.com/pentops/runner v0.0.0-20231213035841-aa3959800a1b // indirect
 	github.com/pentops/sugar-go v0.0.0-20231029194349-ec12ec0132c5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
@@ -91,6 +90,7 @@ require (
 	golang.org/x/crypto v0.16.0 // indirect
 	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb // indirect
 	golang.org/x/net v0.19.0 // indirect
+	golang.org/x/sync v0.5.0 // indirect
 	golang.org/x/sys v0.15.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
@@ -102,3 +102,9 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/pentops/runner => /Users/daemonl/pentops/runner
+
+replace github.com/pentops/o5-runtime-sidecar => /Users/daemonl/pentops/o5-runtime-sidecar
+
+replace github.com/pentops/jwtauth => /Users/daemonl/pentops/jwtauth

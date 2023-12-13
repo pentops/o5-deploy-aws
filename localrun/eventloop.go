@@ -21,20 +21,22 @@ import (
 // same process. Used when running as a standalone tool, e.g. when
 // bootstrapping a new environment.
 type EventLoop struct {
-	validator *protovalidate.Validator
-	storage   *StateStore
-	awsRunner *InfraAdapter
+	validator   *protovalidate.Validator
+	storage     *StateStore
+	awsRunner   *InfraAdapter
+	specBuilder *deployer.SpecBuilder
 }
 
-func NewEventLoop(awsRunner *InfraAdapter, stateStore *StateStore) *EventLoop {
+func NewEventLoop(awsRunner *InfraAdapter, stateStore *StateStore, specBuilder *deployer.SpecBuilder) *EventLoop {
 	validator, err := protovalidate.New()
 	if err != nil {
 		panic(err)
 	}
 	return &EventLoop{
-		awsRunner: awsRunner,
-		storage:   stateStore,
-		validator: validator,
+		awsRunner:   awsRunner,
+		storage:     stateStore,
+		specBuilder: specBuilder,
+		validator:   validator,
 	}
 }
 
@@ -61,6 +63,11 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		return err
 	}
 
+	spec, err := lel.specBuilder.BuildSpec(ctx, trigger)
+	if err != nil {
+		return err
+	}
+
 	deploymentId := trigger.DeploymentId
 
 	tx := lel.storage
@@ -74,7 +81,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		Event: &deployer_pb.DeploymentEventType{
 			Type: &deployer_pb.DeploymentEventType_Created_{
 				Created: &deployer_pb.DeploymentEventType_Created{
-					Spec: trigger.Spec,
+					Spec: spec,
 				},
 			},
 		},

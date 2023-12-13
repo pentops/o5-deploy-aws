@@ -8,12 +8,14 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/google/uuid"
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/localrun"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
 
@@ -126,24 +128,25 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 
 	awsRunner := localrun.NewInfraAdapter(clientSet)
 	stateStore := localrun.NewStateStore()
-	eventLoop := localrun.NewEventLoop(awsRunner, stateStore)
+	deploymentManager, err := deployer.NewSpecBuilder(stateStore, flagConfig.scratchBucket, s3Client)
+	if err != nil {
+		return err
+	}
+	deploymentManager.RotateSecrets = flagConfig.rotateSecrets
+	deploymentManager.CancelUpdates = flagConfig.cancelUpdate
+	deploymentManager.QuickMode = flagConfig.quickMode
+
+	eventLoop := localrun.NewEventLoop(awsRunner, stateStore, deploymentManager)
 
 	if err := stateStore.AddEnvironment(env); err != nil {
 		return err
 	}
 
-	deploymentManager, err := deployer.NewTrigger(stateStore, flagConfig.scratchBucket, s3Client)
-	if err != nil {
-		return err
-	}
-
-	deploymentManager.RotateSecrets = flagConfig.rotateSecrets
-	deploymentManager.CancelUpdates = flagConfig.cancelUpdate
-	deploymentManager.QuickMode = flagConfig.quickMode
-
-	trigger, err := deploymentManager.BuildTrigger(ctx, built, env.FullName)
-	if err != nil {
-		return err
+	trigger := &deployer_tpb.RequestDeploymentMessage{
+		DeploymentId:    uuid.NewString(),
+		Application:     appConfig,
+		Version:         flagConfig.version,
+		EnvironmentName: env.FullName,
 	}
 
 	return eventLoop.Run(ctx, trigger)

@@ -9,9 +9,14 @@ import (
 	sq "github.com/elgris/sqrl"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/deployer"
+	"github.com/pentops/o5-deploy-aws/github"
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"github.com/pentops/outbox.pg.go/outbox"
 	"github.com/pentops/protostate/psm"
 	"github.com/pentops/sqrlx.go/sqrlx"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"gopkg.daemonl.com/envconf"
 )
 
@@ -44,12 +49,14 @@ func OpenDatabase(ctx context.Context) (*sql.DB, error) {
 type DeployerService struct {
 	DeploymentQuery *deployer_spb.DeploymentPSMStateQuerySet
 	StackQuery      *deployer_spb.StackPSMStateQuerySet
+	github          github.IClient
 
 	db *sqrlx.Wrapper
 	*deployer_spb.UnimplementedDeploymentQueryServiceServer
+	*deployer_spb.UnimplementedDeploymentCommandServiceServer
 }
 
-func NewDeployerService(conn sqrlx.Connection) (*DeployerService, error) {
+func NewDeployerService(conn sqrlx.Connection, github github.IClient) (*DeployerService, error) {
 	db, err := sqrlx.New(conn, sq.Dollar)
 	if err != nil {
 		return nil, err
@@ -71,76 +78,50 @@ func NewDeployerService(conn sqrlx.Connection) (*DeployerService, error) {
 		return nil, fmt.Errorf("failed to build stack query: %w", err)
 	}
 
-	/*
-
-		deploymentQuery, err := pquery.NewStateQuery(pquery.StateQuerySpec{
-			TableName:              "deployment",
-			DataColumn:             "state",
-			PrimaryKeyColumn:       "id",
-			PrimaryKeyRequestField: protoreflect.Name("deployment_id"),
-			Events: &pquery.GetJoinSpec{
-				TableName:        "deployment_event",
-				DataColumn:       "event",
-				FieldInParent:    "events",
-				ForeignKeyColumn: "deployment_id",
-			},
-
-			Get: &pquery.MethodDescriptor{
-				Request:  (&deployer_spb.GetDeploymentRequest{}).ProtoReflect().Descriptor(),
-				Response: (&deployer_spb.GetDeploymentResponse{}).ProtoReflect().Descriptor(),
-			},
-
-			List: &pquery.MethodDescriptor{
-				Request:  (&deployer_spb.ListDeploymentsRequest{}).ProtoReflect().Descriptor(),
-				Response: (&deployer_spb.ListDeploymentsResponse{}).ProtoReflect().Descriptor(),
-			},
-
-			ListEvents: &pquery.MethodDescriptor{
-				Request:  (&deployer_spb.ListDeploymentEventsRequest{}).ProtoReflect().Descriptor(),
-				Response: (&deployer_spb.ListDeploymentEventsResponse{}).ProtoReflect().Descriptor(),
-			},
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		stackQuery, err := pquery.NewStateQuery(pquery.StateQuerySpec{
-			TableName:              "stack",
-			DataColumn:             "state",
-			PrimaryKeyColumn:       "id",
-			PrimaryKeyRequestField: protoreflect.Name("stack_id"),
-			Events: &pquery.GetJoinSpec{
-				TableName:        "stack_event",
-				DataColumn:       "event",
-				FieldInParent:    "events",
-				ForeignKeyColumn: "stack_id",
-			},
-
-			Get: &pquery.MethodDescriptor{
-				Request:  (&deployer_spb.GetStackRequest{}).ProtoReflect().Descriptor(),
-				Response: (&deployer_spb.GetStackResponse{}).ProtoReflect().Descriptor(),
-			},
-
-			List: &pquery.MethodDescriptor{
-				Request:  (&deployer_spb.ListStacksRequest{}).ProtoReflect().Descriptor(),
-				Response: (&deployer_spb.ListStacksResponse{}).ProtoReflect().Descriptor(),
-			},
-
-			ListEvents: &pquery.MethodDescriptor{
-				Request:  (&deployer_spb.ListStackEventsRequest{}).ProtoReflect().Descriptor(),
-				Response: (&deployer_spb.ListStackEventsResponse{}).ProtoReflect().Descriptor(),
-			},
-		})
-		if err != nil {
-			return nil, err
-		}
-	*/
-
 	return &DeployerService{
 		db:              db,
+		github:          github,
 		DeploymentQuery: deploymentQuery,
 		StackQuery:      stackQuery,
 	}, nil
+}
+
+func (ds *DeployerService) TriggerDeployment(ctx context.Context, req *deployer_spb.TriggerDeploymentRequest) (*deployer_spb.TriggerDeploymentResponse, error) {
+
+	gh := req.GetGithub()
+	if gh == nil {
+		return nil, status.Error(codes.Unimplemented, "only github source is supported")
+	}
+
+	apps, err := ds.github.PullO5Configs(ctx, gh.Owner, gh.Repo, gh.Commit)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(apps) == 0 {
+		return nil, fmt.Errorf("no applications found in push event")
+	}
+
+	if len(apps) > 1 {
+		return nil, fmt.Errorf("multiple applications found in push event, not yet supported")
+	}
+
+	requestMessage := &deployer_tpb.RequestDeploymentMessage{
+		DeploymentId:    req.DeploymentId,
+		Application:     apps[0],
+		Version:         gh.Commit,
+		EnvironmentName: req.EnvironmentName,
+	}
+	if err := ds.db.Transact(ctx, &sqrlx.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+		ReadOnly:  false,
+	}, func(ctx context.Context, tx sqrlx.Transaction) error {
+		return outbox.Send(ctx, tx, requestMessage)
+	}); err != nil {
+		return nil, err
+	}
+
+	return &deployer_spb.TriggerDeploymentResponse{}, nil
 }
 
 func (ds *DeployerService) GetDeployment(ctx context.Context, req *deployer_spb.GetDeploymentRequest) (*deployer_spb.GetDeploymentResponse, error) {
