@@ -100,6 +100,12 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 			return err
 		}
 		fmt.Println(string(yaml))
+
+		fmt.Println("-----")
+
+		for _, target := range built.SNSTopics {
+			fmt.Printf("SNS Topic: %s\n", target.Name)
+		}
 		return nil
 	}
 

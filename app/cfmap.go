@@ -38,6 +38,7 @@ const (
 	O5SidecarContainerName = "o5_runtime"
 	//O5SidecarImageName     = "ghcr.io/pentops/o5-runtime-sidecar:latest"
 	DeadLetterTargetName = "dead-letter"
+	O5MonitorTargetName  = "o5-monitor"
 )
 
 type globalData struct {
@@ -230,22 +231,28 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		}
 	}
 
-	listener := NewListenerRuleSet()
-
-	if len(app.Targets) > 0 {
-		hadDeadLetter := false
-		for _, target := range app.Targets {
-			if target.Name == DeadLetterTargetName {
-				hadDeadLetter = true
-				break
+	{ // SNS Topics
+		needsDeadLetter := false
+		if len(app.Targets) > 0 {
+			needsDeadLetter = true
+		} else {
+			for _, runtime := range app.Runtimes {
+				if len(runtime.Subscriptions) > 0 {
+					needsDeadLetter = true
+				}
 			}
 		}
-		if !hadDeadLetter {
-			app.Targets = append(app.Targets, &application_pb.Target{
-				Name: "dead-letter",
-			})
+
+		for _, target := range app.Targets {
+			stackTemplate.AddSNSTopic(target.Name)
+		}
+		stackTemplate.AddSNSTopic(O5MonitorTargetName)
+		if needsDeadLetter {
+			stackTemplate.AddSNSTopic(DeadLetterTargetName)
 		}
 	}
+
+	listener := NewListenerRuleSet()
 
 	for _, runtime := range app.Runtimes {
 		runtimeStack, err := NewRuntimeService(global, runtime)
