@@ -26,12 +26,12 @@ require (
 	github.com/pentops/flowtest v0.0.0-20231208213652-010393b9641f
 	github.com/pentops/jsonapi v0.0.0-20231213035817-fca84e684305
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
-	github.com/pentops/o5-go v0.0.0-20231213232036-0c995a3b33e6
-	github.com/pentops/o5-runtime-sidecar v0.0.6-0.20231213060634-d7af96f1d448
+	github.com/pentops/o5-go v0.0.0-20231214002616-3606f30b91ad
+	github.com/pentops/o5-runtime-sidecar v0.0.5
 	github.com/pentops/outbox.pg.go v0.0.0-20231212041111-be5dfe6bec65
 	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb
-	github.com/pentops/protostate v0.0.0-20231212043328-0ceaea83a523
-	github.com/pentops/runner v0.0.0-20231213223209-1b3a097f761d
+	github.com/pentops/protostate v0.0.0-20231214010105-90490f26dcb6
+	github.com/pentops/runner v0.0.0-20231214005459-03b98c71894f
 	github.com/pentops/sqrlx.go v0.0.0-20231212035131-ba083cf9eeb0
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/rs/cors v1.10.1

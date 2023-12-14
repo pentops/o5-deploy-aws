@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -26,60 +25,28 @@ import (
 	"github.com/pentops/o5-go/messaging/v1/messaging_tpb"
 	"github.com/pentops/outbox.pg.go/outbox"
 	"github.com/pentops/runner"
+	"github.com/pentops/runner/commander"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"github.com/pressly/goose"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
-	"gopkg.daemonl.com/envconf"
 )
 
 var Version string
 
 func main() {
-	ctx := context.Background()
-	ctx = log.WithFields(ctx, map[string]interface{}{
-		"application": "o5-deploy-aws",
-		"version":     Version,
-	})
 
-	args := os.Args[1:]
-	if len(args) == 0 {
-		args = append(args, "serve")
-	}
+	cmdGroup := commander.NewCommandSet()
 
-	switch args[0] {
-	case "serve":
-		if err := runServe(ctx); err != nil {
-			log.WithError(ctx, err).Error("Failed to serve")
-			os.Exit(1)
-		}
+	cmdGroup.Add("serve", commander.NewCommand(runServe))
+	cmdGroup.Add("registry", commander.NewCommand(runRegistry))
+	cmdGroup.Add("migrate", commander.NewCommand(runMigrate))
 
-	case "registry":
-		if err := runRegistry(ctx); err != nil {
-			log.WithError(ctx, err).Error("Failed to serve")
-			os.Exit(1)
-		}
-
-	case "migrate":
-		if err := runMigrate(ctx); err != nil {
-			log.WithError(ctx, err).Error("Failed to migrate")
-			os.Exit(1)
-		}
-
-	default:
-		log.WithField(ctx, "command", args[0]).Error("Unknown command")
-		os.Exit(1)
-	}
+	cmdGroup.RunMain("o5-deploy-aws", Version)
 }
-
-func runMigrate(ctx context.Context) error {
-	var config = struct {
-		MigrationsDir string `env:"MIGRATIONS_DIR" default:"./ext/db"`
-	}{}
-
-	if err := envconf.Parse(&config); err != nil {
-		return fmt.Errorf("failed to parse config: %w", err)
-	}
+func runMigrate(ctx context.Context, config struct {
+	MigrationsDir string `env:"MIGRATIONS_DIR" default:"./ext/db"`
+}) error {
 
 	db, err := service.OpenDatabase(ctx)
 	if err != nil {
@@ -89,15 +56,10 @@ func runMigrate(ctx context.Context) error {
 	return goose.Up(db, "/migrations")
 }
 
-func runRegistry(ctx context.Context) error {
-	type envConfig struct {
-		RegistryPort   int    `env:"REGISTRY_PORT" default:""`
-		RegistryBucket string `env:"REGISTRY_BUCKET" default:""`
-	}
-	cfg := envConfig{}
-	if err := envconf.Parse(&cfg); err != nil {
-		return err
-	}
+func runRegistry(ctx context.Context, cfg struct {
+	RegistryPort   int    `env:"REGISTRY_PORT" default:""`
+	RegistryBucket string `env:"REGISTRY_BUCKET" default:""`
+}) error {
 
 	awsConfig, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -125,22 +87,17 @@ func runRegistry(ctx context.Context) error {
 
 }
 
-func runServe(ctx context.Context) error {
-	type envConfig struct {
-		ConfigFile string `env:"CONFIG_FILE"`
-		GRPCPort   int    `env:"GRPC_PORT" default:"8081"`
+func runServe(ctx context.Context, cfg struct {
+	ConfigFile string `env:"CONFIG_FILE"`
+	GRPCPort   int    `env:"GRPC_PORT" default:"8081"`
 
-		RegistryPort   int    `env:"REGISTRY_PORT" default:""`
-		RegistryBucket string `env:"REGISTRY_BUCKET" default:""`
+	RegistryPort   int    `env:"REGISTRY_PORT" default:""`
+	RegistryBucket string `env:"REGISTRY_BUCKET" default:""`
 
-		DeployerAssumeRole string `env:"DEPLOYER_ASSUME_ROLE"`
-		CFTemplates        string `env:"CF_TEMPLATES"`
-		CallbackARN        string `env:"CALLBACK_ARN"`
-	}
-	cfg := envConfig{}
-	if err := envconf.Parse(&cfg); err != nil {
-		return err
-	}
+	DeployerAssumeRole string `env:"DEPLOYER_ASSUME_ROLE"`
+	CFTemplates        string `env:"CF_TEMPLATES"`
+	CallbackARN        string `env:"CALLBACK_ARN"`
+}) error {
 
 	log.WithField(ctx, "PORT", cfg.GRPCPort).Info("Boot")
 
