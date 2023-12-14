@@ -31,7 +31,7 @@ require (
 	github.com/pentops/outbox.pg.go v0.0.0-20231212041111-be5dfe6bec65
 	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb
 	github.com/pentops/protostate v0.0.0-20231214010105-90490f26dcb6
-	github.com/pentops/runner v0.0.0-20231214005459-03b98c71894f
+	github.com/pentops/runner v0.0.0-20231214022424-be1b096d4cf0
 	github.com/pentops/sqrlx.go v0.0.0-20231212035131-ba083cf9eeb0
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/rs/cors v1.10.1
