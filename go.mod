@@ -26,7 +26,7 @@ require (
 	github.com/pentops/flowtest v0.0.0-20231208213652-010393b9641f
 	github.com/pentops/jsonapi v0.0.0-20231213035817-fca84e684305
 	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
-	github.com/pentops/o5-go v0.0.0-20231214002616-3606f30b91ad
+	github.com/pentops/o5-go v0.0.0-20231215223145-fbf3637a149d
 	github.com/pentops/o5-runtime-sidecar v0.0.5
 	github.com/pentops/outbox.pg.go v0.0.0-20231212041111-be5dfe6bec65
 	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb
