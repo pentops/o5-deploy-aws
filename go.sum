@@ -700,8 +700,8 @@ github.com/pentops/outbox.pg.go v0.0.0-20231212041111-be5dfe6bec65 h1:4N2cEDQe6O
 github.com/pentops/outbox.pg.go v0.0.0-20231212041111-be5dfe6bec65/go.mod h1:yMefMPLP0eBAxdELkAgjTtnhWFfc0Wk2H2kePByDHRo=
 github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb h1:1OIQFqb6RU4OmKXdonwvYHNex0JPQy5gOs0eZTeIwfI=
 github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb/go.mod h1:BgX0+UvohWaq7Vr3McsBWt8FpzerKaNRsmG2uH7L1FE=
-github.com/pentops/protostate v0.0.0-20231214010105-90490f26dcb6 h1:vwVjYqxexQ6TiZGHf/Nzau+m4YBkn+v6xvPgCFJ+DNw=
-github.com/pentops/protostate v0.0.0-20231214010105-90490f26dcb6/go.mod h1:L6wjdBRD4Dw2eeStvfx6sg39EXFdQTE1hKE2GEOIDbQ=
+github.com/pentops/protostate v0.0.0-20231214030158-f49c4d456ef9 h1:FMJ6oLljiZMzuFhUc1ogvqhLkLuFgV45vJoef6pSqDQ=
+github.com/pentops/protostate v0.0.0-20231214030158-f49c4d456ef9/go.mod h1:L6wjdBRD4Dw2eeStvfx6sg39EXFdQTE1hKE2GEOIDbQ=
 github.com/pentops/runner v0.0.0-20231214022424-be1b096d4cf0 h1:JAr2wCUzlpXQlhDWWovskDxK1S9yJGjnp7evCucCTFk=
 github.com/pentops/runner v0.0.0-20231214022424-be1b096d4cf0/go.mod h1:WSA32DlyDDEahNuv5XZP6ymsfKKLTHWVgMLlXsgyF7Y=
 github.com/pentops/sqrlx.go v0.0.0-20231212035131-ba083cf9eeb0 h1:34Tf5f+LsimhIHfvwbhvJXoT0ECKchPvKWFhW+G1Zy8=
