@@ -19,6 +19,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	"github.com/pentops/jsonapi/jsonapi"
 	"github.com/pentops/log.go/log"
+	"github.com/pentops/log.go/pretty"
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/protoread"
@@ -36,6 +37,8 @@ type flagConfig struct {
 	workdir     string
 	command     string
 }
+
+var prettyLogger = pretty.NewPrinter(os.Stdout)
 
 func main() {
 	cfg := flagConfig{}
@@ -65,6 +68,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "missing command (-command)")
 		os.Exit(1)
 	}
+
+	log.DefaultLogger = log.NewCallbackLogger(prettyLogger.CallbackWithPrefix("sidecar"))
 
 	ctx := context.Background()
 	if err := do(ctx, cfg); err != nil {
@@ -154,6 +159,7 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 	var mainCommand *exec.Cmd
 
 	container := mainRuntime.Containers[0]
+
 	mainEnvVars, err := buildEnvironment(ctx, container.Container, refs, secretsManagerClient)
 	if err != nil {
 		return err
@@ -162,12 +168,13 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 		parts := strings.Split(flagConfig.command, " ")
 		cmd := exec.Command(parts[0], parts[1:]...)
 		cmd.Dir = flagConfig.workdir
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		cmd.Stdout = prettyLogger.WriterInterceptor("STDOUT")
+		cmd.Stderr = prettyLogger.WriterInterceptor("STDERR")
 		cmd.Env = mainEnvVars
 
 		return cmd
 	}
+
 	mainCommand = buildMain()
 
 	runGroup.Add("main", func(ctx context.Context) error {
@@ -285,6 +292,7 @@ func cleanStringSplit(src string, delim string) []string {
 }
 
 func buildEnvironment(ctx context.Context, container *ecs.TaskDefinition_ContainerDefinition, refs map[string]string, ssm *secretsmanager.Client) ([]string, error) {
+	ctx = log.WithField(ctx, "container", container.Name)
 
 	env := os.Environ()
 
@@ -295,7 +303,10 @@ func buildEnvironment(ctx context.Context, container *ecs.TaskDefinition_Contain
 			return nil, err
 		}
 
-		fmt.Printf("%s=%v\n", key, value)
+		log.WithFields(ctx, map[string]interface{}{
+			"key":   key,
+			"value": value,
+		}).Debug("setting environment variable")
 		env = append(env, fmt.Sprintf("%s=%v", key, value))
 	}
 

@@ -23,11 +23,11 @@ require (
 	github.com/google/go-github/v47 v47.1.0
 	github.com/google/uuid v1.4.0
 	github.com/lib/pq v1.10.9
-	github.com/pentops/flowtest v0.0.0-20231208213652-010393b9641f
-	github.com/pentops/jsonapi v0.0.0-20231213035817-fca84e684305
-	github.com/pentops/log.go v0.0.0-20230815045424-6ebbd9ef2576
+	github.com/pentops/flowtest v0.0.0-20231213175137-ac050902e7fb
+	github.com/pentops/jsonapi v0.0.0-20231218074914-26c5bac837ab
+	github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4
 	github.com/pentops/o5-go v0.0.0-20231215223145-fbf3637a149d
-	github.com/pentops/o5-runtime-sidecar v0.0.5
+	github.com/pentops/o5-runtime-sidecar v0.0.0-20231218035046-d2b20795d603
 	github.com/pentops/outbox.pg.go v0.0.0-20231212041111-be5dfe6bec65
 	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb
 	github.com/pentops/protostate v0.0.0-20231214010105-90490f26dcb6
@@ -77,7 +77,7 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/pentops/jwtauth v0.0.0-20231213223244-afbf4e9e3283 // indirect
+	github.com/pentops/jwtauth v0.0.0-20231218034817-a97d0d7fe8cc // indirect
 	github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53 // indirect
 	github.com/pentops/sugar-go v0.0.0-20231029194349-ec12ec0132c5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -97,7 +97,6 @@ require (
 	google.golang.org/genproto v0.0.0-20231127180814-3a041ad873d4 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20231127180814-3a041ad873d4 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20231127180814-3a041ad873d4 // indirect
-	gopkg.daemonl.com/sqrlx v0.0.26-0.20231109230408-4e2718f3736f // indirect
 	gopkg.in/square/go-jose.v2 v2.6.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
