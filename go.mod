@@ -23,14 +23,14 @@ require (
 	github.com/google/go-github/v47 v47.1.0
 	github.com/google/uuid v1.4.0
 	github.com/lib/pq v1.10.9
-	github.com/pentops/flowtest v0.0.0-20231213175137-ac050902e7fb
+	github.com/pentops/flowtest v0.0.0-20231218074654-0a7dfbc8bf0c
 	github.com/pentops/jsonapi v0.0.0-20231218074914-26c5bac837ab
 	github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4
-	github.com/pentops/o5-go v0.0.0-20231215223145-fbf3637a149d
+	github.com/pentops/o5-go v0.0.0-20231218222100-72f016974fb1
 	github.com/pentops/o5-runtime-sidecar v0.0.0-20231218035046-d2b20795d603
 	github.com/pentops/outbox.pg.go v0.0.0-20231212041111-be5dfe6bec65
 	github.com/pentops/pgtest.go v0.0.0-20230712031943-dd86c8524dcb
-	github.com/pentops/protostate v0.0.0-20231214010105-90490f26dcb6
+	github.com/pentops/protostate v0.0.0-20231218070644-a1bd00824c9d
 	github.com/pentops/runner v0.0.0-20231214022424-be1b096d4cf0
 	github.com/pentops/sqrlx.go v0.0.0-20231212035131-ba083cf9eeb0
 	github.com/pressly/goose v2.7.0+incompatible
