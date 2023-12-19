@@ -28,6 +28,7 @@ const (
 	MetaDeployAssumeRoleParameter = "MetaDeployAssumeRoleArns"
 	JWKSParameter                 = "JWKS"
 	AWSRegionParameter            = "AWS::Region"
+	CORSOriginParameter           = "CORSOrigin"
 	SNSPrefixParameter            = "SNSPrefix"
 	S3BucketNamespaceParameter    = "S3BucketNamespace"
 	O5SidecarImageParameter       = "O5SidecarImage"
@@ -88,6 +89,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		VersionTagParameter,
 		MetaDeployAssumeRoleParameter,
 		JWKSParameter,
+		CORSOriginParameter,
 		SNSPrefixParameter,
 		S3BucketNamespaceParameter,
 		O5SidecarImageParameter,
