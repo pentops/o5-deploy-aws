@@ -115,6 +115,7 @@ func BuildParameterResolver(ctx context.Context, environment *environment_pb.Env
 			app.S3BucketNamespaceParameter:    awsEnv.S3BucketNamespace,
 			app.O5SidecarImageParameter:       fmt.Sprintf("%s:%s", sidecarImageName, sidecarImageVersion),
 			app.SESConditionsParameter:        sesIdentityCondition,
+			app.CORSOriginParameter:           strings.Join(environment.CorsOrigins, ","),
 		},
 		custom:              environment.Vars,
 		crossEnvSNSPrefixes: crossEnvSNS,

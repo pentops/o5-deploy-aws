@@ -9,7 +9,10 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
 	"github.com/pentops/o5-deploy-aws/app"
@@ -30,8 +33,15 @@ func main() {
 	cmdGroup := commander.NewCommandSet()
 
 	cmdGroup.Add("local-deploy", commander.NewCommand(runLocalDeploy))
-	cmdGroup.Add("watch", commander.NewCommand(runWatch))
-	cmdGroup.Add("trigger", commander.NewCommand(runTrigger))
+
+	remoteGroup := commander.NewCommandSet()
+	remoteGroup.Add("watch", commander.NewCommand(runWatch))
+	remoteGroup.Add("trigger", commander.NewCommand(runTrigger))
+	cmdGroup.Add("remote", remoteGroup)
+
+	awsGroup := commander.NewCommandSet()
+	awsGroup.Add("logs", commander.NewCommand(runAWSLogs))
+	cmdGroup.Add("aws", awsGroup)
 
 	cmdGroup.RunMain("o5-deploy-aws", Version)
 
@@ -204,4 +214,64 @@ func runTrigger(ctx context.Context, cfg struct {
 
 	fmt.Printf("DeploymentID: %s\n", deploymentID)
 	return nil
+}
+
+func runAWSLogs(ctx context.Context, cfg struct {
+	StackName string `flag:"stack-name"`
+}) error {
+
+	awsConfig, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	formationClient := cloudformation.NewFromConfig(awsConfig)
+	ecsClient := ecs.NewFromConfig(awsConfig)
+
+	res, err := formationClient.DescribeStackResources(ctx, &cloudformation.DescribeStackResourcesInput{
+		StackName: aws.String(cfg.StackName),
+	})
+	if err != nil {
+		return err
+	}
+
+	serviceArns := []string{}
+	clusterARN := ""
+	for _, resource := range res.StackResources {
+		if *resource.ResourceType == "AWS::ECS::Service" {
+			arn := *resource.PhysicalResourceId
+			serviceArns = append(serviceArns, arn)
+		}
+	}
+
+	if clusterARN == "" {
+		return fmt.Errorf("no cluster found")
+	}
+
+	for _, arn := range serviceArns {
+
+		ecsRes, err := ecsClient.DescribeServices(ctx, &ecs.DescribeServicesInput{
+			Cluster:  aws.String(clusterARN),
+			Services: []string{arn},
+		})
+		if err != nil {
+			return err
+		}
+
+		if len(ecsRes.Services) != 1 {
+			return fmt.Errorf("unexpected number of services: %d", len(ecsRes.Services))
+		}
+
+		service := ecsRes.Services[0]
+
+		fmt.Printf("Service %s:\n", *service.ServiceName)
+
+		for _, deployment := range service.Deployments {
+			fmt.Printf("  Deployment %s: %s\n", *deployment.Status, *deployment.TaskDefinition)
+		}
+
+	}
+
+	return nil
+
 }

@@ -14,10 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
-	"github.com/aws/aws-sdk-go-v2/service/sns"
-	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
-	"github.com/pentops/jsonapi/jsonapi"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/log.go/pretty"
 	"github.com/pentops/o5-deploy-aws/app"
@@ -25,9 +22,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
-	"github.com/pentops/o5-runtime-sidecar/outbox"
-	sidecar_runner "github.com/pentops/o5-runtime-sidecar/runner"
-	"github.com/pentops/o5-runtime-sidecar/sqslink"
+	"github.com/pentops/o5-runtime-sidecar/entrypoint"
 	"github.com/pentops/runner"
 )
 
@@ -198,21 +193,12 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 	{
 
 		ctx := log.WithField(ctx, "runtime", "sidecar")
-		sidecar := sidecar_runner.NewRuntime()
 
 		container := mainRuntime.IngressContainer
 
 		envVars, err := buildEnvironment(ctx, container, refs, secretsManagerClient)
 		if err != nil {
 			return err
-		}
-
-		codecOptions := jsonapi.Options{
-			ShortEnums: &jsonapi.ShortEnumsOption{
-				UnspecifiedSuffix: "UNSPECIFIED",
-				StrictUnmarshal:   true,
-			},
-			WrapOneof: true,
 		}
 
 		envMap := map[string]string{}
@@ -226,50 +212,25 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 			envMap[key] = value
 		}
 
-		postgresURL := envMap["POSTGRES_OUTBOX"]
-		sqsURL := envMap["SQS_URL"]
-		snsPrefix := envMap["SNS_PREFIX"]
-		jwks := cleanStringSplit(envMap["JWKS"], ",")
-		service := envMap["SERVICE_ENDPOINT"]
-
-		if postgresURL != "" || sqsURL != "" {
-			if snsPrefix == "" {
-				return fmt.Errorf("missing SNS_PREFIX for Postgres outbox")
-			}
-			sidecar.Sender = outbox.NewSNSBatcher(sns.NewFromConfig(awsConfig), snsPrefix)
-		}
-
-		if postgresURL != "" {
-			if err := sidecar.AddOutbox(ctx, postgresURL); err != nil {
-				return err
-			}
-		}
-
-		if sqsURL != "" {
-			sqsClient := sqs.NewFromConfig(awsConfig)
-			sidecar.Worker = sqslink.NewWorker(sqsClient, sqsURL, sidecar.Sender)
-		}
-
-		if err := sidecar.AddRouter(8888, codecOptions); err != nil {
-			return fmt.Errorf("add router: %w", err)
-		}
-
-		if len(jwks) > 0 {
-			if err := sidecar.AddJWKS(ctx, jwks...); err != nil {
-				return fmt.Errorf("add JWKS: %w", err)
-			}
-		}
-
-		endpoints := strings.Split(service, ",")
-		for _, endpoint := range endpoints {
-			endpoint = strings.TrimSpace(endpoint)
-			if endpoint == "" {
-				continue
-			}
+		replacedEndpoints := cleanStringSplit(envMap["SERVICE_ENDPOINT"], ",")
+		for idx, endpoint := range replacedEndpoints {
 			endpoint = strings.ReplaceAll(endpoint, "main", "localhost")
-			if err := sidecar.AddEndpoint(ctx, endpoint); err != nil {
-				return fmt.Errorf("add endpoint %s: %w", endpoint, err)
-			}
+			replacedEndpoints[idx] = endpoint
+		}
+
+		cfg := entrypoint.Config{
+			PublicPort:        8888,
+			Service:           replacedEndpoints,
+			JWKS:              cleanStringSplit(envMap["JWKS"], ","),
+			SNSPrefix:         envMap["SNS_PREFIX"],
+			SQSURL:            envMap["SQS_URL"],
+			CORSOrigins:       cleanStringSplit(envMap["CORS_ORIGINS"], ","),
+			PostgresOutboxURI: envMap["POSTGRES_OUTBOX"],
+		}
+
+		sidecar, err := entrypoint.FromConfig(cfg, awsConfig)
+		if err != nil {
+			return fmt.Errorf("sidecar: %w", err)
 		}
 
 		runGroup.Add("sidecar", sidecar.Run)

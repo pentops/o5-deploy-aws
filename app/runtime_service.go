@@ -69,6 +69,9 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		}, {
 			Name:  String("AWS_REGION"),
 			Value: String(cloudformation.Ref(AWSRegionParameter)),
+		}, {
+			Name:  String("CORS_ORIGINS"),
+			Value: String(cloudformation.Ref(CORSOriginParameter)),
 		}},
 	}
 
@@ -362,6 +365,7 @@ func (rs *RuntimeService) AddRoutes(ingress *ListenerRuleSet) error {
 		if route.TargetContainer == "" {
 			route.TargetContainer = rs.spec.Containers[0].Name
 		}
+
 		if route.BypassIngress {
 			targetContainer = route.TargetContainer
 		} else {
