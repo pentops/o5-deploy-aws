@@ -38,6 +38,7 @@ func main() {
 	cmdGroup.Add("watch-events", commander.NewCommand(runWatchEvents))
 
 	remoteGroup := commander.NewCommandSet()
+	remoteGroup.Add("watch", commander.NewCommand(runWatch))
 	remoteGroup.Add("trigger", commander.NewCommand(runTrigger))
 	cmdGroup.Add("remote", remoteGroup)
 
@@ -267,7 +268,6 @@ func runTrigger(ctx context.Context, cfg struct {
 func runRedeploy(ctx context.Context, cfg struct {
 	ClusterName string `flag:"cluster-name"`
 }) error {
-
 	awsConfig, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
@@ -296,13 +296,11 @@ func runRedeploy(ctx context.Context, cfg struct {
 	}
 
 	return nil
-
 }
 
 func runAWSLogs(ctx context.Context, cfg struct {
 	StackName string `flag:"stack-name"`
 }) error {
-
 	awsConfig, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
@@ -356,5 +354,4 @@ func runAWSLogs(ctx context.Context, cfg struct {
 	}
 
 	return nil
-
 }
