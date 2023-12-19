@@ -370,9 +370,6 @@ func (rs *RuntimeService) AddRoutes(ingress *ListenerRuleSet) error {
 			targetContainer = route.TargetContainer
 		} else {
 			rs.ingressEndpoints[fmt.Sprintf("%s:%d", route.TargetContainer, port)] = struct{}{}
-			if route.SidecarShortcut {
-				return fmt.Errorf("sidecar_shortcut requires bypass_ingress")
-			}
 		}
 		targetGroup, err := rs.LazyTargetGroup(route.Protocol, targetContainer, int(port))
 		if err != nil {
