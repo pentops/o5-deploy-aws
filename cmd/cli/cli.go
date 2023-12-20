@@ -159,75 +159,9 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 }
 
 type SNSEvent struct {
-	Type    string `json:"Type"`
-	Message string `json:"Message"`
-}
-
-type InfraEvent struct {
-	Source     string          `json:"source"`
-	DetailType string          `json:"detail-type"`
-	Detail     json.RawMessage `json:"detail"`
-}
-
-type ECSTaskStateChangeEvent struct {
-	ClusterArn    string                              `json:"clusterArn"`
-	TaskArn       string                              `json:"taskArn"`
-	LastStatus    string                              `json:"lastStatus"`
-	StoppedAt     string                              `json:"stoppedAt"`
-	StoppedReason string                              `json:"stoppedReason"`
-	StopCode      *string                             `json:"stopCode"`
-	Group         *string                             `json:"group"`
-	Containers    []ECSTaskStateChangeEvent_Container `json:"containers"`
-}
-
-type ECSTaskStateChangeEvent_Container struct {
-	ContainerArn string `json:"containerArn"`
-	LastStatus   string `json:"lastStatus"`
-	Name         string `json:"name"`
-	ExitCode     *int   `json:"exitCode"`
-}
-
-func handleECSTaskEvent(taskEvent *ECSTaskStateChangeEvent) error {
-
-	if taskEvent.Group == nil || !strings.HasPrefix(*taskEvent.Group, "service:") {
-		return nil
-	}
-	serviceName := strings.TrimPrefix(*taskEvent.Group, "service:")
-
-	fmt.Printf("Task in %s %s: %s\n", serviceName, taskEvent.TaskArn, taskEvent.LastStatus)
-	switch taskEvent.LastStatus {
-	case "RUNNING":
-		// Good.
-		return nil
-
-	case "PENDING",
-		"PROVISIONING",
-		"DEACTIVATING",
-		"ACTIVATING",
-		"DEPROVISIONING",
-		"STOPPING":
-		// Transient
-
-		return nil
-	case "STOPPED":
-		if taskEvent.StopCode == nil {
-			return fmt.Errorf("task %s stopped with no code: %s", taskEvent.TaskArn, taskEvent.StoppedReason)
-		}
-
-		switch *taskEvent.StopCode {
-		case "TaskFailedToStart":
-			fmt.Printf("Task %s failed to start: %s\n", taskEvent.TaskArn, taskEvent.StoppedReason)
-			return nil
-		case "ServiceSchedulerInitiated":
-			fmt.Printf("Normal scaling activity: %s\n", taskEvent.StoppedReason)
-			return nil
-		default:
-			return fmt.Errorf("unexpected stop code: %s", *taskEvent.StopCode)
-		}
-	default:
-		return fmt.Errorf("unexpected task status: %s", taskEvent.LastStatus)
-	}
-
+	Type     string `json:"Type"`
+	Message  string `json:"Message"`
+	TopicArn string `json:"TopicArn"`
 }
 
 func runWatchEvents(ctx context.Context, cfg struct {
@@ -256,44 +190,39 @@ func runWatchEvents(ctx context.Context, cfg struct {
 				body = []byte(snsEvent.Message)
 			}
 
-			infraEvent := &InfraEvent{}
-			if err := json.Unmarshal(body, infraEvent); err != nil {
-				return err
+			if snsEvent.TopicArn == "" {
+				snsEvent.TopicArn = "fake-o5-cloudwatch-events"
 			}
 
-			var handled bool
-			if infraEvent.Source == "aws.ecs" && infraEvent.DetailType == "ECS Task State Change" {
-				taskEvent := &ECSTaskStateChangeEvent{}
-				if err := json.Unmarshal(infraEvent.Detail, taskEvent); err != nil {
+			if strings.HasSuffix(snsEvent.TopicArn, "-o5-cloudwatch-events") {
+				infraEvent := &awsinfra.InfraEvent{}
+				if err := json.Unmarshal(body, infraEvent); err != nil {
 					return err
 				}
 
-				if err := handleECSTaskEvent(taskEvent); err != nil {
-					fmt.Printf("ERROR: %s\n", err)
-				} else {
-					handled = true
-				}
-			}
-
-			if handled {
-				if _, err := sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
-					QueueUrl:      aws.String(cfg.QueueURL),
-					ReceiptHandle: msg.ReceiptHandle,
-				}); err != nil {
-					return err
+				if err := awsinfra.HandleInfraEvent(ctx, infraEvent); err != nil {
+					return fmt.Errorf("handle infra event: %w", err)
 				}
 			} else {
 				bb := &bytes.Buffer{}
-				if err := json.Indent(bb, body, "", "  "); err != nil {
+				if err := json.Indent(bb, body, "  ", "  "); err != nil {
 					return err
 				}
-				fmt.Printf("Message: %s\n", bb.String())
+
+				fmt.Printf("Unhandled Message on %s\n  %s\n", snsEvent.TopicArn, bb.String())
+				continue
+			}
+
+			if _, err := sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
+				QueueUrl:      aws.String(cfg.QueueURL),
+				ReceiptHandle: msg.ReceiptHandle,
+			}); err != nil {
+				return err
 			}
 		}
 	}
-
-	return nil
 }
+
 func runTrigger(ctx context.Context, cfg struct {
 	AppName string `env:"APP_NAME" flag:"repo"`
 	Org     string `env:"GITHUB_ORG" flag:"org"`
