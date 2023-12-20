@@ -28,7 +28,7 @@ require (
 	github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4
 	github.com/pentops/o5-go v0.0.0-20231220062110-5d1223c7f9a0
 	github.com/pentops/o5-runtime-sidecar v0.0.0-20231220230048-e2f6bb263447
-	github.com/pentops/outbox.pg.go v0.0.0-20231212041111-be5dfe6bec65
+	github.com/pentops/outbox.pg.go v0.0.0-20231220230840-d07cc1c90eb2
 	github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e
 	github.com/pentops/protostate v0.0.0-20231220033805-3613d3d8dce3
 	github.com/pentops/runner v0.0.0-20231219070819-c4878d5565d8

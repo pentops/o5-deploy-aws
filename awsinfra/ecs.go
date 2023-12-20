@@ -25,10 +25,11 @@ type ECSTaskStateChangeEvent struct {
 }
 
 type ECSTaskStateChangeEvent_Container struct {
-	ContainerArn string `json:"containerArn"`
-	LastStatus   string `json:"lastStatus"`
-	Name         string `json:"name"`
-	ExitCode     *int   `json:"exitCode"`
+	ContainerArn string  `json:"containerArn"`
+	LastStatus   string  `json:"lastStatus"`
+	Reason       *string `json:"reason"`
+	Name         string  `json:"name"`
+	ExitCode     *int    `json:"exitCode"`
 }
 
 func handleECSTaskEvent(taskEvent *ECSTaskStateChangeEvent) error {
@@ -60,7 +61,15 @@ func handleECSTaskEvent(taskEvent *ECSTaskStateChangeEvent) error {
 
 		switch *taskEvent.StopCode {
 		case "TaskFailedToStart":
+			for _, container := range taskEvent.Containers {
+				if container.ExitCode != nil {
+					fmt.Printf("Container %s exited with code %d\n", container.Name, *container.ExitCode)
+				} else if container.Reason != nil {
+					fmt.Printf("Container %s exited: %s\n", container.Name, *container.Reason)
+				}
+			}
 			fmt.Printf("Task %s failed to start: %s\n", taskEvent.TaskArn, taskEvent.StoppedReason)
+
 			return nil
 		case "ServiceSchedulerInitiated":
 			fmt.Printf("Normal scaling activity: %s\n", taskEvent.StoppedReason)
