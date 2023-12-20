@@ -8,12 +8,14 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/google/uuid"
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
@@ -33,9 +35,9 @@ func main() {
 	cmdGroup := commander.NewCommandSet()
 
 	cmdGroup.Add("local-deploy", commander.NewCommand(runLocalDeploy))
+	cmdGroup.Add("watch-events", commander.NewCommand(runWatchEvents))
 
 	remoteGroup := commander.NewCommandSet()
-	remoteGroup.Add("watch", commander.NewCommand(runWatch))
 	remoteGroup.Add("trigger", commander.NewCommand(runTrigger))
 	cmdGroup.Add("remote", remoteGroup)
 
@@ -156,25 +158,140 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 
 }
 
-func runWatch(ctx context.Context, cfg struct {
-	DeploymentID string `env:"DEPLOYMENT_ID" flag:"deployment-id"`
-	API          string `env:"O5_API" flag:"api"`
+type SNSEvent struct {
+	Type    string `json:"Type"`
+	Message string `json:"Message"`
+}
+
+type InfraEvent struct {
+	Source     string          `json:"source"`
+	DetailType string          `json:"detail-type"`
+	Detail     json.RawMessage `json:"detail"`
+}
+
+type ECSTaskStateChangeEvent struct {
+	ClusterArn    string                              `json:"clusterArn"`
+	TaskArn       string                              `json:"taskArn"`
+	LastStatus    string                              `json:"lastStatus"`
+	StoppedAt     string                              `json:"stoppedAt"`
+	StoppedReason string                              `json:"stoppedReason"`
+	StopCode      *string                             `json:"stopCode"`
+	Group         *string                             `json:"group"`
+	Containers    []ECSTaskStateChangeEvent_Container `json:"containers"`
+}
+
+type ECSTaskStateChangeEvent_Container struct {
+	ContainerArn string `json:"containerArn"`
+	LastStatus   string `json:"lastStatus"`
+	Name         string `json:"name"`
+	ExitCode     *int   `json:"exitCode"`
+}
+
+func handleECSTaskEvent(taskEvent *ECSTaskStateChangeEvent) error {
+
+	if taskEvent.Group == nil || !strings.HasPrefix(*taskEvent.Group, "service:") {
+		return nil
+	}
+	serviceName := strings.TrimPrefix(*taskEvent.Group, "service:")
+
+	fmt.Printf("Task in %s %s: %s\n", serviceName, taskEvent.TaskArn, taskEvent.LastStatus)
+	switch taskEvent.LastStatus {
+	case "RUNNING":
+		// Good.
+		return nil
+
+	case "PENDING",
+		"PROVISIONING",
+		"DEACTIVATING",
+		"ACTIVATING",
+		"DEPROVISIONING",
+		"STOPPING":
+		// Transient
+
+		return nil
+	case "STOPPED":
+		if taskEvent.StopCode == nil {
+			return fmt.Errorf("task %s stopped with no code: %s", taskEvent.TaskArn, taskEvent.StoppedReason)
+		}
+
+		switch *taskEvent.StopCode {
+		case "TaskFailedToStart":
+			fmt.Printf("Task %s failed to start: %s\n", taskEvent.TaskArn, taskEvent.StoppedReason)
+			return nil
+		case "ServiceSchedulerInitiated":
+			fmt.Printf("Normal scaling activity: %s\n", taskEvent.StoppedReason)
+			return nil
+		default:
+			return fmt.Errorf("unexpected stop code: %s", *taskEvent.StopCode)
+		}
+	default:
+		return fmt.Errorf("unexpected task status: %s", taskEvent.LastStatus)
+	}
+
+}
+
+func runWatchEvents(ctx context.Context, cfg struct {
+	QueueURL string `flag:"queue-url"`
 }) error {
 
-	req, err := http.NewRequest("GET", cfg.API+"/deployer/v1/q/deployment/"+cfg.DeploymentID, nil)
+	awsConfig, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load configuration: %w", err)
 	}
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
+
+	sqsClient := sqs.NewFromConfig(awsConfig)
+
+	for {
+		req, err := sqsClient.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
+			QueueUrl: aws.String(cfg.QueueURL),
+		})
+		if err != nil {
+			return err
+		}
+
+		for _, msg := range req.Messages {
+			body := []byte(*msg.Body)
+			snsEvent := &SNSEvent{}
+			if err := json.Unmarshal(body, snsEvent); err == nil && snsEvent.Type == "Notification" {
+				body = []byte(snsEvent.Message)
+			}
+
+			infraEvent := &InfraEvent{}
+			if err := json.Unmarshal(body, infraEvent); err != nil {
+				return err
+			}
+
+			var handled bool
+			if infraEvent.Source == "aws.ecs" && infraEvent.DetailType == "ECS Task State Change" {
+				taskEvent := &ECSTaskStateChangeEvent{}
+				if err := json.Unmarshal(infraEvent.Detail, taskEvent); err != nil {
+					return err
+				}
+
+				if err := handleECSTaskEvent(taskEvent); err != nil {
+					fmt.Printf("ERROR: %s\n", err)
+				} else {
+					handled = true
+				}
+			}
+
+			if handled {
+				if _, err := sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
+					QueueUrl:      aws.String(cfg.QueueURL),
+					ReceiptHandle: msg.ReceiptHandle,
+				}); err != nil {
+					return err
+				}
+			} else {
+				bb := &bytes.Buffer{}
+				if err := json.Indent(bb, body, "", "  "); err != nil {
+					return err
+				}
+				fmt.Printf("Message: %s\n", bb.String())
+			}
+		}
 	}
-	defer res.Body.Close()
-	io.Copy(os.Stdout, res.Body) // nolint:errcheck
-	fmt.Println("")
-	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status %d", res.StatusCode)
-	}
+
 	return nil
 }
 func runTrigger(ctx context.Context, cfg struct {

@@ -93,6 +93,9 @@ func (d *DBMigrator) runMigrationTask(ctx context.Context, msg *deployer_tpb.Run
 		}
 		container := state.Tasks[0].Containers[0]
 		if container.ExitCode == nil {
+			if task.StoppedReason != nil && *task.StoppedReason != "" {
+				return fmt.Errorf("task stopped with reason: %s", *task.StoppedReason)
+			}
 			return fmt.Errorf("task stopped with no exit code: %s", stringValue(container.Reason))
 		}
 		if *container.ExitCode != 0 {
