@@ -8,12 +8,14 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/google/uuid"
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
@@ -33,9 +35,9 @@ func main() {
 	cmdGroup := commander.NewCommandSet()
 
 	cmdGroup.Add("local-deploy", commander.NewCommand(runLocalDeploy))
+	cmdGroup.Add("watch-events", commander.NewCommand(runWatchEvents))
 
 	remoteGroup := commander.NewCommandSet()
-	remoteGroup.Add("watch", commander.NewCommand(runWatch))
 	remoteGroup.Add("trigger", commander.NewCommand(runTrigger))
 	cmdGroup.Add("remote", remoteGroup)
 
@@ -156,27 +158,71 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 
 }
 
-func runWatch(ctx context.Context, cfg struct {
-	DeploymentID string `env:"DEPLOYMENT_ID" flag:"deployment-id"`
-	API          string `env:"O5_API" flag:"api"`
+type SNSEvent struct {
+	Type     string `json:"Type"`
+	Message  string `json:"Message"`
+	TopicArn string `json:"TopicArn"`
+}
+
+func runWatchEvents(ctx context.Context, cfg struct {
+	QueueURL string `flag:"queue-url"`
 }) error {
 
-	req, err := http.NewRequest("GET", cfg.API+"/deployer/v1/q/deployment/"+cfg.DeploymentID, nil)
+	awsConfig, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to load configuration: %w", err)
 	}
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
+
+	sqsClient := sqs.NewFromConfig(awsConfig)
+
+	for {
+		req, err := sqsClient.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
+			QueueUrl: aws.String(cfg.QueueURL),
+		})
+		if err != nil {
+			return err
+		}
+
+		for _, msg := range req.Messages {
+			body := []byte(*msg.Body)
+			snsEvent := &SNSEvent{}
+			if err := json.Unmarshal(body, snsEvent); err == nil && snsEvent.Type == "Notification" {
+				body = []byte(snsEvent.Message)
+			}
+
+			if snsEvent.TopicArn == "" {
+				snsEvent.TopicArn = "fake-o5-cloudwatch-events"
+			}
+
+			if strings.HasSuffix(snsEvent.TopicArn, "-o5-cloudwatch-events") {
+				infraEvent := &awsinfra.InfraEvent{}
+				if err := json.Unmarshal(body, infraEvent); err != nil {
+					return err
+				}
+
+				if err := awsinfra.HandleInfraEvent(ctx, infraEvent); err != nil {
+					return fmt.Errorf("handle infra event: %w", err)
+				}
+			} else {
+				bb := &bytes.Buffer{}
+				if err := json.Indent(bb, body, "  ", "  "); err != nil {
+					return err
+				}
+
+				fmt.Printf("Unhandled Message on %s\n  %s\n", snsEvent.TopicArn, bb.String())
+				continue
+			}
+
+			if _, err := sqsClient.DeleteMessage(ctx, &sqs.DeleteMessageInput{
+				QueueUrl:      aws.String(cfg.QueueURL),
+				ReceiptHandle: msg.ReceiptHandle,
+			}); err != nil {
+				return err
+			}
+		}
 	}
-	defer res.Body.Close()
-	io.Copy(os.Stdout, res.Body) // nolint:errcheck
-	fmt.Println("")
-	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status %d", res.StatusCode)
-	}
-	return nil
 }
+
 func runTrigger(ctx context.Context, cfg struct {
 	AppName string `env:"APP_NAME" flag:"repo"`
 	Org     string `env:"GITHUB_ORG" flag:"org"`

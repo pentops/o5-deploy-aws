@@ -245,12 +245,17 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 			}
 		}
 
+		app.Targets = append(app.Targets, &application_pb.Target{
+			Name: O5MonitorTargetName,
+		})
+		if needsDeadLetter {
+			app.Targets = append(app.Targets, &application_pb.Target{
+				Name: DeadLetterTargetName,
+			})
+		}
+
 		for _, target := range app.Targets {
 			stackTemplate.AddSNSTopic(target.Name)
-		}
-		stackTemplate.AddSNSTopic(O5MonitorTargetName)
-		if needsDeadLetter {
-			stackTemplate.AddSNSTopic(DeadLetterTargetName)
 		}
 	}
 

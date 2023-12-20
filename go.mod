@@ -12,6 +12,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.47.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.25.1
 	github.com/aws/aws-sdk-go-v2/service/sns v1.26.1
+	github.com/aws/aws-sdk-go-v2/service/sqs v1.29.1
 	github.com/aws/aws-sdk-go-v2/service/sts v1.26.1
 	github.com/aws/smithy-go v1.18.1
 	github.com/awslabs/goformation/v7 v7.12.11
@@ -25,9 +26,9 @@ require (
 	github.com/pentops/flowtest v0.0.0-20231220033746-7f2a56d8275b
 	github.com/pentops/jsonapi v0.0.0-20231220020413-ea22d9635572
 	github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4
-	github.com/pentops/o5-go v0.0.0-20231219071156-aab3cb4677e1
-	github.com/pentops/o5-runtime-sidecar v0.0.0-20231220020733-008c966dfce2
-	github.com/pentops/outbox.pg.go v0.0.0-20231212041111-be5dfe6bec65
+	github.com/pentops/o5-go v0.0.0-20231220062110-5d1223c7f9a0
+	github.com/pentops/o5-runtime-sidecar v0.0.0-20231220230048-e2f6bb263447
+	github.com/pentops/outbox.pg.go v0.0.0-20231220230840-d07cc1c90eb2
 	github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e
 	github.com/pentops/protostate v0.0.0-20231220033805-3613d3d8dce3
 	github.com/pentops/runner v0.0.0-20231219070819-c4878d5565d8
@@ -58,7 +59,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.2.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.10.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.16.7 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sqs v1.29.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.18.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.21.1 // indirect
 	github.com/bufbuild/protocompile v0.6.1-0.20231108163138-146b831231f7 // indirect
