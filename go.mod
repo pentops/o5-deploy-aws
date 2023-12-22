@@ -22,15 +22,16 @@ require (
 	github.com/goccy/go-yaml v1.11.2
 	github.com/google/go-github/v47 v47.1.0
 	github.com/google/uuid v1.4.0
+	github.com/iancoleman/strcase v0.3.0
 	github.com/lib/pq v1.10.9
-	github.com/pentops/flowtest v0.0.0-20231220033746-7f2a56d8275b
+	github.com/pentops/flowtest v0.0.0-20231222014834-24b3f4644348
 	github.com/pentops/jsonapi v0.0.0-20231220020413-ea22d9635572
 	github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4
-	github.com/pentops/o5-go v0.0.0-20231220062110-5d1223c7f9a0
-	github.com/pentops/o5-runtime-sidecar v0.0.0-20231220230048-e2f6bb263447
-	github.com/pentops/outbox.pg.go v0.0.0-20231220230840-d07cc1c90eb2
+	github.com/pentops/o5-go v0.0.0-20231222001508-14a9b7490809
+	github.com/pentops/o5-runtime-sidecar v0.0.0-20231221223904-918ea30164aa
+	github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7
 	github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e
-	github.com/pentops/protostate v0.0.0-20231220033805-3613d3d8dce3
+	github.com/pentops/protostate v0.0.0-20231222015008-a77f48709d88
 	github.com/pentops/runner v0.0.0-20231219070819-c4878d5565d8
 	github.com/pentops/sqrlx.go v0.0.0-20231220005743-34b51f632b38
 	github.com/pressly/goose v2.7.0+incompatible

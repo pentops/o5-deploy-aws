@@ -30,6 +30,7 @@ databases:
 targets:
   - name: "o5-deployer-input"
   - name: "o5-aws-command"
+  - name: "o5-deployer-event"
 
 runtimes:
   - name: main

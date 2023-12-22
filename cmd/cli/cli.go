@@ -43,6 +43,7 @@ func main() {
 
 	awsGroup := commander.NewCommandSet()
 	awsGroup.Add("logs", commander.NewCommand(runAWSLogs))
+	awsGroup.Add("redeploy", commander.NewCommand(runRedeploy))
 	cmdGroup.Add("aws", awsGroup)
 
 	cmdGroup.RunMain("o5-deploy-aws", Version)
@@ -177,7 +178,8 @@ func runWatchEvents(ctx context.Context, cfg struct {
 
 	for {
 		req, err := sqsClient.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
-			QueueUrl: aws.String(cfg.QueueURL),
+			QueueUrl:            aws.String(cfg.QueueURL),
+			MaxNumberOfMessages: 10,
 		})
 		if err != nil {
 			return err
@@ -260,6 +262,41 @@ func runTrigger(ctx context.Context, cfg struct {
 
 	fmt.Printf("DeploymentID: %s\n", deploymentID)
 	return nil
+}
+
+func runRedeploy(ctx context.Context, cfg struct {
+	ClusterName string `flag:"cluster-name"`
+}) error {
+
+	awsConfig, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	ecsClient := ecs.NewFromConfig(awsConfig)
+
+	listRes, err := ecsClient.ListServices(ctx, &ecs.ListServicesInput{
+		Cluster: aws.String(cfg.ClusterName),
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, arn := range listRes.ServiceArns {
+		fmt.Printf("Service: %s\n", arn)
+
+		_, err := ecsClient.UpdateService(ctx, &ecs.UpdateServiceInput{
+			ForceNewDeployment: true,
+			Service:            aws.String(arn),
+			Cluster:            aws.String(cfg.ClusterName),
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+
 }
 
 func runAWSLogs(ctx context.Context, cfg struct {

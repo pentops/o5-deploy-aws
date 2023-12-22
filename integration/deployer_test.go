@@ -5,11 +5,9 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/pentops/flowtest"
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
@@ -18,18 +16,18 @@ import (
 func TestCreateHappy(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	uu := NewUniverse(ctx, t)
-	defer uu.RunSteps(t)
+	ss := NewStepper(ctx, t)
+	defer ss.RunSteps(t)
 
 	initialTrigger := &deployer_tpb.RequestDeploymentMessage{}
-	uu.Step("Github Trigger", func(t flowtest.Asserter) {
-		uu.Github.Configs["owner/repo/after"] = []*application_pb.Application{{
+	ss.Step("Github Trigger", func(t UniverseAsserter) {
+		t.Github.Configs["owner/repo/after"] = []*application_pb.Application{{
 			Name: "app",
 			DeploymentConfig: &application_pb.DeploymentConfig{
 				QuickMode: false,
 			},
 		}}
-		_, err := uu.GithubWebhookTopic.Push(ctx, &github_pb.PushMessage{
+		_, err := t.GithubWebhookTopic.Push(ctx, &github_pb.PushMessage{
 			Owner: "owner",
 			Repo:  "repo",
 			Ref:   "ref",
@@ -39,39 +37,45 @@ func TestCreateHappy(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		uu.Outbox.PopMessage(t, initialTrigger)
-		t.Log(protojson.Format(initialTrigger))
+		t.Outbox.PopMessage(t, initialTrigger)
+
 	})
 
 	triggerMessage := &deployer_tpb.TriggerDeploymentMessage{}
-	uu.Step("[*] --> QUEUED", func(t flowtest.Asserter) {
-		_, err := uu.DeployerTopic.RequestDeployment(ctx, initialTrigger)
+	ss.Step("[*] --> QUEUED", func(t UniverseAsserter) {
+		_, err := t.DeployerTopic.RequestDeployment(ctx, initialTrigger)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		uu.Outbox.PopMessage(t, triggerMessage)
-		uu.AssertDeploymentStatus(t, triggerMessage.DeploymentId, deployer_pb.DeploymentStatus_QUEUED)
-		uu.Outbox.AssertNoMessages(t)
+		t.Outbox.PopMessage(t, triggerMessage)
+		t.AssertDeploymentStatus(t, triggerMessage.DeploymentId, deployer_pb.DeploymentStatus_QUEUED)
+
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventCreated, deployer_pb.DeploymentStatus_QUEUED)
+		t.PopStackEvent(t, deployer_pb.StackPSMEventTriggered, deployer_pb.StackStatus_CREATING)
+
 	})
 
 	var stackID *deployer_tpb.StackID
 
-	uu.Step("[*] --> QUEUED --> LOCKED --> WAITING", func(t flowtest.Asserter) {
-		_, err := uu.DeployerTopic.TriggerDeployment(ctx, triggerMessage)
+	ss.Step("QUEUED --> TRIGGERED --> WAITING", func(t UniverseAsserter) {
+		_, err := t.DeployerTopic.TriggerDeployment(ctx, triggerMessage)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		stabalizeRequest := &deployer_tpb.StabalizeStackMessage{}
-		uu.Outbox.PopMessage(t, stabalizeRequest)
+		t.Outbox.PopMessage(t, stabalizeRequest)
 		stackID = stabalizeRequest.StackId
 
-		uu.AssertDeploymentStatus(t, stackID.DeploymentId, deployer_pb.DeploymentStatus_WAITING)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventTriggered, deployer_pb.DeploymentStatus_TRIGGERED)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackWait, deployer_pb.DeploymentStatus_WAITING)
+
+		t.AssertDeploymentStatus(t, stackID.DeploymentId, deployer_pb.DeploymentStatus_WAITING)
 	})
 
-	uu.Step("WAITING --> AVAILABLE --> CREATING : StackStatus.Missing", func(t flowtest.Asserter) {
-		_, err := uu.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
+	ss.Step("WAITING --> AVAILABLE --> CREATING : StackStatus.Missing", func(t UniverseAsserter) {
+		_, err := t.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
 			StackId:   stackID,
 			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_MISSING,
 		})
@@ -80,15 +84,17 @@ func TestCreateHappy(t *testing.T) {
 		}
 
 		createRequest := &deployer_tpb.CreateNewStackMessage{}
-		uu.Outbox.PopMessage(t, createRequest)
+		t.Outbox.PopMessage(t, createRequest)
 		stackID = createRequest.StackId
-		uu.Outbox.AssertNoMessages(t)
 
-		uu.AssertDeploymentStatus(t, stackID.DeploymentId, deployer_pb.DeploymentStatus_CREATING)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackStatus, deployer_pb.DeploymentStatus_AVAILABLE)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackCreate, deployer_pb.DeploymentStatus_CREATING)
+
+		t.AssertDeploymentStatus(t, stackID.DeploymentId, deployer_pb.DeploymentStatus_CREATING)
 	})
 
-	uu.Step("CREATING --> CREATING : StackStatus.Progress", func(t flowtest.Asserter) {
-		_, err := uu.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
+	ss.Step("CREATING --> CREATING : StackStatus.Progress", func(t UniverseAsserter) {
+		_, err := t.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
 			StackId:   stackID,
 			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_PROGRESS,
 		})
@@ -96,12 +102,13 @@ func TestCreateHappy(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		uu.Outbox.AssertNoMessages(t)
-		uu.AssertDeploymentStatus(t, stackID.DeploymentId, deployer_pb.DeploymentStatus_CREATING)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackStatus, deployer_pb.DeploymentStatus_CREATING)
+
+		t.AssertDeploymentStatus(t, stackID.DeploymentId, deployer_pb.DeploymentStatus_CREATING)
 	})
 
-	uu.Step("CREATING --> INFRA_MIGRATED --> SCALING_UP : StackStatus.Stable", func(t flowtest.Asserter) {
-		_, err := uu.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
+	ss.Step("CREATING --> INFRA_MIGRATED --> DB_MIGRATING --> DB_MIGRATED --> SCALING_UP : StackStatus.Stable", func(t UniverseAsserter) {
+		_, err := t.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
 			StackId:   stackID,
 			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_COMPLETE,
 			Status:    "FOOBAR",
@@ -117,17 +124,21 @@ func TestCreateHappy(t *testing.T) {
 		// No DB to migrate
 
 		scaleUpRequest := &deployer_tpb.ScaleStackMessage{}
-		uu.Outbox.PopMessage(t, scaleUpRequest)
+		t.Outbox.PopMessage(t, scaleUpRequest)
 		stackID = scaleUpRequest.StackId
 
 		t.Equal(int(1), int(scaleUpRequest.DesiredCount))
 
-		uu.Outbox.AssertNoMessages(t)
-		uu.AssertDeploymentStatus(t, stackID.DeploymentId, deployer_pb.DeploymentStatus_SCALING_UP)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackStatus, deployer_pb.DeploymentStatus_INFRA_MIGRATED)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventMigrateData, deployer_pb.DeploymentStatus_DB_MIGRATING)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventDataMigrated, deployer_pb.DeploymentStatus_DB_MIGRATED)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackScale, deployer_pb.DeploymentStatus_SCALING_UP)
+
+		t.AssertDeploymentStatus(t, stackID.DeploymentId, deployer_pb.DeploymentStatus_SCALING_UP)
 	})
 
-	uu.Step("SCALING_UP --> SCALED_UP --> DONE", func(t flowtest.Asserter) {
-		_, err := uu.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
+	ss.Step("SCALING_UP --> SCALED_UP --> DONE", func(t UniverseAsserter) {
+		_, err := t.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
 			StackId:   stackID,
 			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_COMPLETE,
 			Status:    "FOOBAR",
@@ -141,66 +152,27 @@ func TestCreateHappy(t *testing.T) {
 		}
 
 		deploymentCompleteMessage := &deployer_tpb.DeploymentCompleteMessage{}
-		uu.Outbox.PopMessage(t, deploymentCompleteMessage)
+		t.Outbox.PopMessage(t, deploymentCompleteMessage)
+		if _, err := t.DeployerTopic.DeploymentComplete(ctx, deploymentCompleteMessage); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 
-		uu.Outbox.AssertNoMessages(t)
-		uu.AssertDeploymentStatus(t, stackID.DeploymentId, deployer_pb.DeploymentStatus_DONE)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackStatus, deployer_pb.DeploymentStatus_SCALED_UP)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventDone, deployer_pb.DeploymentStatus_DONE)
+
+		t.PopStackEvent(t, deployer_pb.StackPSMEventDeploymentCompleted, deployer_pb.StackStatus_STABLE)
+		t.PopStackEvent(t, deployer_pb.StackPSMEventAvailable, deployer_pb.StackStatus_AVAILABLE)
+
+		t.AssertDeploymentStatus(t, stackID.DeploymentId, deployer_pb.DeploymentStatus_DONE)
 
 	})
-}
-
-type cfMock struct {
-	lastRequest *deployer_tpb.StackID
-	uu          *Universe
-}
-
-func (cf *cfMock) ExpectStabalizeStack(t flowtest.TB) {
-	t.Helper()
-	stabalizeRequest := &deployer_tpb.StabalizeStackMessage{}
-	cf.uu.Outbox.PopMessage(t, stabalizeRequest)
-	cf.lastRequest = stabalizeRequest.StackId
-}
-
-func (cf *cfMock) ExpectCreateStack(t flowtest.TB) *deployer_tpb.CreateNewStackMessage {
-	t.Helper()
-	createRequest := &deployer_tpb.CreateNewStackMessage{}
-	cf.uu.Outbox.PopMessage(t, createRequest)
-	cf.lastRequest = createRequest.StackId
-	return createRequest
-}
-
-func (cf *cfMock) StackStatusMissing(t flowtest.TB) {
-	t.Helper()
-	_, err := cf.uu.DeployerTopic.StackStatusChanged(context.Background(), &deployer_tpb.StackStatusChangedMessage{
-		StackId:   cf.lastRequest,
-		Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_MISSING,
-		Status:    "",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func (cf *cfMock) StackCreateComplete(t flowtest.TB) {
-	_, err := cf.uu.DeployerTopic.StackStatusChanged(context.Background(), &deployer_tpb.StackStatusChangedMessage{
-		StackId:   cf.lastRequest,
-		Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_COMPLETE,
-		Status:    "CREATE_COMPLETE",
-		Outputs: []*deployer_pb.KeyValue{{
-			Name:  "foo",
-			Value: "bar",
-		}},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
 }
 
 func TestStackLock(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	uu := NewUniverse(ctx, t)
-	defer uu.RunSteps(t)
+	ss := NewStepper(ctx, t)
+	defer ss.RunSteps(t)
 
 	firstDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
 		DeploymentId: uuid.NewString(),
@@ -211,53 +183,57 @@ func TestStackLock(t *testing.T) {
 		EnvironmentName: "env",
 	}
 
-	awsStack := &cfMock{uu: uu}
-
 	firstTriggerMessage := &deployer_tpb.TriggerDeploymentMessage{}
-	uu.Step("Request First", func(t flowtest.Asserter) {
-		uu.SpecBuilder.QuickMode = true
+	ss.Step("Request First", func(t UniverseAsserter) {
+		t.SpecBuilder.QuickMode = true
 		// Stack:  [*] --> CREATING : Trigger
 		// Deployment: [*] --> QUEUED : Created
-		_, err := uu.DeployerTopic.RequestDeployment(ctx, firstDeploymentRequest)
+		_, err := t.DeployerTopic.RequestDeployment(ctx, firstDeploymentRequest)
 		if err != nil {
 			t.Fatalf("TriggerDeployment error: %v", err)
 		}
 
-		uu.Outbox.PopMessage(t, firstTriggerMessage)
-		uu.AssertDeploymentStatus(t, firstTriggerMessage.DeploymentId, deployer_pb.DeploymentStatus_QUEUED)
-		uu.Outbox.AssertNoMessages(t)
+		t.Outbox.PopMessage(t, firstTriggerMessage)
+		t.AssertDeploymentStatus(t, firstTriggerMessage.DeploymentId, deployer_pb.DeploymentStatus_QUEUED)
+
+		t.PopStackEvent(t, deployer_pb.StackPSMEventTriggered, deployer_pb.StackStatus_CREATING)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventCreated, deployer_pb.DeploymentStatus_QUEUED)
 
 	})
 
-	uu.Step("Trigger First", func(t flowtest.Asserter) {
+	ss.Step("Trigger First", func(t UniverseAsserter) {
 		// Deployment: QUEUED --> TRIGGERED --> WAITING
 		// Stack: Stays CREATING
-		_, err := uu.DeployerTopic.TriggerDeployment(ctx, firstTriggerMessage)
+		_, err := t.DeployerTopic.TriggerDeployment(ctx, firstTriggerMessage)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		awsStack.ExpectStabalizeStack(t)
+		t.AWSStack.ExpectStabalizeStack(t)
 
-		uu.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_WAITING)
-		uu.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_WAITING)
+		t.AssertStackStatus(t, deployer.StackID("env", "app"),
 			deployer_pb.StackStatus_CREATING,
 			[]string{})
 
-		uu.Outbox.AssertNoMessages(t)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventTriggered, deployer_pb.DeploymentStatus_TRIGGERED)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackWait, deployer_pb.DeploymentStatus_WAITING)
+
 	})
 
-	uu.Step("First -> Upserting", func(t flowtest.Asserter) {
+	ss.Step("First -> Upserting", func(t UniverseAsserter) {
 		// Deployment WAITING --> AVAILABLE --> UPSERTING
 		// Stack: Stays CREATING
-		awsStack.StackStatusMissing(t)
-		awsStack.ExpectCreateStack(t)
-		uu.Outbox.AssertNoMessages(t)
+		t.AWSStack.StackStatusMissing(t)
+		t.AWSStack.ExpectCreateStack(t)
 
-		uu.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_UPSERTING)
-		uu.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_UPSERTING)
+		t.AssertStackStatus(t, deployer.StackID("env", "app"),
 			deployer_pb.StackStatus_CREATING,
 			[]string{})
+
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackStatus, deployer_pb.DeploymentStatus_AVAILABLE)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackUpsert, deployer_pb.DeploymentStatus_UPSERTING)
 
 	})
 
@@ -268,110 +244,124 @@ func TestStackLock(t *testing.T) {
 		EnvironmentName: "env",
 	}
 
-	uu.Step("Request a second deployment", func(t flowtest.Asserter) {
+	ss.Step("Request a second deployment", func(t UniverseAsserter) {
 		// Stack:  CREATING --> CREATING : Trigger
 		// Deployment: [*] --> QUEUED : Created
-		_, err := uu.DeployerTopic.RequestDeployment(ctx, secondDeploymentRequest)
+		_, err := t.DeployerTopic.RequestDeployment(ctx, secondDeploymentRequest)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		uu.Outbox.AssertNoMessages(t)
-
-		uu.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_QUEUED)
-		uu.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_QUEUED)
+		t.AssertStackStatus(t, deployer.StackID("env", "app"),
 			deployer_pb.StackStatus_CREATING,
 			[]string{secondDeploymentRequest.DeploymentId})
+
+		t.PopStackEvent(t, deployer_pb.StackPSMEventTriggered, deployer_pb.StackStatus_CREATING)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventCreated, deployer_pb.DeploymentStatus_QUEUED)
 
 	})
 
 	deployment1CompleteMessage := &deployer_tpb.DeploymentCompleteMessage{}
-	uu.Step("Complete the first deployment", func(t flowtest.Asserter) {
+	ss.Step("Complete the first deployment", func(t UniverseAsserter) {
 		// Deployment: UPSERTING --> UPSERTED --> DONE
 		// Stack: CREATING --> STABLE --> MIGRATING
-		awsStack.StackCreateComplete(t)
+		t.AWSStack.StackCreateComplete(t)
 
-		uu.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_DONE)
-		uu.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_DONE)
+		t.AssertStackStatus(t, deployer.StackID("env", "app"),
 			deployer_pb.StackStatus_CREATING,
 			[]string{secondDeploymentRequest.DeploymentId})
 
-		uu.Outbox.PopMessage(t, deployment1CompleteMessage)
-		uu.Outbox.AssertNoMessages(t)
+		t.Outbox.PopMessage(t, deployment1CompleteMessage)
+
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackStatus, deployer_pb.DeploymentStatus_UPSERTED)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventDone, deployer_pb.DeploymentStatus_DONE)
 
 	})
 
 	deployment2TriggerMessage := &deployer_tpb.TriggerDeploymentMessage{}
-	uu.Step("Write back to the Stack state machine", func(t flowtest.Asserter) {
-		_, err := uu.DeployerTopic.DeploymentComplete(ctx, deployment1CompleteMessage)
+	ss.Step("Write back to the Stack state machine", func(t UniverseAsserter) {
+		_, err := t.DeployerTopic.DeploymentComplete(ctx, deployment1CompleteMessage)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		uu.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertStackStatus(t, deployer.StackID("env", "app"),
 			deployer_pb.StackStatus_MIGRATING,
 			[]string{})
 
-		uu.Outbox.PopMessage(t, deployment2TriggerMessage)
-		uu.Outbox.AssertNoMessages(t)
+		t.Outbox.PopMessage(t, deployment2TriggerMessage)
+
+		t.PopStackEvent(t, deployer_pb.StackPSMEventDeploymentCompleted, deployer_pb.StackStatus_STABLE)
+		t.PopStackEvent(t, deployer_pb.StackPSMEventTriggered, deployer_pb.StackStatus_MIGRATING)
+
 	})
 
-	uu.Step("Second -> Waiting", func(t flowtest.Asserter) {
+	ss.Step("Second -> Waiting", func(t UniverseAsserter) {
 		// Deployment: QUEUED --> TRIGGERED --> WAITING
 		// Stack: CREATING --> STABLE --> MIGRATING
-		_, err := uu.DeployerTopic.TriggerDeployment(ctx, deployment2TriggerMessage)
+		_, err := t.DeployerTopic.TriggerDeployment(ctx, deployment2TriggerMessage)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		awsStack.ExpectStabalizeStack(t)
+		t.AWSStack.ExpectStabalizeStack(t)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventTriggered, deployer_pb.DeploymentStatus_TRIGGERED)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackWait, deployer_pb.DeploymentStatus_WAITING)
 
-		uu.Outbox.AssertNoMessages(t)
 	})
 
-	uu.Step("Second -> Upserting", func(t flowtest.Asserter) {
+	ss.Step("Second -> Upserting", func(t UniverseAsserter) {
 		// Deployment WAITING --> AVAILABLE --> UPSERTING
-		awsStack.StackStatusMissing(t)
+		t.AWSStack.StackStatusMissing(t)
 
-		awsStack.ExpectCreateStack(t)
-		uu.Outbox.AssertNoMessages(t)
+		t.AWSStack.ExpectCreateStack(t)
 
-		uu.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_UPSERTING)
-		uu.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_UPSERTING)
+		t.AssertStackStatus(t, deployer.StackID("env", "app"),
 			deployer_pb.StackStatus_MIGRATING,
 			[]string{})
+
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackStatus, deployer_pb.DeploymentStatus_AVAILABLE)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackUpsert, deployer_pb.DeploymentStatus_UPSERTING)
 
 	})
 
 	deployment2CompleteMessage := &deployer_tpb.DeploymentCompleteMessage{}
-	uu.Step("Complete the second deployment", func(t flowtest.Asserter) {
+	ss.Step("Complete the second deployment", func(t UniverseAsserter) {
 		// Deployment: UPSERTING --> UPSERTED --> DONE
 		// Stack: CREATING --> STABLE --> MIGRATING
-		awsStack.StackCreateComplete(t)
+		t.AWSStack.StackCreateComplete(t)
 
-		uu.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_DONE)
-		uu.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_DONE)
+		t.AssertStackStatus(t, deployer.StackID("env", "app"),
 			deployer_pb.StackStatus_MIGRATING,
 			[]string{})
 
-		uu.Outbox.PopMessage(t, deployment2CompleteMessage)
-		uu.Outbox.AssertNoMessages(t)
+		t.Outbox.PopMessage(t, deployment2CompleteMessage)
+
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackStatus, deployer_pb.DeploymentStatus_UPSERTED)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventDone, deployer_pb.DeploymentStatus_DONE)
 
 	})
 
-	uu.Step("Complete the second deployment", func(t flowtest.Asserter) {
-		_, err := uu.DeployerTopic.DeploymentComplete(ctx, deployment2CompleteMessage)
+	ss.Step("Complete the second deployment into stack", func(t UniverseAsserter) {
+		_, err := t.DeployerTopic.DeploymentComplete(ctx, deployment2CompleteMessage)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		uu.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertStackStatus(t, deployer.StackID("env", "app"),
 			deployer_pb.StackStatus_AVAILABLE,
 			[]string{})
 
+		t.PopStackEvent(t, deployer_pb.StackPSMEventDeploymentCompleted, deployer_pb.StackStatus_STABLE)
+		t.PopStackEvent(t, deployer_pb.StackPSMEventAvailable, deployer_pb.StackStatus_AVAILABLE)
+
 	})
 
-	uu.Step("A third deployment should begin immediately", func(t flowtest.Asserter) {
+	ss.Step("A third deployment should begin immediately", func(t UniverseAsserter) {
 
 		thirdDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
 			DeploymentId:    uuid.NewString(),
@@ -381,19 +371,21 @@ func TestStackLock(t *testing.T) {
 		}
 
 		// Stack: AVAILABLE --> MIGRATING : Trigger
-		_, err := uu.DeployerTopic.RequestDeployment(ctx, thirdDeploymentRequest)
+		_, err := t.DeployerTopic.RequestDeployment(ctx, thirdDeploymentRequest)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		deployment3TriggerMessage := &deployer_tpb.TriggerDeploymentMessage{}
 
-		uu.Outbox.PopMessage(t, deployment3TriggerMessage)
-		uu.Outbox.AssertNoMessages(t)
+		t.Outbox.PopMessage(t, deployment3TriggerMessage)
 
-		uu.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertStackStatus(t, deployer.StackID("env", "app"),
 			deployer_pb.StackStatus_MIGRATING,
 			[]string{})
+
+		t.PopStackEvent(t, deployer_pb.StackPSMEventTriggered, deployer_pb.StackStatus_MIGRATING)
+		t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventCreated, deployer_pb.DeploymentStatus_QUEUED)
 
 	})
 
