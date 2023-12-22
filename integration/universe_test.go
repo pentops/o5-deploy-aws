@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/iancoleman/strcase"
 	"github.com/pentops/flowtest"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
@@ -15,6 +16,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/github"
 	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_epb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
@@ -22,7 +24,84 @@ import (
 	"github.com/pentops/o5-go/github/v1/github_pb"
 	"github.com/pentops/outbox.pg.go/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
+	"google.golang.org/protobuf/proto"
 )
+
+type UniverseAsserter struct {
+	*Universe
+	flowtest.Asserter
+}
+
+func pascalKey(key string) string {
+	return strcase.ToCamel(key)
+}
+
+func (ua *UniverseAsserter) afterEach(ctx context.Context) {
+	ua.Helper()
+	hadMessages := false
+	suggestions := []string{}
+	ua.Outbox.ForEachMessage(ua, func(topic, service string, data []byte) {
+
+		switch service {
+		case "/o5.deployer.v1.events.DeployerEventsTopic/StackEvent":
+			event := &deployer_epb.StackEventMessage{}
+			if err := proto.Unmarshal(data, event); err != nil {
+				ua.Fatalf("unmarshal error: %v", err)
+			}
+			ua.Logf("Unexpected Stack Event: %s -> %s", event.Event.PSMEventKey(), event.State.Status.ShortString())
+			suggestions = append(suggestions, fmt.Sprintf("t.PopStackEvent(t, deployer_pb.StackPSMEvent%s, deployer_pb.StackStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.State.Status.ShortString()))
+
+		case "/o5.deployer.v1.events.DeployerEventsTopic/DeploymentEvent":
+			event := &deployer_epb.DeploymentEventMessage{}
+			if err := proto.Unmarshal(data, event); err != nil {
+				ua.Fatalf("unmarshal error: %v", err)
+			}
+			ua.Logf("Unexpected Deployment Event: %s -> %s", event.Event.PSMEventKey(), event.State.Status.ShortString())
+			suggestions = append(suggestions, fmt.Sprintf("t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEvent%s, deployer_pb.DeploymentStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.State.Status.ShortString()))
+		default:
+			ua.Fatalf("unexpected message %s %s", topic, service)
+		}
+
+		hadMessages = true
+
+	})
+	if hadMessages {
+		ua.Errorf("unexpected messages. Suggestion: \n  %s", strings.Join(suggestions, "\n  "))
+	}
+
+	ua.Outbox.PurgeAll(ua)
+}
+
+type Stepper struct {
+	stepper         *flowtest.Stepper[*testing.T]
+	currentUniverse *Universe
+}
+
+func (uu *Stepper) StepC(name string, step func(ctx context.Context, t UniverseAsserter)) {
+	uu.stepper.StepC(name, func(ctx context.Context, t flowtest.Asserter) {
+		ua := UniverseAsserter{
+			Universe: uu.currentUniverse,
+			Asserter: t,
+		}
+		step(ctx, ua)
+		ua.afterEach(ctx)
+	})
+}
+
+func (uu *Stepper) Step(name string, step func(t UniverseAsserter)) {
+	uu.StepC(name, func(_ context.Context, t UniverseAsserter) {
+		step(t)
+	})
+}
+
+func NewStepper(ctx context.Context, t testing.TB) *Stepper {
+	name := t.Name()
+	stepper := flowtest.NewStepper[*testing.T](name)
+	uu := &Stepper{
+		stepper: stepper,
+	}
+	return uu
+}
 
 type Universe struct {
 	DeployerTopic      deployer_tpb.DeployerTopicClient
@@ -35,7 +114,55 @@ type Universe struct {
 	S3     *S3Mock
 
 	Outbox *outboxtest.OutboxAsserter
-	*flowtest.Stepper[*testing.T]
+
+	AWSStack cfMock
+}
+
+type cfMock struct {
+	lastRequest *deployer_tpb.StackID
+	uu          *Universe
+}
+
+func (cf *cfMock) ExpectStabalizeStack(t flowtest.TB) {
+	t.Helper()
+	stabalizeRequest := &deployer_tpb.StabalizeStackMessage{}
+	cf.uu.Outbox.PopMessage(t, stabalizeRequest)
+	cf.lastRequest = stabalizeRequest.StackId
+}
+
+func (cf *cfMock) ExpectCreateStack(t flowtest.TB) *deployer_tpb.CreateNewStackMessage {
+	t.Helper()
+	createRequest := &deployer_tpb.CreateNewStackMessage{}
+	cf.uu.Outbox.PopMessage(t, createRequest)
+	cf.lastRequest = createRequest.StackId
+	return createRequest
+}
+
+func (cf *cfMock) StackStatusMissing(t flowtest.TB) {
+	t.Helper()
+	_, err := cf.uu.DeployerTopic.StackStatusChanged(context.Background(), &deployer_tpb.StackStatusChangedMessage{
+		StackId:   cf.lastRequest,
+		Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_MISSING,
+		Status:    "",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func (cf *cfMock) StackCreateComplete(t flowtest.TB) {
+	_, err := cf.uu.DeployerTopic.StackStatusChanged(context.Background(), &deployer_tpb.StackStatusChangedMessage{
+		StackId:   cf.lastRequest,
+		Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_COMPLETE,
+		Status:    "CREATE_COMPLETE",
+		Outputs: []*deployer_pb.KeyValue{{
+			Name:  "foo",
+			Value: "bar",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 type S3Mock struct {
@@ -82,19 +209,41 @@ func (gm *GithubMock) PullO5Configs(ctx context.Context, org string, repo string
 	return []*application_pb.Application{}, nil
 }
 
-func NewUniverse(ctx context.Context, t testing.TB) *Universe {
-	name := t.Name()
-	stepper := flowtest.NewStepper[*testing.T](name)
-	uu := &Universe{
-		Stepper: stepper,
+func (uu *Universe) PopStackEvent(t flowtest.TB, eventKey deployer_pb.StackPSMEventKey, status deployer_pb.StackStatus) *deployer_epb.StackEventMessage {
+	t.Helper()
+	event := &deployer_epb.StackEventMessage{}
+	uu.Outbox.PopMatching(t, outboxtest.NewMatcher(event))
+	gotKey := event.Event.PSMEventKey()
+	if gotKey != eventKey {
+		t.Fatalf("unexpected event: %v, want %v", gotKey, eventKey)
 	}
-	return uu
+	if status != event.State.Status {
+		t.Fatalf("unexpected status: %v, want %v", event.State.Status, status)
+	}
+	return event
 }
 
-func (uu *Universe) RunSteps(t *testing.T) {
+func (uu *Universe) PopDeploymentEvent(t flowtest.TB, eventKey deployer_pb.DeploymentPSMEventKey, status deployer_pb.DeploymentStatus) *deployer_epb.DeploymentEventMessage {
+	t.Helper()
+	event := &deployer_epb.DeploymentEventMessage{}
+	uu.Outbox.PopMatching(t, outboxtest.NewMatcher(event))
+	gotKey := event.Event.PSMEventKey()
+	if gotKey != eventKey {
+		t.Fatalf("unexpected event: %v, want %v", gotKey, eventKey)
+	}
+	if status != event.State.Status {
+		t.Fatalf("unexpected status: %v, want %v", event.State.Status, status)
+	}
+	return event
+}
+
+func (ss *Stepper) RunSteps(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
 	conn := pgtest.GetTestDB(t, pgtest.WithDir("../ext/db"))
+
+	uu := &Universe{}
+	ss.currentUniverse = uu
 
 	environments := deployer.EnvList([]*environment_pb.Environment{{
 		FullName: "env",
@@ -105,11 +254,15 @@ func (uu *Universe) RunSteps(t *testing.T) {
 		},
 	}})
 
+	uu.AWSStack = cfMock{
+		uu: uu,
+	}
+
 	uu.Github = &GithubMock{
 		Configs: map[string][]*application_pb.Application{},
 	}
 
-	log.DefaultLogger = log.NewCallbackLogger(uu.Stepper.Log)
+	log.DefaultLogger = log.NewCallbackLogger(ss.stepper.Log)
 
 	uu.S3 = &S3Mock{
 		files: map[string][]byte{},
@@ -151,7 +304,7 @@ func (uu *Universe) RunSteps(t *testing.T) {
 	topicPair.ServeUntilDone(t, ctx)
 	servicePair.ServeUntilDone(t, ctx)
 
-	uu.Stepper.RunSteps(t)
+	ss.stepper.RunSteps(t)
 }
 
 func (uu *Universe) AssertDeploymentStatus(t flowtest.Asserter, deploymentID string, status deployer_pb.DeploymentStatus) {
@@ -164,7 +317,6 @@ func (uu *Universe) AssertDeploymentStatus(t flowtest.Asserter, deploymentID str
 	if err != nil {
 		t.Fatalf("GetDeployment: %v", err)
 	}
-	t.Logf("deployment: %v", deployment)
 	if deployment.State.Status != status {
 		t.Fatalf("unexpected status: %v, want %s", deployment.State.Status.ShortString(), status.ShortString())
 	}

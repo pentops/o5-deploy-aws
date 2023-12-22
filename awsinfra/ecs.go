@@ -74,6 +74,18 @@ func handleECSTaskEvent(taskEvent *ECSTaskStateChangeEvent) error {
 		case "ServiceSchedulerInitiated":
 			fmt.Printf("Normal scaling activity: %s\n", taskEvent.StoppedReason)
 			return nil
+
+		case "EssentialContainerExited":
+			for _, container := range taskEvent.Containers {
+				if container.ExitCode != nil {
+					fmt.Printf("Container %s exited with code %d\n", container.Name, *container.ExitCode)
+				} else if container.Reason != nil {
+					fmt.Printf("Container %s exited: %s\n", container.Name, *container.Reason)
+				}
+			}
+			fmt.Printf("Task %s Exited: %s\n", taskEvent.TaskArn, taskEvent.StoppedReason)
+			return nil
+
 		default:
 			return fmt.Errorf("unexpected stop code: %s", *taskEvent.StopCode)
 		}

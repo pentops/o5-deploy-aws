@@ -4,9 +4,12 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/pentops/o5-go/deployer/v1/deployer_epb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"github.com/pentops/outbox.pg.go/outbox"
 	"github.com/pentops/protostate/psm"
+	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -55,6 +58,15 @@ func NewStackEventer(db psm.Transactor) (*deployer_pb.StackPSM, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	sm.AddHook(func(ctx context.Context, tx sqrlx.Transaction, state *deployer_pb.StackState, event *deployer_pb.StackEvent) error {
+		evt := &deployer_epb.StackEventMessage{
+			Metadata: event.Metadata,
+			Event:    event.Event,
+			State:    state,
+		}
+		return outbox.Send(ctx, tx, evt)
+	})
 
 	// [*] --> CREATING : Triggered
 	sm.From(
