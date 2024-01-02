@@ -63,8 +63,10 @@ type Handler struct {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) != 5 {
+		log.Infof(ctx, "Expected five parts, found %v: %+v", len(parts), parts)
 		http.NotFound(w, r)
 		return
 	}
@@ -74,11 +76,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	version := parts[3]
 	format := parts[4]
 
-	ctx := r.Context()
-
 	img, err := h.Source.GetImage(ctx, orgName, imageName, version)
 	if err != nil {
 		if errors.Is(err, ImageNotFoundError) {
+			log.Infof(ctx, "Failed to get image: didn't find image for org/image/version %v/%v/%v", orgName, imageName, version)
 			http.NotFound(w, r)
 			return
 		}
