@@ -27,11 +27,11 @@ require (
 	github.com/pentops/flowtest v0.0.0-20231222014834-24b3f4644348
 	github.com/pentops/jsonapi v0.0.0-20231220020413-ea22d9635572
 	github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4
-	github.com/pentops/o5-go v0.0.0-20231222001508-14a9b7490809
+	github.com/pentops/o5-go v0.0.0-20240108181354-69adf8151c27
 	github.com/pentops/o5-runtime-sidecar v0.0.0-20231221223904-918ea30164aa
 	github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7
 	github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e
-	github.com/pentops/protostate v0.0.0-20231222015008-a77f48709d88
+	github.com/pentops/protostate v0.0.0-20240105003357-a960043b46e7
 	github.com/pentops/runner v0.0.0-20231219070819-c4878d5565d8
 	github.com/pentops/sqrlx.go v0.0.0-20231220005743-34b51f632b38
 	github.com/pressly/goose v2.7.0+incompatible
@@ -79,7 +79,6 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/pentops/jwtauth v0.0.0-20231218034817-a97d0d7fe8cc // indirect
-	github.com/pentops/listify-go v0.0.0-20231114210340-3454f5bb0a53 // indirect
 	github.com/pentops/sugar-go v0.0.0-20231029194349-ec12ec0132c5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
