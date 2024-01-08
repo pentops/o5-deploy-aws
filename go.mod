@@ -25,15 +25,15 @@ require (
 	github.com/iancoleman/strcase v0.3.0
 	github.com/lib/pq v1.10.9
 	github.com/pentops/flowtest v0.0.0-20231222014834-24b3f4644348
-	github.com/pentops/jsonapi v0.0.0-20231220020413-ea22d9635572
+	github.com/pentops/jsonapi v0.0.0-20240105004945-273ef0c8bbc6
 	github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4
 	github.com/pentops/o5-go v0.0.0-20240108212127-807bf5c29410
-	github.com/pentops/o5-runtime-sidecar v0.0.0-20231221223904-918ea30164aa
+	github.com/pentops/o5-runtime-sidecar v0.0.6
 	github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7
 	github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e
 	github.com/pentops/protostate v0.0.0-20240105003357-a960043b46e7
 	github.com/pentops/runner v0.0.0-20231219070819-c4878d5565d8
-	github.com/pentops/sqrlx.go v0.0.0-20231220005743-34b51f632b38
+	github.com/pentops/sqrlx.go v0.0.0-20240108202916-8687fdf983c0
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/rs/cors v1.10.1
 	github.com/stretchr/testify v1.8.4
@@ -88,7 +88,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	golang.org/x/crypto v0.16.0 // indirect
-	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb // indirect
+	golang.org/x/exp v0.0.0-20240103183307-be819d1f06fc // indirect
 	golang.org/x/net v0.19.0 // indirect
 	golang.org/x/sync v0.5.0 // indirect
 	golang.org/x/sys v0.15.0 // indirect
