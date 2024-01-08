@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/iancoleman/strcase"
 	"github.com/pentops/flowtest"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
@@ -30,9 +29,11 @@ type UniverseAsserter struct {
 	flowtest.Asserter
 }
 
+/*
 func pascalKey(key string) string {
 	return strcase.ToCamel(key)
 }
+*/
 
 func (ua *UniverseAsserter) afterEach(ctx context.Context) {
 	ua.Helper()
