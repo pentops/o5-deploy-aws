@@ -689,8 +689,8 @@ github.com/pentops/jwtauth v0.0.0-20231218034817-a97d0d7fe8cc h1:UWIkLLWXVoUmRxI
 github.com/pentops/jwtauth v0.0.0-20231218034817-a97d0d7fe8cc/go.mod h1:l0Qkcz/wcg8SOcwgV4Okd4gffLtdglaFZNR7FBKktiI=
 github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4 h1:7kPDmBAQxMxcFIYt1rEco/AipZmm1CUoND3wSDmIOeI=
 github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4/go.mod h1:UXhrs+VZ6cWZ7b/v8AtuvBZc5nwS5WFHP94JoFrZQA8=
-github.com/pentops/o5-go v0.0.0-20240108181354-69adf8151c27 h1:IXMSZzO8H7donCMGzmakSll5xMWD9ISZx4jtD/oirLY=
-github.com/pentops/o5-go v0.0.0-20240108181354-69adf8151c27/go.mod h1:4KcT008BEFvePOgJ0B5IijtuvhYmVWjr6k+Opuk9vcQ=
+github.com/pentops/o5-go v0.0.0-20240108212127-807bf5c29410 h1:modR3GqNo1R0crr5HR9sY5YwIj8zpCcBGsc6mGAiVJY=
+github.com/pentops/o5-go v0.0.0-20240108212127-807bf5c29410/go.mod h1:4KcT008BEFvePOgJ0B5IijtuvhYmVWjr6k+Opuk9vcQ=
 github.com/pentops/o5-runtime-sidecar v0.0.0-20231221223904-918ea30164aa h1:xbCP5lEdfqcWpIU1g95C+68jPMQ0MtOvr682+MDZz2g=
 github.com/pentops/o5-runtime-sidecar v0.0.0-20231221223904-918ea30164aa/go.mod h1:iO4rsxKa3YjvLDm+WBu4nl4vPnNiqke1QfyIjyyJ2q4=
 github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7 h1:rBLoeUeI1acxd6GbJjJbK6CeVF/q/Xab+xqQYePvNSw=
