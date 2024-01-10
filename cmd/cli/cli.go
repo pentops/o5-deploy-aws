@@ -38,7 +38,6 @@ func main() {
 	cmdGroup.Add("watch-events", commander.NewCommand(runWatchEvents))
 
 	remoteGroup := commander.NewCommandSet()
-	remoteGroup.Add("watch", commander.NewCommand(runWatch))
 	remoteGroup.Add("trigger", commander.NewCommand(runTrigger))
 	cmdGroup.Add("remote", remoteGroup)
 
