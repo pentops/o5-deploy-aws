@@ -22,7 +22,6 @@ require (
 	github.com/goccy/go-yaml v1.11.2
 	github.com/google/go-github/v47 v47.1.0
 	github.com/google/uuid v1.4.0
-	github.com/iancoleman/strcase v0.3.0
 	github.com/lib/pq v1.10.9
 	github.com/pentops/flowtest v0.0.0-20231222014834-24b3f4644348
 	github.com/pentops/jsonapi v0.0.0-20240105004945-273ef0c8bbc6
