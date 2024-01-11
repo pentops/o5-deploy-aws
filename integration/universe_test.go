@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/iancoleman/strcase"
 	"github.com/pentops/flowtest"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
@@ -16,7 +15,6 @@ import (
 	"github.com/pentops/o5-deploy-aws/github"
 	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-go/application/v1/application_pb"
-	"github.com/pentops/o5-go/deployer/v1/deployer_epb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
@@ -24,7 +22,6 @@ import (
 	"github.com/pentops/o5-go/github/v1/github_pb"
 	"github.com/pentops/outbox.pg.go/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
-	"google.golang.org/protobuf/proto"
 )
 
 type UniverseAsserter struct {
@@ -32,9 +29,11 @@ type UniverseAsserter struct {
 	flowtest.Asserter
 }
 
+/*
 func pascalKey(key string) string {
 	return strcase.ToCamel(key)
 }
+*/
 
 func (ua *UniverseAsserter) afterEach(ctx context.Context) {
 	ua.Helper()
@@ -43,21 +42,23 @@ func (ua *UniverseAsserter) afterEach(ctx context.Context) {
 	ua.Outbox.ForEachMessage(ua, func(topic, service string, data []byte) {
 
 		switch service {
-		case "/o5.deployer.v1.events.DeployerEventsTopic/StackEvent":
-			event := &deployer_epb.StackEventMessage{}
-			if err := proto.Unmarshal(data, event); err != nil {
-				ua.Fatalf("unmarshal error: %v", err)
-			}
-			ua.Logf("Unexpected Stack Event: %s -> %s", event.Event.PSMEventKey(), event.State.Status.ShortString())
-			suggestions = append(suggestions, fmt.Sprintf("t.PopStackEvent(t, deployer_pb.StackPSMEvent%s, deployer_pb.StackStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.State.Status.ShortString()))
+		/*
+			case "/o5.deployer.v1.events.DeployerEventsTopic/StackEvent":
+				event := &deployer_epb.StackEventMessage{}
+				if err := proto.Unmarshal(data, event); err != nil {
+					ua.Fatalf("unmarshal error: %v", err)
+				}
+				ua.Logf("Unexpected Stack Event: %s -> %s", event.Event.PSMEventKey(), event.State.Status.ShortString())
+				suggestions = append(suggestions, fmt.Sprintf("t.PopStackEvent(t, deployer_pb.StackPSMEvent%s, deployer_pb.StackStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.State.Status.ShortString()))
 
-		case "/o5.deployer.v1.events.DeployerEventsTopic/DeploymentEvent":
-			event := &deployer_epb.DeploymentEventMessage{}
-			if err := proto.Unmarshal(data, event); err != nil {
-				ua.Fatalf("unmarshal error: %v", err)
-			}
-			ua.Logf("Unexpected Deployment Event: %s -> %s", event.Event.PSMEventKey(), event.State.Status.ShortString())
-			suggestions = append(suggestions, fmt.Sprintf("t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEvent%s, deployer_pb.DeploymentStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.State.Status.ShortString()))
+			case "/o5.deployer.v1.events.DeployerEventsTopic/DeploymentEvent":
+				event := &deployer_epb.DeploymentEventMessage{}
+				if err := proto.Unmarshal(data, event); err != nil {
+					ua.Fatalf("unmarshal error: %v", err)
+				}
+				ua.Logf("Unexpected Deployment Event: %s -> %s", event.Event.PSMEventKey(), event.State.Status.ShortString())
+				suggestions = append(suggestions, fmt.Sprintf("t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEvent%s, deployer_pb.DeploymentStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.State.Status.ShortString()))
+		*/
 		default:
 			ua.Fatalf("unexpected message %s %s", topic, service)
 		}
@@ -209,6 +210,7 @@ func (gm *GithubMock) PullO5Configs(ctx context.Context, org string, repo string
 	return []*application_pb.Application{}, nil
 }
 
+/*
 func (uu *Universe) PopStackEvent(t flowtest.TB, eventKey deployer_pb.StackPSMEventKey, status deployer_pb.StackStatus) *deployer_epb.StackEventMessage {
 	t.Helper()
 	event := &deployer_epb.StackEventMessage{}
@@ -236,6 +238,7 @@ func (uu *Universe) PopDeploymentEvent(t flowtest.TB, eventKey deployer_pb.Deplo
 	}
 	return event
 }
+*/
 
 func (ss *Stepper) RunSteps(t *testing.T) {
 	t.Helper()
