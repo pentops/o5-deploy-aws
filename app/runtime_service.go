@@ -40,6 +40,7 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 	defs := []*ContainerDefinition{}
 	serviceLinks := []string{}
 
+	needsDockerVolume := false
 	for _, def := range runtime.Containers {
 
 		serviceLinks = append(serviceLinks, fmt.Sprintf("%s:%s", def.Name, def.Name))
@@ -48,6 +49,8 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		if err != nil {
 			return nil, err
 		}
+
+		needsDockerVolume = needsDockerVolume || def.MountDockerSocket
 
 		addLogs(container.Container, globals.appName)
 		defs = append(defs, container)
@@ -97,6 +100,16 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 	})
 
 	policy := NewPolicyBuilder()
+
+	if needsDockerVolume {
+		taskDefinition.Resource.Volumes = []ecs.TaskDefinition_Volume{{
+			Name: String("docker-socket"),
+			Host: &ecs.TaskDefinition_HostVolumeProperties{
+				SourcePath: String("/var/run/docker.sock"),
+			},
+		}}
+		policy.AddECRPull()
+	}
 
 	for _, bucket := range globals.buckets {
 		policy.AddBucketReadWrite(bucket.GetAtt("Arn"))

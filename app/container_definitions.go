@@ -176,5 +176,12 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 		}
 
 	}
+
+	if def.MountDockerSocket {
+		containerDef.Container.MountPoints = append(containerDef.Container.MountPoints, ecs.TaskDefinition_MountPoint{
+			ContainerPath: String("/var/run/docker.sock"),
+			SourceVolume:  String("docker-socket"),
+		})
+	}
 	return containerDef, nil
 }
