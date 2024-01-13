@@ -169,6 +169,8 @@ github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4 h1:7kPDmBAQxMxcFIYt
 github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4/go.mod h1:UXhrs+VZ6cWZ7b/v8AtuvBZc5nwS5WFHP94JoFrZQA8=
 github.com/pentops/o5-go v0.0.0-20240108212127-807bf5c29410 h1:modR3GqNo1R0crr5HR9sY5YwIj8zpCcBGsc6mGAiVJY=
 github.com/pentops/o5-go v0.0.0-20240108212127-807bf5c29410/go.mod h1:4KcT008BEFvePOgJ0B5IijtuvhYmVWjr6k+Opuk9vcQ=
+github.com/pentops/o5-go v0.0.0-20240111055312-216db6a3b907 h1:lgge8RhOVMkp4rePqaM1b3Azl82aH8iQ+D+9ykEHTPM=
+github.com/pentops/o5-go v0.0.0-20240111055312-216db6a3b907/go.mod h1:4KcT008BEFvePOgJ0B5IijtuvhYmVWjr6k+Opuk9vcQ=
 github.com/pentops/o5-runtime-sidecar v0.0.6 h1:PsaaMpTBlMsptQXcHH/6Z2a+p/8gxhs/fTZRYtgeiNg=
 github.com/pentops/o5-runtime-sidecar v0.0.6/go.mod h1:jETeuynIEcHmFWrrJPtr+8Vwe8RLs09n1o+ZVd1fK9I=
 github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7 h1:rBLoeUeI1acxd6GbJjJbK6CeVF/q/Xab+xqQYePvNSw=
