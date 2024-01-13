@@ -9,22 +9,27 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/google/uuid"
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
+	"github.com/pentops/o5-deploy-aws/awsinspect"
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/localrun"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
+	"github.com/pentops/runner"
 	"github.com/pentops/runner/commander"
 )
 
@@ -38,13 +43,13 @@ func main() {
 	cmdGroup.Add("watch-events", commander.NewCommand(runWatchEvents))
 
 	remoteGroup := commander.NewCommandSet()
-	remoteGroup.Add("trigger", commander.NewCommand(runTrigger))
 	cmdGroup.Add("remote", remoteGroup)
+	remoteGroup.Add("trigger", commander.NewCommand(runTrigger))
 
 	awsGroup := commander.NewCommandSet()
+	cmdGroup.Add("aws", awsGroup)
 	awsGroup.Add("logs", commander.NewCommand(runAWSLogs))
 	awsGroup.Add("redeploy", commander.NewCommand(runRedeploy))
-	cmdGroup.Add("aws", awsGroup)
 
 	cmdGroup.RunMain("o5-deploy-aws", Version)
 
@@ -306,51 +311,30 @@ func runAWSLogs(ctx context.Context, cfg struct {
 	}
 
 	formationClient := cloudformation.NewFromConfig(awsConfig)
-	ecsClient := ecs.NewFromConfig(awsConfig)
 
-	res, err := formationClient.DescribeStackResources(ctx, &cloudformation.DescribeStackResourcesInput{
-		StackName: aws.String(cfg.StackName),
-	})
+	serviceSummary, err := awsinspect.GetStackServices(ctx, formationClient, cfg.StackName)
 	if err != nil {
 		return err
 	}
 
-	serviceArns := []string{}
-	clusterARN := ""
-	for _, resource := range res.StackResources {
-		if *resource.ResourceType == "AWS::ECS::Service" {
-			arn := *resource.PhysicalResourceId
-			serviceArns = append(serviceArns, arn)
-		}
+	ecsClient := ecs.NewFromConfig(awsConfig)
+	logStreams, err := awsinspect.GetAllLogStreams(ctx, ecsClient, serviceSummary)
+	if err != nil {
+		return err
 	}
 
-	if clusterARN == "" {
-		return fmt.Errorf("no cluster found")
-	}
+	logClient := cloudwatchlogs.NewFromConfig(awsConfig)
 
-	for _, arn := range serviceArns {
+	fromTime := time.Now()
 
-		ecsRes, err := ecsClient.DescribeServices(ctx, &ecs.DescribeServicesInput{
-			Cluster:  aws.String(clusterARN),
-			Services: []string{arn},
+	rg := runner.NewGroup()
+	for _, logStream := range logStreams {
+		logStream := logStream
+		rg.Add(logStream.Container, func(ctx context.Context) error {
+			return awsinspect.TailLogStream(ctx, logClient, logStream, fromTime)
 		})
-		if err != nil {
-			return err
-		}
-
-		if len(ecsRes.Services) != 1 {
-			return fmt.Errorf("unexpected number of services: %d", len(ecsRes.Services))
-		}
-
-		service := ecsRes.Services[0]
-
-		fmt.Printf("Service %s:\n", *service.ServiceName)
-
-		for _, deployment := range service.Deployments {
-			fmt.Printf("  Deployment %s: %s\n", *deployment.Status, *deployment.TaskDefinition)
-		}
-
 	}
 
-	return nil
+	return rg.Run(ctx)
+
 }
