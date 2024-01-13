@@ -14,6 +14,7 @@ type PolicyBuilder struct {
 	sqsPublish     []string
 	snsPublish     []string
 	ses            *application_pb.AWSConfig_SES
+	ecrPull        bool
 
 	metaDeployPermissions bool
 }
@@ -52,6 +53,10 @@ func (pb *PolicyBuilder) AddSES(policy *application_pb.AWSConfig_SES) {
 
 func (pb *PolicyBuilder) AddMetaDeployPermissions() {
 	pb.metaDeployPermissions = true
+}
+
+func (pb *PolicyBuilder) AddECRPull() {
+	pb.ecrPull = true
 }
 
 func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Policy {
@@ -93,6 +98,31 @@ func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Po
 			},
 		},
 	})
+
+	if pb.ecrPull {
+		rolePolicies = append(rolePolicies, iam.Role_Policy{
+			PolicyName: uniqueName("ecr-pull"),
+			PolicyDocument: map[string]interface{}{
+				"Version": "2012-10-17",
+				"Statement": []interface{}{
+					map[string]interface{}{
+						"Effect": "Allow",
+						"Action": []interface{}{
+							"ecr:GetAuthorizationToken",
+							"ecr:BatchCheckLayerAvailability",
+							"ecr:GetDownloadUrlForLayer",
+							"ecr:GetRepositoryPolicy",
+							"ecr:DescribeRepositories",
+							"ecr:ListImages",
+							"ecr:DescribeImages",
+							"ecr:BatchGetImage",
+						},
+						"Resource": "*",
+					},
+				},
+			},
+		})
+	}
 
 	if pb.ses != nil {
 		if pb.ses.SendEmail {
