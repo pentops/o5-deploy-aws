@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"net"
-	"net/http"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -15,7 +14,6 @@ import (
 	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/github"
-	"github.com/pentops/o5-deploy-aws/japi"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
@@ -39,7 +37,6 @@ func main() {
 	cmdGroup := commander.NewCommandSet()
 
 	cmdGroup.Add("serve", commander.NewCommand(runServe))
-	cmdGroup.Add("registry", commander.NewCommand(runRegistry))
 	cmdGroup.Add("migrate", commander.NewCommand(runMigrate))
 
 	cmdGroup.RunMain("o5-deploy-aws", Version)
@@ -56,43 +53,9 @@ func runMigrate(ctx context.Context, config struct {
 	return goose.Up(db, "/migrations")
 }
 
-func runRegistry(ctx context.Context, cfg struct {
-	RegistryPort   int    `env:"REGISTRY_PORT" default:""`
-	RegistryBucket string `env:"REGISTRY_BUCKET" default:""`
-}) error {
-
-	awsConfig, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
-	}
-
-	s3Client := s3.NewFromConfig(awsConfig)
-	handler, err := japi.NewRegistry(ctx, s3Client, cfg.RegistryBucket)
-	if err != nil {
-		return err
-	}
-
-	httpServer := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.RegistryPort),
-		Handler: handler,
-	}
-	log.WithField(ctx, "port", cfg.RegistryPort).Info("Begin Registry Server")
-
-	go func() {
-		<-ctx.Done()
-		httpServer.Shutdown(ctx) // nolint:errcheck
-	}()
-
-	return httpServer.ListenAndServe()
-
-}
-
 func runServe(ctx context.Context, cfg struct {
 	ConfigFile string `env:"CONFIG_FILE"`
 	GRPCPort   int    `env:"GRPC_PORT" default:"8081"`
-
-	RegistryPort   int    `env:"REGISTRY_PORT" default:""`
-	RegistryBucket string `env:"REGISTRY_BUCKET" default:""`
 
 	DeployerAssumeRole string `env:"DEPLOYER_ASSUME_ROLE"`
 	CFTemplates        string `env:"CF_TEMPLATES"`
@@ -201,28 +164,6 @@ func runServe(ctx context.Context, cfg struct {
 
 		return grpcServer.Serve(lis)
 	})
-
-	if cfg.RegistryPort != 0 {
-		runGroup.Add("registryServer", func(ctx context.Context) error {
-			handler, err := japi.NewRegistry(ctx, s3Client, cfg.RegistryBucket)
-			if err != nil {
-				return err
-			}
-
-			httpServer := &http.Server{
-				Addr:    fmt.Sprintf(":%d", cfg.RegistryPort),
-				Handler: handler,
-			}
-			log.WithField(ctx, "port", cfg.RegistryPort).Info("Begin Registry Server")
-
-			go func() {
-				<-ctx.Done()
-				httpServer.Shutdown(ctx) // nolint:errcheck
-			}()
-
-			return httpServer.ListenAndServe()
-		})
-	}
 
 	return runGroup.Run(ctx)
 }

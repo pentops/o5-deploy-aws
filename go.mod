@@ -24,7 +24,6 @@ require (
 	github.com/google/uuid v1.4.0
 	github.com/lib/pq v1.10.9
 	github.com/pentops/flowtest v0.0.0-20231222014834-24b3f4644348
-	github.com/pentops/jsonapi v0.0.0-20240105004945-273ef0c8bbc6
 	github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4
 	github.com/pentops/o5-go v0.0.0-20240108212127-807bf5c29410
 	github.com/pentops/o5-runtime-sidecar v0.0.6
@@ -34,7 +33,6 @@ require (
 	github.com/pentops/runner v0.0.0-20231219070819-c4878d5565d8
 	github.com/pentops/sqrlx.go v0.0.0-20240108202916-8687fdf983c0
 	github.com/pressly/goose v2.7.0+incompatible
-	github.com/rs/cors v1.10.1
 	github.com/stretchr/testify v1.8.4
 	github.com/tidwall/sjson v1.2.5
 	golang.org/x/oauth2 v0.15.0
@@ -45,8 +43,6 @@ require (
 )
 
 require (
-	buf.build/gen/go/bufbuild/buf/grpc/go v1.3.0-20231128013123-f9607241382f.2 // indirect
-	buf.build/gen/go/bufbuild/buf/protocolbuffers/go v1.31.0-20231128013123-f9607241382f.2 // indirect
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.31.0-20231115204500-e097f827e652.2 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.5.3 // indirect
@@ -61,27 +57,26 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.16.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.18.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.21.1 // indirect
-	github.com/bufbuild/protocompile v0.6.1-0.20231108163138-146b831231f7 // indirect
-	github.com/bufbuild/protoyaml-go v0.1.7 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/fatih/color v1.16.0 // indirect
-	github.com/go-yaml/yaml v2.1.0+incompatible // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/cel-go v0.18.2 // indirect
 	github.com/google/go-github/v29 v29.0.3 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
+	github.com/google/pprof v0.0.0-20210720184732-4bb14d4b1be1 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
-	github.com/jhump/protoreflect v1.15.3 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/pentops/jsonapi v0.0.0-20240105004945-273ef0c8bbc6 // indirect
 	github.com/pentops/jwtauth v0.0.0-20231218034817-a97d0d7fe8cc // indirect
 	github.com/pentops/sugar-go v0.0.0-20231029194349-ec12ec0132c5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/pquerna/cachecontrol v0.2.0 // indirect
+	github.com/rs/cors v1.10.1 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/tidwall/gjson v1.17.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
