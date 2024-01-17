@@ -37,7 +37,8 @@ const (
 	AWSAccountIDParameter = "AWS::AccountId"
 
 	O5SidecarContainerName = "o5_runtime"
-	//O5SidecarImageName     = "ghcr.io/pentops/o5-runtime-sidecar:latest"
+	O5SidecarInternalPort  = 8081
+
 	DeadLetterTargetName = "dead-letter"
 	O5MonitorTargetName  = "o5-monitor"
 )
