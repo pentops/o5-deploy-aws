@@ -26,11 +26,11 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/pentops/flowtest v0.0.0-20231222014834-24b3f4644348
 	github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4
-	github.com/pentops/o5-go v0.0.0-20240111055312-216db6a3b907
+	github.com/pentops/o5-go v0.0.0-20240118021708-69115bd56652
 	github.com/pentops/o5-runtime-sidecar v0.0.6
 	github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7
 	github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e
-	github.com/pentops/protostate v0.0.0-20240105003357-a960043b46e7
+	github.com/pentops/protostate v0.0.0-20240118021405-88c2bacb5ea7
 	github.com/pentops/runner v0.0.0-20231219070819-c4878d5565d8
 	github.com/pentops/sqrlx.go v0.0.0-20240108202916-8687fdf983c0
 	github.com/pressly/goose v2.7.0+incompatible
@@ -96,5 +96,3 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/pentops/o5-go => /Users/daemonl/pentops/o5-go
