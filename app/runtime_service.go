@@ -26,7 +26,7 @@ type RuntimeService struct {
 
 	Policy *PolicyBuilder
 
-	IngressContainer *ecs.TaskDefinition_ContainerDefinition
+	AdapterContainer *ecs.TaskDefinition_ContainerDefinition
 
 	ingressEndpoints map[string]struct{}
 
@@ -138,7 +138,7 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		Policy:           policy,
 		TargetGroups:     map[string]*Resource[*elbv2.TargetGroup]{},
 		ingressEndpoints: map[string]struct{}{},
-		IngressContainer: runtimeSidecar,
+		AdapterContainer: runtimeSidecar,
 		outboxDatabases:  outboxDatabases,
 	}, nil
 }
@@ -208,7 +208,7 @@ func (rs *RuntimeService) Apply(template *Application) error {
 		template.AddResource(queueResource)
 		rs.Policy.AddSQSSubscribe(queueResource.GetAtt("Arn"))
 
-		rs.IngressContainer.Environment = append(rs.IngressContainer.Environment, ecs.TaskDefinition_KeyValuePair{
+		rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
 			Name:  String("SQS_URL"),
 			Value: String(queueResource.Ref()),
 		})
@@ -277,14 +277,14 @@ func (rs *RuntimeService) Apply(template *Application) error {
 		}))
 	}
 
-	needsIngress := false
+	needsAdapterSidecar := false
 	if len(rs.ingressEndpoints) > 0 {
-		needsIngress = true
+		needsAdapterSidecar = true
 		ingressEndpoints := make([]string, 0, len(rs.ingressEndpoints))
 		for endpoint := range rs.ingressEndpoints {
 			ingressEndpoints = append(ingressEndpoints, endpoint)
 		}
-		rs.IngressContainer.Environment = append(rs.IngressContainer.Environment, ecs.TaskDefinition_KeyValuePair{
+		rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
 			Name:  String("SERVICE_ENDPOINT"),
 			Value: String(strings.Join(ingressEndpoints, ",")),
 		}, ecs.TaskDefinition_KeyValuePair{
@@ -292,9 +292,9 @@ func (rs *RuntimeService) Apply(template *Application) error {
 			Value: String(cloudformation.Ref(JWKSParameter)),
 		})
 		if ingressNeedsPublicPort {
-			rs.IngressContainer.Environment = append(rs.IngressContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  String("PUBLIC_PORT"),
-				Value: String("8080"),
+			rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
+				Name:  String("PUBLIC_ADDR"),
+				Value: String(":8080"),
 			})
 		}
 	}
@@ -304,15 +304,39 @@ func (rs *RuntimeService) Apply(template *Application) error {
 	}
 
 	for _, db := range rs.outboxDatabases {
-		needsIngress = true
-		rs.IngressContainer.Secrets = append(rs.IngressContainer.Secrets, ecs.TaskDefinition_Secret{
+		needsAdapterSidecar = true
+		rs.AdapterContainer.Secrets = append(rs.AdapterContainer.Secrets, ecs.TaskDefinition_Secret{
 			Name:      "POSTGRES_OUTBOX",
 			ValueFrom: db.SecretValueFrom(),
 		})
 	}
 
-	if !needsIngress {
-		rs.IngressContainer = nil
+	needsAdapterPort := false
+
+	// If the app has the endpoint of the adapter, we still need ingress
+	for _, container := range rs.spec.Containers {
+		for _, envVar := range container.EnvVars {
+			o5Type, ok := envVar.Spec.(*application_pb.EnvironmentVariable_O5)
+			if !ok {
+				continue
+			}
+			if o5Type.O5 == application_pb.O5Var_ADAPTER_ENDPOINT {
+				needsAdapterPort = true
+				break
+			}
+		}
+	}
+
+	if needsAdapterPort {
+		needsAdapterSidecar = true
+		rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
+			Name:  String("ADAPTER_ADDR"),
+			Value: String(fmt.Sprintf(":%d", O5SidecarInternalPort)),
+		})
+	}
+
+	if !needsAdapterSidecar {
+		rs.AdapterContainer = nil
 	}
 
 	// Not sure who thought it would be a good idea to not use pointers here...
@@ -324,8 +348,8 @@ func (rs *RuntimeService) Apply(template *Application) error {
 		}
 	}
 
-	if rs.IngressContainer != nil {
-		defs = append(defs, *rs.IngressContainer)
+	if rs.AdapterContainer != nil {
+		defs = append(defs, *rs.AdapterContainer)
 	}
 
 	rs.TaskDefinition.Resource.ContainerDefinitions = defs
@@ -410,7 +434,7 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 	var container *ecs.TaskDefinition_ContainerDefinition
 
 	if targetContainer == O5SidecarContainerName {
-		container = rs.IngressContainer
+		container = rs.AdapterContainer
 	} else {
 
 		for _, search := range rs.Containers {

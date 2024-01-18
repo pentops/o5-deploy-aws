@@ -25,6 +25,7 @@ func ensureEnvVar(envVars *[]ecs.TaskDefinition_KeyValuePair, name string, value
 		Value: value,
 	})
 }
+
 func buildContainer(globals globalData, def *application_pb.Container) (*ContainerDefinition, error) {
 	container := &ecs.TaskDefinition_ContainerDefinition{
 		Name:      def.Name,
@@ -170,6 +171,20 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 			})
 
 			continue
+
+		case *application_pb.EnvironmentVariable_O5:
+			var value *string
+			switch varType.O5 {
+			case application_pb.O5Var_ADAPTER_ENDPOINT:
+				value = String(fmt.Sprintf("http://%s:%d", O5SidecarContainerName, O5SidecarInternalPort))
+			default:
+				return nil, fmt.Errorf("unknown O5 var: %s", varType.O5)
+			}
+
+			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
+				Name:  String(envVar.Name),
+				Value: value,
+			})
 
 		default:
 			return nil, fmt.Errorf("unknown env var type: %T", varType)

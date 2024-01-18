@@ -194,7 +194,7 @@ func do(ctx context.Context, flagConfig flagConfig) error {
 
 		ctx := log.WithField(ctx, "runtime", "sidecar")
 
-		container := mainRuntime.IngressContainer
+		container := mainRuntime.AdapterContainer
 
 		envVars, err := buildEnvironment(ctx, container, refs, secretsManagerClient)
 		if err != nil {
