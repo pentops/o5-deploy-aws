@@ -47,8 +47,8 @@ func OpenDatabase(ctx context.Context) (*sql.DB, error) {
 }
 
 type DeployerService struct {
-	DeploymentQuery *deployer_spb.DeploymentPSMStateQuerySet
-	StackQuery      *deployer_spb.StackPSMStateQuerySet
+	DeploymentQuery *deployer_spb.DeploymentPSMQuerySet
+	StackQuery      *deployer_spb.StackPSMQuerySet
 	github          github.IClient
 
 	db *sqrlx.Wrapper
@@ -62,17 +62,17 @@ func NewDeployerService(conn sqrlx.Connection, github github.IClient) (*Deployer
 		return nil, err
 	}
 
-	deploymentQuery, err := psm.BuildStateQuerySet(
+	deploymentQuery, err := deployer_spb.NewDeploymentPSMQuerySet(
 		deployer.DeploymentTableSpec().QuerySpec(),
-		deployer_spb.DeploymentPSMStateQuerySpec{},
+		psm.StateQueryOptions{},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build deployment query: %w", err)
 	}
 
-	stackQuery, err := psm.BuildStateQuerySet(
+	stackQuery, err := deployer_spb.NewStackPSMQuerySet(
 		deployer.StackTableSpec().QuerySpec(),
-		deployer_spb.StackPSMStateQuerySpec{},
+		psm.StateQueryOptions{},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build stack query: %w", err)
