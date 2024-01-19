@@ -87,9 +87,3 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/pentops/runner => /Users/daemonl/pentops/runner
-
-replace github.com/pentops/aws-runtime => /Users/daemonl/pentops/aws-runtime
-
-replace github.com/pentops/o5-runtime-sidecar => /Users/daemonl/pentops/o5-runtime-sidecar
