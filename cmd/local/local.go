@@ -50,7 +50,7 @@ func main() {
 	}
 
 	if cfg.envFilename == "" {
-		fmt.Fprintln(os.Stderr, "missing application file (-app)")
+		fmt.Fprintln(os.Stderr, "missing env file (-env)")
 		os.Exit(1)
 	}
 
