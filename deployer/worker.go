@@ -136,6 +136,8 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 						DeploymentId: msg.DeploymentId,
 						Version:      spec.Version,
 					},
+					EnvironmentName: spec.EnvironmentName,
+					ApplicationName: spec.AppName,
 				},
 			},
 		},
