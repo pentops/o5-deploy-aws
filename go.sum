@@ -171,6 +171,8 @@ github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e h1:yvHE4gTqT6dva
 github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e/go.mod h1:BgX0+UvohWaq7Vr3McsBWt8FpzerKaNRsmG2uH7L1FE=
 github.com/pentops/protostate v0.0.0-20240119200340-2268e85845ec h1:KfGuIYthjyqxGP8+SVEWvcjUJd63OETAeIjQ9jx9UxU=
 github.com/pentops/protostate v0.0.0-20240119200340-2268e85845ec/go.mod h1:T5GPosG0uV34Z8MB4aSA5rWCWhGkTabbcXh94r/vfTE=
+github.com/pentops/runner v0.0.0-20240119184422-1878cd4dc14d h1:tfghLtM96s+k51KqTPHi3AuvEiepIPkj7QvkhR/BWCI=
+github.com/pentops/runner v0.0.0-20240119184422-1878cd4dc14d/go.mod h1:WSA32DlyDDEahNuv5XZP6ymsfKKLTHWVgMLlXsgyF7Y=
 github.com/pentops/sqrlx.go v0.0.0-20240108202916-8687fdf983c0 h1:JQrYHxaxEYwjdFjqOr3TnS5fxBr4l3Nw6Wgvr/hVl+Y=
 github.com/pentops/sqrlx.go v0.0.0-20240108202916-8687fdf983c0/go.mod h1:Zfb/6O+9jxKfO8ujfNbArrCAO9MbFKYiczAewnMozbs=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
