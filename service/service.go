@@ -63,7 +63,7 @@ func NewDeployerService(conn sqrlx.Connection, github github.IClient) (*Deployer
 	}
 
 	deploymentQuery, err := deployer_spb.NewDeploymentPSMQuerySet(
-		deployer.DeploymentTableSpec().QuerySpec(),
+		deployer_spb.DefaultDeploymentPSMQuerySpec(deployer.DeploymentTableSpec().StateTableSpec()),
 		psm.StateQueryOptions{},
 	)
 	if err != nil {
@@ -71,7 +71,7 @@ func NewDeployerService(conn sqrlx.Connection, github github.IClient) (*Deployer
 	}
 
 	stackQuery, err := deployer_spb.NewStackPSMQuerySet(
-		deployer.StackTableSpec().QuerySpec(),
+		deployer_spb.DefaultStackPSMQuerySpec(deployer.StackTableSpec().StateTableSpec()),
 		psm.StateQueryOptions{},
 	)
 	if err != nil {

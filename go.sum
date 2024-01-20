@@ -44,8 +44,6 @@ github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.25.1 h1:gQm31RBvxft4PYLy8
 github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.25.1/go.mod h1:N/QCLJS0Om2/uvAIQ/UCYW8BpJl0q3DiyyIgRq3WAT4=
 github.com/aws/aws-sdk-go-v2/service/sns v1.26.1 h1:gvr8xZY5sKAdkhUBVUUouAj3ReVGhfn+TL6Xm4HRWr8=
 github.com/aws/aws-sdk-go-v2/service/sns v1.26.1/go.mod h1:KLAzkDaVAUb/drCoW8qjTQ13WELkBfZ3q9YK865cR2c=
-github.com/aws/aws-sdk-go-v2/service/sqs v1.29.1 h1:OZI2aJxnfOZzB0uhyTaYIW6MeRMb1Qd2eLMjh0bFsRg=
-github.com/aws/aws-sdk-go-v2/service/sqs v1.29.1/go.mod h1:GiU88YWgOho2cyEyS2YZo3GYz/j4etRYKWbJdcYgpuQ=
 github.com/aws/aws-sdk-go-v2/service/sso v1.18.1 h1:V40g2daNO3l1J94JYwqfkyvQMYXi5I25fs3fNQW8iDs=
 github.com/aws/aws-sdk-go-v2/service/sso v1.18.1/go.mod h1:0ZWQJP/mBOUxkCvZKybZNz1XmdUKSBxoF0dzgfxtvDs=
 github.com/aws/aws-sdk-go-v2/service/ssooidc v1.21.1 h1:uQrj7SpUNC3r55vc1CDh3qV9wJC66lz546xM9dhSo5s=
@@ -161,14 +159,14 @@ github.com/pentops/flowtest v0.0.0-20240111045946-d8249eae422d h1:1d3X9LnJHDATKV
 github.com/pentops/flowtest v0.0.0-20240111045946-d8249eae422d/go.mod h1:FNquTq/mafLEDD+w/yiiQKIuAuQycFD9zhZ+pbAivc0=
 github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4 h1:7kPDmBAQxMxcFIYt1rEco/AipZmm1CUoND3wSDmIOeI=
 github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4/go.mod h1:UXhrs+VZ6cWZ7b/v8AtuvBZc5nwS5WFHP94JoFrZQA8=
-github.com/pentops/o5-go v0.0.0-20240119200633-e82d3cce64a1 h1:E0Y52gvK/Vn1U4HO16IbvDRHFWeOMCQAwcxisy9jXV4=
-github.com/pentops/o5-go v0.0.0-20240119200633-e82d3cce64a1/go.mod h1:tMyKRDEeCKS05HVyHpY0OsrJnToAWpzKJvZZXZ75rwQ=
+github.com/pentops/o5-go v0.0.0-20240120220037-913b80ec80ba h1:b2lckQRQZeG8u3sV61Jp1Ju1leBHIwcAAraIwFgUJz0=
+github.com/pentops/o5-go v0.0.0-20240120220037-913b80ec80ba/go.mod h1:vUOpS0I2XItwSpRt8si82i0Bz6ySXGTH9ywhBs5pyUk=
 github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7 h1:rBLoeUeI1acxd6GbJjJbK6CeVF/q/Xab+xqQYePvNSw=
 github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7/go.mod h1:yMefMPLP0eBAxdELkAgjTtnhWFfc0Wk2H2kePByDHRo=
 github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e h1:yvHE4gTqT6dvaPiOqvs/uiybF3NdK+4yEn4eKAEOXDg=
 github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e/go.mod h1:BgX0+UvohWaq7Vr3McsBWt8FpzerKaNRsmG2uH7L1FE=
-github.com/pentops/protostate v0.0.0-20240119200340-2268e85845ec h1:KfGuIYthjyqxGP8+SVEWvcjUJd63OETAeIjQ9jx9UxU=
-github.com/pentops/protostate v0.0.0-20240119200340-2268e85845ec/go.mod h1:T5GPosG0uV34Z8MB4aSA5rWCWhGkTabbcXh94r/vfTE=
+github.com/pentops/protostate v0.0.0-20240120215657-7375c702c7d1 h1:Ui41nr807DZIi0QDT9aLCDITiTmKePnQ5nsBqRAyCrM=
+github.com/pentops/protostate v0.0.0-20240120215657-7375c702c7d1/go.mod h1:T5GPosG0uV34Z8MB4aSA5rWCWhGkTabbcXh94r/vfTE=
 github.com/pentops/runner v0.0.0-20240119184422-1878cd4dc14d h1:tfghLtM96s+k51KqTPHi3AuvEiepIPkj7QvkhR/BWCI=
 github.com/pentops/runner v0.0.0-20240119184422-1878cd4dc14d/go.mod h1:WSA32DlyDDEahNuv5XZP6ymsfKKLTHWVgMLlXsgyF7Y=
 github.com/pentops/sqrlx.go v0.0.0-20240108202916-8687fdf983c0 h1:JQrYHxaxEYwjdFjqOr3TnS5fxBr4l3Nw6Wgvr/hVl+Y=
