@@ -12,7 +12,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.47.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.25.1
 	github.com/aws/aws-sdk-go-v2/service/sns v1.26.1
-	github.com/aws/aws-sdk-go-v2/service/sqs v1.29.1
 	github.com/aws/aws-sdk-go-v2/service/sts v1.26.1
 	github.com/aws/smithy-go v1.19.0
 	github.com/awslabs/goformation/v7 v7.12.11
@@ -25,10 +24,10 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/pentops/flowtest v0.0.0-20240111045946-d8249eae422d
 	github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4
-	github.com/pentops/o5-go v0.0.0-20240119200633-e82d3cce64a1
+	github.com/pentops/o5-go v0.0.0-20240120220037-913b80ec80ba
 	github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7
 	github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e
-	github.com/pentops/protostate v0.0.0-20240119200340-2268e85845ec
+	github.com/pentops/protostate v0.0.0-20240120215657-7375c702c7d1
 	github.com/pentops/runner v0.0.0-20240119184422-1878cd4dc14d
 	github.com/pentops/sqrlx.go v0.0.0-20240108202916-8687fdf983c0
 	github.com/pressly/goose v2.7.0+incompatible
