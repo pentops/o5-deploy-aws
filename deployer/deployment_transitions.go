@@ -509,19 +509,26 @@ func NewDeploymentEventer(db psm.Transactor) (*deployer_pb.DeploymentPSM, error)
 			anyFailed := false
 			for _, migration := range deployment.DataMigrations {
 				if migration.MigrationId == event.MigrationId {
-					migration.Status = event.Status
 					switch migration.Status {
-					case deployer_pb.DatabaseMigrationStatus_COMPLETED:
-						// OK
-					case deployer_pb.DatabaseMigrationStatus_PENDING,
-						deployer_pb.DatabaseMigrationStatus_RUNNING,
-						deployer_pb.DatabaseMigrationStatus_CLEANUP:
+					case deployer_pb.DatabaseMigrationStatus_PENDING:
+						if migration.Status != deployer_pb.DatabaseMigrationStatus_UNSPECIFIED {
+							return fmt.Errorf("migration %s is %s, not valid for PENDING", migration.MigrationId, migration.Status)
+						}
 						anyPending = true
+					case deployer_pb.DatabaseMigrationStatus_COMPLETED:
+						if migration.Status != deployer_pb.DatabaseMigrationStatus_PENDING {
+							return fmt.Errorf("migration %s is %s, not valid for COMPLETED", migration.MigrationId, migration.Status)
+						}
+						// OK
 					case deployer_pb.DatabaseMigrationStatus_FAILED:
+						if migration.Status != deployer_pb.DatabaseMigrationStatus_FAILED {
+							return fmt.Errorf("migration %s is %s, not valid for FAILED", migration.MigrationId, migration.Status)
+						}
 						anyFailed = true
 					default:
 						return fmt.Errorf("unexpected migration status: %s", migration.Status)
 					}
+					migration.Status = event.Status
 				}
 			}
 
