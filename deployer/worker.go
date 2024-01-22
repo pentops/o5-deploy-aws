@@ -252,6 +252,14 @@ func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *deployer_
 }
 
 func TranslateMigrationStatusChanged(msg *deployer_tpb.MigrationStatusChangedMessage) (*deployer_pb.DeploymentEvent, error) {
+	migrationStatus := &deployer_pb.DeploymentEventType_DbMigrateStatus{
+		DbMigrateStatus: &deployer_pb.DeploymentEventType_DBMigrateStatus{
+			MigrationId: msg.MigrationId,
+			Status:      msg.Status,
+			Error:       msg.Error,
+		},
+	}
+
 	return &deployer_pb.DeploymentEvent{
 		DeploymentId: msg.DeploymentId,
 		Metadata: &deployer_pb.EventMetadata{
@@ -260,12 +268,7 @@ func TranslateMigrationStatusChanged(msg *deployer_tpb.MigrationStatusChangedMes
 		},
 
 		Event: &deployer_pb.DeploymentEventType{
-			Type: &deployer_pb.DeploymentEventType_DbMigrateStatus{
-				DbMigrateStatus: &deployer_pb.DeploymentEventType_DBMigrateStatus{
-					MigrationId: msg.MigrationId,
-					Status:      msg.Status,
-				},
-			},
+			Type: migrationStatus,
 		},
 	}, nil
 }
