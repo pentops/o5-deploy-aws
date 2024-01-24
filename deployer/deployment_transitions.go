@@ -505,30 +505,48 @@ func NewDeploymentEventer(db psm.Transactor) (*deployer_pb.DeploymentPSM, error)
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_DBMigrateStatus,
 		) error {
+			var thisMigration *deployer_pb.DatabaseMigrationState
+			for _, migration := range deployment.DataMigrations {
+				if migration.MigrationId == event.MigrationId {
+					thisMigration = migration
+					break
+				}
+			}
+
+			if thisMigration == nil {
+				return fmt.Errorf("migration %s not found", event.MigrationId)
+			}
+
+			switch event.Status {
+			case deployer_pb.DatabaseMigrationStatus_PENDING:
+				if thisMigration.Status != deployer_pb.DatabaseMigrationStatus_UNSPECIFIED {
+					return fmt.Errorf("migration %s is %s, not valid for PENDING", thisMigration.MigrationId, thisMigration.Status)
+				}
+			case deployer_pb.DatabaseMigrationStatus_COMPLETED:
+				if thisMigration.Status != deployer_pb.DatabaseMigrationStatus_PENDING {
+					return fmt.Errorf("migration %s is %s, not valid for COMPLETED", thisMigration.MigrationId, thisMigration.Status)
+				}
+			case deployer_pb.DatabaseMigrationStatus_FAILED:
+				if thisMigration.Status != deployer_pb.DatabaseMigrationStatus_FAILED {
+					return fmt.Errorf("migration %s is %s, not valid for FAILED", thisMigration.MigrationId, thisMigration.Status)
+				}
+			default:
+				return fmt.Errorf("unexpected migration status: %s", thisMigration.Status)
+			}
+			thisMigration.Status = event.Status
+
 			anyPending := false
 			anyFailed := false
 			for _, migration := range deployment.DataMigrations {
-				if migration.MigrationId == event.MigrationId {
-					switch migration.Status {
-					case deployer_pb.DatabaseMigrationStatus_PENDING:
-						if migration.Status != deployer_pb.DatabaseMigrationStatus_UNSPECIFIED {
-							return fmt.Errorf("migration %s is %s, not valid for PENDING", migration.MigrationId, migration.Status)
-						}
-						anyPending = true
-					case deployer_pb.DatabaseMigrationStatus_COMPLETED:
-						if migration.Status != deployer_pb.DatabaseMigrationStatus_PENDING {
-							return fmt.Errorf("migration %s is %s, not valid for COMPLETED", migration.MigrationId, migration.Status)
-						}
-						// OK
-					case deployer_pb.DatabaseMigrationStatus_FAILED:
-						if migration.Status != deployer_pb.DatabaseMigrationStatus_FAILED {
-							return fmt.Errorf("migration %s is %s, not valid for FAILED", migration.MigrationId, migration.Status)
-						}
-						anyFailed = true
-					default:
-						return fmt.Errorf("unexpected migration status: %s", migration.Status)
-					}
-					migration.Status = event.Status
+				switch event.Status {
+				case deployer_pb.DatabaseMigrationStatus_PENDING:
+					anyPending = true
+				case deployer_pb.DatabaseMigrationStatus_COMPLETED:
+					// OK
+				case deployer_pb.DatabaseMigrationStatus_FAILED:
+					anyFailed = true
+				default:
+					return fmt.Errorf("unexpected migration status: %s", migration.Status)
 				}
 			}
 

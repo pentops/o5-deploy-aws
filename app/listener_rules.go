@@ -54,10 +54,29 @@ func (ll *ListenerRuleSet) AddRoute(targetGroup *Resource[*elbv2.TargetGroup], r
 		Conditions: []elbv2.ListenerRule_RuleCondition{{
 			Field:  String("path-pattern"),
 			Values: []string{fmt.Sprintf("%s*", route.Prefix)},
-		}, {
+		}},
+	}
+
+	if len(route.Subdomains) > 0 {
+		// TODO: Split into groups of 3 - ALB can only handle 3 hosts per
+		// condition.
+		if len(route.Subdomains) > 3 {
+			return nil, fmt.Errorf("too many subdomains for route %s, max 3", route.Prefix)
+		}
+		condition := elbv2.ListenerRule_RuleCondition{
+			Field:  String("host-header"),
+			Values: []string{},
+		}
+		for _, subdomain := range route.Subdomains {
+			condition.Values = append(condition.Values, cloudformation.Join(".", []string{subdomain, cloudformation.Ref(HostHeaderParameter)}))
+		}
+		rule.Conditions = append(rule.Conditions, condition)
+
+	} else {
+		rule.Conditions = append(rule.Conditions, elbv2.ListenerRule_RuleCondition{
 			Field:  String("host-header"),
 			Values: []string{cloudformation.Ref(HostHeaderParameter)},
-		}},
+		})
 	}
 
 	resource := &Resource[*elbv2.ListenerRule]{
