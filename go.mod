@@ -27,7 +27,7 @@ require (
 	github.com/pentops/o5-go v0.0.0-20240124182625-d074b251dc80
 	github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7
 	github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e
-	github.com/pentops/protostate v0.0.0-20240122220817-ecd9e4037de4
+	github.com/pentops/protostate v0.0.0-20240123024346-92bd7df61460
 	github.com/pentops/runner v0.0.0-20240119184422-1878cd4dc14d
 	github.com/pentops/sqrlx.go v0.0.0-20240108202916-8687fdf983c0
 	github.com/pressly/goose v2.7.0+incompatible
