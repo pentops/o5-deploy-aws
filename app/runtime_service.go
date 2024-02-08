@@ -465,6 +465,7 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 			Matcher: &elbv2.TargetGroup_Matcher{
 				HttpCode: String("200,401,404"),
 			},
+			Tags: sourceTags(),
 		}
 
 	case application_pb.RouteProtocol_ROUTE_PROTOCOL_GRPC:
@@ -481,6 +482,7 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 			Matcher: &elbv2.TargetGroup_Matcher{
 				GrpcCode: String("0-99"),
 			},
+			Tags: sourceTags(),
 		}
 	}
 	targetGroupResource := NewResource(lookupKey, targetGroupDefinition)

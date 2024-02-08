@@ -10,6 +10,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	"github.com/awslabs/goformation/v7/cloudformation/s3"
 	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
+	"github.com/awslabs/goformation/v7/cloudformation/tags"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"golang.org/x/text/cases"
@@ -33,6 +34,7 @@ const (
 	S3BucketNamespaceParameter    = "S3BucketNamespace"
 	O5SidecarImageParameter       = "O5SidecarImage"
 	SESConditionsParameter        = "SESConditions"
+	SourceTagParameter            = "SourceTag"
 
 	AWSAccountIDParameter = "AWS::AccountId"
 
@@ -69,6 +71,13 @@ func (dbDef DatabaseReference) SecretValueFrom() string {
 	})
 }
 
+func sourceTags() []tags.Tag {
+	return []tags.Tag{{
+		Key:   "o5-source",
+		Value: cloudformation.Ref(SourceTagParameter),
+	}}
+}
+
 func BuildApplication(app *application_pb.Application, versionTag string) (*Application, error) {
 
 	stackTemplate := NewApplication(app.Name, versionTag)
@@ -95,6 +104,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		S3BucketNamespaceParameter,
 		O5SidecarImageParameter,
 		SESConditionsParameter,
+		SourceTagParameter,
 	} {
 		parameter := &deployer_pb.Parameter{
 			Name: key,
@@ -114,6 +124,12 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 			}
 		case VPCParameter:
 			parameter.Type = "AWS::EC2::VPC::Id"
+		case SourceTagParameter:
+			parameter.Source.Type = &deployer_pb.ParameterSourceType_Static_{
+				Static: &deployer_pb.ParameterSourceType_Static{
+					Value: fmt.Sprintf("o5/%s/%s", app.Name, versionTag),
+				},
+			}
 		}
 		stackTemplate.AddParameter(parameter)
 	}
