@@ -674,17 +674,8 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		event *deployer_pb.DeploymentEventType_Done,
 	) error {
 		deployment.Status = deployer_pb.DeploymentStatus_DONE
-
-		tb.SideEffect(&deployer_tpb.DeploymentCompleteMessage{
-			DeploymentId:    deployment.DeploymentId,
-			StackId:         deployment.StackId,
-			EnvironmentName: deployment.Spec.EnvironmentName,
-			ApplicationName: deployment.Spec.AppName,
-		})
-
 		return nil
-	},
-	))
+	}))
 
 	// * --> FAILED : Error
 	sm.From().Do(deployer_pb.DeploymentPSMFunc(func(
@@ -695,15 +686,8 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 	) error {
 		deployment.Status = deployer_pb.DeploymentStatus_FAILED
 
-		tb.SideEffect(&deployer_tpb.DeploymentCompleteMessage{
-			DeploymentId:    deployment.DeploymentId,
-			StackId:         deployment.StackId,
-			EnvironmentName: deployment.Spec.EnvironmentName,
-			ApplicationName: deployment.Spec.AppName,
-		})
 		return nil
-	},
-	))
+	}))
 
 	sm.From().Do(deployer_pb.DeploymentPSMFunc(func(
 		ctx context.Context,
@@ -713,12 +697,6 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 	) error {
 		deployment.Status = deployer_pb.DeploymentStatus_TERMINATED
 
-		tb.SideEffect(&deployer_tpb.DeploymentCompleteMessage{
-			DeploymentId:    deployment.DeploymentId,
-			StackId:         deployment.StackId,
-			EnvironmentName: deployment.Spec.EnvironmentName,
-			ApplicationName: deployment.Spec.AppName,
-		})
 		return nil
 	}))
 

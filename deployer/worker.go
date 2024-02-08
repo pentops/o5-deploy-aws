@@ -114,65 +114,11 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 		},
 	}
 
-	evt := &deployer_pb.StackEvent{
-		StackId: states.StackID(spec.EnvironmentName, spec.AppName),
-		Metadata: &deployer_pb.EventMetadata{
-			EventId:   uuid.NewString(),
-			Timestamp: timestamppb.Now(),
-		},
-		Event: &deployer_pb.StackEventType{
-			Type: &deployer_pb.StackEventType_Triggered_{
-				Triggered: &deployer_pb.StackEventType_Triggered{
-					Deployment: &deployer_pb.StackDeployment{
-						DeploymentId: msg.DeploymentId,
-						Version:      spec.Version,
-					},
-					EnvironmentName: spec.EnvironmentName,
-					ApplicationName: spec.AppName,
-				},
-			},
-		},
-	}
-
-	if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
-		if _, err := dw.stackEventer.TransitionInTx(ctx, tx, evt); err != nil {
-			return err
-		}
-
-		if _, err := dw.deploymentEventer.TransitionInTx(ctx, tx, createDeploymentEvent); err != nil {
-			return err
-		}
-
-		return nil
-	}); err != nil {
+	if _, err := dw.deploymentEventer.Transition(ctx, dw.db, createDeploymentEvent); err != nil {
 		return nil, err
 	}
 
 	return &emptypb.Empty{}, nil
-}
-
-func (dw *DeployerWorker) DeploymentComplete(ctx context.Context, msg *deployer_tpb.DeploymentCompleteMessage) (*emptypb.Empty, error) {
-
-	stackEvent := &deployer_pb.StackEvent{
-		StackId: states.StackID(msg.EnvironmentName, msg.ApplicationName),
-		Metadata: &deployer_pb.EventMetadata{
-			EventId:   uuid.NewString(),
-			Timestamp: timestamppb.Now(),
-		},
-		Event: &deployer_pb.StackEventType{
-			Type: &deployer_pb.StackEventType_DeploymentCompleted_{
-				DeploymentCompleted: &deployer_pb.StackEventType_DeploymentCompleted{
-					Deployment: &deployer_pb.StackDeployment{
-						DeploymentId: msg.DeploymentId,
-						Version:      msg.Version,
-					},
-				},
-			},
-		},
-	}
-
-	_, err := dw.stackEventer.Transition(ctx, dw.db, stackEvent)
-	return &emptypb.Empty{}, err
 }
 
 func TranslateStackStatusChanged(msg *deployer_tpb.StackStatusChangedMessage) (*deployer_pb.DeploymentEvent, error) {
