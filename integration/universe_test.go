@@ -14,6 +14,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/github"
 	"github.com/pentops/o5-deploy-aws/service"
+	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
@@ -283,7 +284,7 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 	topicPair := flowtest.NewGRPCPair(t)
 	servicePair := flowtest.NewGRPCPair(t) // TODO: Middleware
 
-	stateMachines, err := deployer.NewStateMachines()
+	stateMachines, err := states.NewStateMachines()
 	if err != nil {
 		t.Fatal(err)
 	}

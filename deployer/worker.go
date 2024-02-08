@@ -8,6 +8,7 @@ import (
 	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
+	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/protostate/psm"
@@ -25,7 +26,7 @@ type DeployerWorker struct {
 	deploymentEventer *deployer_pb.DeploymentPSM
 }
 
-func NewDeployerWorker(conn sqrlx.Connection, specBuilder *SpecBuilder, states *StateMachines) (*DeployerWorker, error) {
+func NewDeployerWorker(conn sqrlx.Connection, specBuilder *SpecBuilder, states *states.StateMachines) (*DeployerWorker, error) {
 	db, err := sqrlx.New(conn, sq.Dollar)
 	if err != nil {
 		return nil, err
@@ -114,7 +115,7 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 	}
 
 	evt := &deployer_pb.StackEvent{
-		StackId: StackID(spec.EnvironmentName, spec.AppName),
+		StackId: states.StackID(spec.EnvironmentName, spec.AppName),
 		Metadata: &deployer_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
@@ -153,7 +154,7 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 func (dw *DeployerWorker) DeploymentComplete(ctx context.Context, msg *deployer_tpb.DeploymentCompleteMessage) (*emptypb.Empty, error) {
 
 	stackEvent := &deployer_pb.StackEvent{
-		StackId: StackID(msg.EnvironmentName, msg.ApplicationName),
+		StackId: states.StackID(msg.EnvironmentName, msg.ApplicationName),
 		Metadata: &deployer_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),

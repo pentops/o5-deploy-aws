@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/pentops/o5-deploy-aws/deployer"
+	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
 
@@ -224,7 +224,7 @@ func TestStackLock(t *testing.T) {
 		t.AWSStack.ExpectStabalizeStack(t)
 
 		t.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_WAITING)
-		t.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_CREATING,
 			[]string{})
 
@@ -242,7 +242,7 @@ func TestStackLock(t *testing.T) {
 		t.AWSStack.ExpectCreateStack(t)
 
 		t.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_UPSERTING)
-		t.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_CREATING,
 			[]string{})
 
@@ -269,7 +269,7 @@ func TestStackLock(t *testing.T) {
 		}
 
 		t.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_QUEUED)
-		t.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_CREATING,
 			[]string{secondDeploymentRequest.DeploymentId})
 
@@ -287,7 +287,7 @@ func TestStackLock(t *testing.T) {
 		t.AWSStack.StackCreateComplete(t)
 
 		t.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_DONE)
-		t.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_CREATING,
 			[]string{secondDeploymentRequest.DeploymentId})
 
@@ -307,7 +307,7 @@ func TestStackLock(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		t.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_MIGRATING,
 			[]string{})
 
@@ -343,7 +343,7 @@ func TestStackLock(t *testing.T) {
 		t.AWSStack.ExpectCreateStack(t)
 
 		t.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_UPSERTING)
-		t.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_MIGRATING,
 			[]string{})
 
@@ -361,7 +361,7 @@ func TestStackLock(t *testing.T) {
 		t.AWSStack.StackCreateComplete(t)
 
 		t.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_DONE)
-		t.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_MIGRATING,
 			[]string{})
 
@@ -380,7 +380,7 @@ func TestStackLock(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		t.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_AVAILABLE,
 			[]string{})
 
@@ -410,7 +410,7 @@ func TestStackLock(t *testing.T) {
 
 		t.Outbox.PopMessage(t, deployment3TriggerMessage)
 
-		t.AssertStackStatus(t, deployer.StackID("env", "app"),
+		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_MIGRATING,
 			[]string{})
 

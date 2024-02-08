@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/deployer"
+	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/outbox.pg.go/outbox"
@@ -102,7 +103,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		},
 	}}
 
-	stateMachine, err := deployer.NewDeploymentEventer()
+	stateMachine, err := states.NewDeploymentEventer()
 	if err != nil {
 		return err
 	}
