@@ -101,7 +101,7 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 			return nil
 		}))
 
-		// QUEUED --> TRIGGERED : Trigger
+	// QUEUED --> TRIGGERED : Trigger
 	sm.From(deployer_pb.DeploymentStatus_QUEUED).
 		Do(deployer_pb.DeploymentPSMFunc(func(
 			ctx context.Context,
@@ -704,6 +704,23 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		return nil
 	},
 	))
+
+	sm.From().Do(deployer_pb.DeploymentPSMFunc(func(
+		ctx context.Context,
+		tb deployer_pb.DeploymentPSMTransitionBaton,
+		deployment *deployer_pb.DeploymentState,
+		event *deployer_pb.DeploymentEventType_Terminated,
+	) error {
+		deployment.Status = deployer_pb.DeploymentStatus_TERMINATED
+
+		tb.SideEffect(&deployer_tpb.DeploymentCompleteMessage{
+			DeploymentId:    deployment.DeploymentId,
+			StackId:         deployment.StackId,
+			EnvironmentName: deployment.Spec.EnvironmentName,
+			ApplicationName: deployment.Spec.AppName,
+		})
+		return nil
+	}))
 
 	return sm, nil
 }
