@@ -159,8 +159,8 @@ github.com/onsi/ginkgo/v2 v2.13.0/go.mod h1:TE309ZR8s5FsKKpuB1YAQYBzCaAfUgatB/xl
 github.com/onsi/gomega v1.29.0 h1:KIA/t2t5UBzoirT4H9tsML45GEbo3ouUnBHsCfD2tVg=
 github.com/onsi/gomega v1.29.0/go.mod h1:9sxs+SwGrKI0+PWe4Fxa9tFQQBG5xSsSbMXOI8PPpoQ=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
-github.com/pentops/flowtest v0.0.0-20240130181954-521a30ab5d30 h1:bs5y5Wp68vybYIu2EICM4fnctpUb2nIcYQSdhRlHbOU=
-github.com/pentops/flowtest v0.0.0-20240130181954-521a30ab5d30/go.mod h1:FNquTq/mafLEDD+w/yiiQKIuAuQycFD9zhZ+pbAivc0=
+github.com/pentops/flowtest v0.0.0-20240208030635-1f298afe6f0f h1:J6PIQRR33KckKJgJXKyeXSTGJVlw8+BsbhrhHUw8Azg=
+github.com/pentops/flowtest v0.0.0-20240208030635-1f298afe6f0f/go.mod h1:FNquTq/mafLEDD+w/yiiQKIuAuQycFD9zhZ+pbAivc0=
 github.com/pentops/jsonapi v0.0.0-20240125182748-28bbbf8f7311 h1:JeqazO7kfp3xmggSxJHat3CWY1eMLMtZZV9gwNmcfvI=
 github.com/pentops/jsonapi v0.0.0-20240125182748-28bbbf8f7311/go.mod h1:+G29pelqimEuvqxtzUS3or1tZKssK8Mc0+JBInSR5k0=
 github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4 h1:7kPDmBAQxMxcFIYt1rEco/AipZmm1CUoND3wSDmIOeI=

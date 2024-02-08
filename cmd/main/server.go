@@ -141,7 +141,7 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	service, err := service.NewDeployerService(db, githubClient)
+	service, err := service.NewDeployerService(db, githubClient, stateMachines.Deployment)
 	if err != nil {
 		return err
 	}

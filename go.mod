@@ -22,7 +22,7 @@ require (
 	github.com/google/go-github/v47 v47.1.0
 	github.com/google/uuid v1.4.0
 	github.com/lib/pq v1.10.9
-	github.com/pentops/flowtest v0.0.0-20240130181954-521a30ab5d30
+	github.com/pentops/flowtest v0.0.0-20240208030635-1f298afe6f0f
 	github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4
 	github.com/pentops/o5-go v0.0.0-20240208011621-dafd710a59c7
 	github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7

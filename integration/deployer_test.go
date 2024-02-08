@@ -160,12 +160,6 @@ func TestCreateHappy(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		deploymentCompleteMessage := &deployer_tpb.DeploymentCompleteMessage{}
-		t.Outbox.PopMessage(t, deploymentCompleteMessage)
-		if _, err := t.DeployerTopic.DeploymentComplete(ctx, deploymentCompleteMessage); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
 		/*
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackStatus, deployer_pb.DeploymentStatus_SCALED_UP)
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventDone, deployer_pb.DeploymentStatus_DONE)
@@ -281,43 +275,24 @@ func TestStackLock(t *testing.T) {
 
 	})
 
-	deployment1CompleteMessage := &deployer_tpb.DeploymentCompleteMessage{}
+	deployment2TriggerMessage := &deployer_tpb.TriggerDeploymentMessage{}
 	ss.Step("Complete the first deployment", func(t UniverseAsserter) {
 		// Deployment: UPSERTING --> UPSERTED --> DONE
 		// Stack: CREATING --> STABLE --> MIGRATING
 		t.AWSStack.StackCreateComplete(t)
 
 		t.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_DONE)
-		t.AssertStackStatus(t, states.StackID("env", "app"),
-			deployer_pb.StackStatus_CREATING,
-			[]string{secondDeploymentRequest.DeploymentId})
 
-		t.Outbox.PopMessage(t, deployment1CompleteMessage)
+		t.AssertStackStatus(t, states.StackID("env", "app"),
+			deployer_pb.StackStatus_MIGRATING,
+			[]string{})
 
 		/*
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackStatus, deployer_pb.DeploymentStatus_UPSERTED)
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventDone, deployer_pb.DeploymentStatus_DONE)
 		*/
 
-	})
-
-	deployment2TriggerMessage := &deployer_tpb.TriggerDeploymentMessage{}
-	ss.Step("Write back to the Stack state machine", func(t UniverseAsserter) {
-		_, err := t.DeployerTopic.DeploymentComplete(ctx, deployment1CompleteMessage)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		t.AssertStackStatus(t, states.StackID("env", "app"),
-			deployer_pb.StackStatus_MIGRATING,
-			[]string{})
-
 		t.Outbox.PopMessage(t, deployment2TriggerMessage)
-
-		/*
-			t.PopStackEvent(t, deployer_pb.StackPSMEventDeploymentCompleted, deployer_pb.StackStatus_STABLE)
-			t.PopStackEvent(t, deployer_pb.StackPSMEventTriggered, deployer_pb.StackStatus_MIGRATING)
-		*/
 
 	})
 
@@ -355,7 +330,6 @@ func TestStackLock(t *testing.T) {
 
 	})
 
-	deployment2CompleteMessage := &deployer_tpb.DeploymentCompleteMessage{}
 	ss.Step("Terminate the second deployment", func(t UniverseAsserter) {
 		// Deployment: UPSERTING --> TERMIATED
 		_, err := t.DeployerCommand.TerminateDeployment(ctx, &deployer_spb.TerminateDeploymentRequest{
@@ -366,27 +340,13 @@ func TestStackLock(t *testing.T) {
 
 		t.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_TERMINATED)
 		t.AssertStackStatus(t, states.StackID("env", "app"),
-			deployer_pb.StackStatus_MIGRATING,
+			deployer_pb.StackStatus_AVAILABLE,
 			[]string{})
-
-		t.Outbox.PopMessage(t, deployment2CompleteMessage)
 
 		/*
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackStatus, deployer_pb.DeploymentStatus_UPSERTED)
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventDone, deployer_pb.DeploymentStatus_DONE)
 		*/
-
-	})
-
-	ss.Step("Complete the second deployment into stack", func(t UniverseAsserter) {
-		_, err := t.DeployerTopic.DeploymentComplete(ctx, deployment2CompleteMessage)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		t.AssertStackStatus(t, states.StackID("env", "app"),
-			deployer_pb.StackStatus_AVAILABLE,
-			[]string{})
 
 		/*
 			t.PopStackEvent(t, deployer_pb.StackPSMEventDeploymentCompleted, deployer_pb.StackStatus_STABLE)
