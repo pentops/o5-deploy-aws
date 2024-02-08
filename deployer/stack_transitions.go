@@ -6,7 +6,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
-	"github.com/pentops/protostate/psm"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -29,7 +28,7 @@ func StackTableSpec() deployer_pb.StackPSMTableSpec {
 
 	tableSpec := deployer_pb.DefaultStackPSMTableSpec
 	tableSpec.StateDataColumn = "state"
-	tableSpec.ExtraStateColumns = func(s *deployer_pb.StackState) (map[string]interface{}, error) {
+	tableSpec.StateColumns = func(s *deployer_pb.StackState) (map[string]interface{}, error) {
 		return map[string]interface{}{
 			"env_name": s.EnvironmentName,
 			"app_name": s.ApplicationName,
@@ -49,9 +48,10 @@ func StackTableSpec() deployer_pb.StackPSMTableSpec {
 
 }
 
-func NewStackEventer(db psm.Transactor) (*deployer_pb.StackPSM, error) {
+func NewStackEventer() (*deployer_pb.StackPSM, error) {
 
-	sm, err := deployer_pb.NewStackPSM(db, psm.WithTableSpec(StackTableSpec()))
+	config := deployer_pb.DefaultStackPSMConfig().WithTableSpec(StackTableSpec())
+	sm, err := deployer_pb.NewStackPSM(config)
 	if err != nil {
 		return nil, err
 	}

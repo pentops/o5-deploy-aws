@@ -8,7 +8,6 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
-	"github.com/pentops/protostate/psm"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -32,7 +31,7 @@ func DeploymentTableSpec() deployer_pb.DeploymentPSMTableSpec {
 	tableSpec := deployer_pb.DefaultDeploymentPSMTableSpec
 	tableSpec.EventDataColumn = "event"
 	tableSpec.StateDataColumn = "state"
-	tableSpec.ExtraStateColumns = func(s *deployer_pb.DeploymentState) (map[string]interface{}, error) {
+	tableSpec.StateColumns = func(s *deployer_pb.DeploymentState) (map[string]interface{}, error) {
 		return map[string]interface{}{
 			"stack_id": s.StackId,
 		}, nil
@@ -64,12 +63,10 @@ func (c deployerConversions) EventLabel(event deployer_pb.DeploymentPSMEvent) st
 	return typeKey
 }
 
-func NewDeploymentEventer(db psm.Transactor) (*deployer_pb.DeploymentPSM, error) {
+func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 
-	sm, err := deployer_pb.NewDeploymentPSM(db,
-		psm.WithTableSpec(DeploymentTableSpec()),
-		psm.WithEventTypeConverter(deployerConversions{}),
-	)
+	config := deployer_pb.DefaultDeploymentPSMConfig().WithTableSpec(DeploymentTableSpec()).WithEventTypeConverter(deployerConversions{})
+	sm, err := deployer_pb.NewDeploymentPSM(config)
 	if err != nil {
 		return nil, err
 	}

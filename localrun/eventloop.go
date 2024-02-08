@@ -54,6 +54,10 @@ func (td *TransitionData) SideEffect(msg outbox.OutboxMessage) {
 	td.SideEffects = append(td.SideEffects, msg)
 }
 
+func (td *TransitionData) ChainDerived(inner deployer_pb.DeploymentPSMEvent) {
+	panic("ChainDerived not implemented")
+}
+
 func (td *TransitionData) FullCause() *deployer_pb.DeploymentEvent {
 	return td.CausedBy
 }
@@ -98,7 +102,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		},
 	}}
 
-	stateMachine, err := deployer.NewDeploymentEventer(nil)
+	stateMachine, err := deployer.NewDeploymentEventer()
 	if err != nil {
 		return err
 	}
@@ -134,7 +138,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		if err != nil {
 			return err
 		}
-		unwrapped := stateMachine.UnwrapEvent(innerEvent)
+		unwrapped := innerEvent.Event
 		if err := transition.RunTransition(ctx, baton, deployment, unwrapped); err != nil {
 			return err
 		}

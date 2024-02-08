@@ -25,32 +25,22 @@ type DeployerWorker struct {
 	deploymentEventer *deployer_pb.DeploymentPSM
 }
 
-func NewDeployerWorker(conn sqrlx.Connection, specBuilder *SpecBuilder) (*DeployerWorker, error) {
+func NewDeployerWorker(conn sqrlx.Connection, specBuilder *SpecBuilder, states *StateMachines) (*DeployerWorker, error) {
 	db, err := sqrlx.New(conn, sq.Dollar)
 	if err != nil {
 		return nil, err
 	}
 
-	stackEventer, err := NewStackEventer(db)
-	if err != nil {
-		return nil, fmt.Errorf("NewStackEventer: %w", err)
-	}
-
-	deploymentEventer, err := NewDeploymentEventer(db)
-	if err != nil {
-		return nil, fmt.Errorf("NewDeploymentEventer: %w", err)
-	}
-
 	return &DeployerWorker{
 		db:                db,
 		specBuilder:       specBuilder,
-		stackEventer:      stackEventer,
-		deploymentEventer: deploymentEventer,
+		stackEventer:      states.Stack,
+		deploymentEventer: states.Deployment,
 	}, nil
 }
 
 func (dw *DeployerWorker) doDeploymentEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
-	_, err := dw.deploymentEventer.Transition(ctx, event)
+	_, err := dw.deploymentEventer.Transition(ctx, dw.db, event)
 	return err
 
 	/*
@@ -180,7 +170,7 @@ func (dw *DeployerWorker) DeploymentComplete(ctx context.Context, msg *deployer_
 		},
 	}
 
-	_, err := dw.stackEventer.Transition(ctx, stackEvent)
+	_, err := dw.stackEventer.Transition(ctx, dw.db, stackEvent)
 	return &emptypb.Empty{}, err
 }
 

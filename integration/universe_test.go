@@ -108,6 +108,7 @@ type Universe struct {
 	DeployerTopic      deployer_tpb.DeployerTopicClient
 	GithubWebhookTopic github_pb.WebhookTopicClient
 	DeployerQuery      deployer_spb.DeploymentQueryServiceClient
+	DeployerCommand    deployer_spb.DeploymentCommandServiceClient
 
 	SpecBuilder *deployer.SpecBuilder
 
@@ -282,7 +283,12 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 	topicPair := flowtest.NewGRPCPair(t)
 	servicePair := flowtest.NewGRPCPair(t) // TODO: Middleware
 
-	deploymentWorker, err := deployer.NewDeployerWorker(conn, trigger)
+	stateMachines, err := deployer.NewStateMachines()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deploymentWorker, err := deployer.NewDeployerWorker(conn, trigger, stateMachines)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,12 +303,14 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 	github_pb.RegisterWebhookTopicServer(topicPair.Server, githubWorker)
 	uu.GithubWebhookTopic = github_pb.NewWebhookTopicClient(topicPair.Client)
 
-	deployerQuery, err := service.NewDeployerService(conn, uu.Github)
+	deployerService, err := service.NewDeployerService(conn, uu.Github)
 	if err != nil {
 		t.Fatal(err)
 	}
-	deployer_spb.RegisterDeploymentQueryServiceServer(servicePair.Server, deployerQuery)
+	deployer_spb.RegisterDeploymentQueryServiceServer(servicePair.Server, deployerService)
+	deployer_spb.RegisterDeploymentCommandServiceServer(servicePair.Server, deployerService)
 	uu.DeployerQuery = deployer_spb.NewDeploymentQueryServiceClient(servicePair.Client)
+	uu.DeployerCommand = deployer_spb.NewDeploymentCommandServiceClient(servicePair.Client)
 
 	topicPair.ServeUntilDone(t, ctx)
 	servicePair.ServeUntilDone(t, ctx)
