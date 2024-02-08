@@ -1,13 +1,20 @@
-package deployer
+package states
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+var namespaceStackID = uuid.MustParse("C27983FD-BC4B-493F-A056-CC8C869A1999")
+
+func StackID(envName, appName string) string {
+	return uuid.NewMD5(namespaceStackID, []byte(fmt.Sprintf("%s-%s", envName, appName))).String()
+}
 
 func chainStackEvent(tb deployer_pb.StackPSMTransitionBaton, event deployer_pb.IsStackEventTypeWrappedType) *deployer_pb.StackEvent {
 	md := tb.FullCause().Metadata

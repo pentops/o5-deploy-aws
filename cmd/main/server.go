@@ -19,6 +19,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/localrun"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-deploy-aws/service"
+	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
@@ -114,7 +115,7 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	stateMachines, err := deployer.NewStateMachines()
+	stateMachines, err := states.NewStateMachines()
 	if err != nil {
 		return err
 	}
