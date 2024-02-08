@@ -114,7 +114,12 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	deploymentWorker, err := deployer.NewDeployerWorker(db, specBuilder)
+	stateMachines, err := deployer.NewStateMachines()
+	if err != nil {
+		return err
+	}
+
+	deploymentWorker, err := deployer.NewDeployerWorker(db, specBuilder, stateMachines)
 	if err != nil {
 		return err
 	}

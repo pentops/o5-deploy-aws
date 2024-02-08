@@ -22,12 +22,12 @@ require (
 	github.com/google/go-github/v47 v47.1.0
 	github.com/google/uuid v1.4.0
 	github.com/lib/pq v1.10.9
-	github.com/pentops/flowtest v0.0.0-20240111045946-d8249eae422d
+	github.com/pentops/flowtest v0.0.0-20240130181954-521a30ab5d30
 	github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4
-	github.com/pentops/o5-go v0.0.0-20240125014249-9fbaf85deb0d
+	github.com/pentops/o5-go v0.0.0-20240208011621-dafd710a59c7
 	github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7
 	github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e
-	github.com/pentops/protostate v0.0.0-20240123024346-92bd7df61460
+	github.com/pentops/protostate v0.0.0-20240208021253-aa3acfb8ab28
 	github.com/pentops/runner v0.0.0-20240119184422-1878cd4dc14d
 	github.com/pentops/sqrlx.go v0.0.0-20240108202916-8687fdf983c0
 	github.com/pressly/goose v2.7.0+incompatible
