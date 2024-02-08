@@ -7,9 +7,11 @@ import (
 	"time"
 
 	sq "github.com/elgris/sqrl"
+	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/github"
 	"github.com/pentops/o5-deploy-aws/states"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/outbox.pg.go/outbox"
@@ -17,6 +19,7 @@ import (
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.daemonl.com/envconf"
 )
 
@@ -51,12 +54,14 @@ type DeployerService struct {
 	StackQuery      *deployer_spb.StackPSMQuerySet
 	github          github.IClient
 
+	deploymentStateMachine *deployer_pb.DeploymentPSM
+
 	db *sqrlx.Wrapper
 	*deployer_spb.UnimplementedDeploymentQueryServiceServer
 	*deployer_spb.UnimplementedDeploymentCommandServiceServer
 }
 
-func NewDeployerService(conn sqrlx.Connection, github github.IClient) (*DeployerService, error) {
+func NewDeployerService(conn sqrlx.Connection, github github.IClient, deploymentStateMachine *deployer_pb.DeploymentPSM) (*DeployerService, error) {
 	db, err := sqrlx.New(conn, sq.Dollar)
 	if err != nil {
 		return nil, err
@@ -79,10 +84,11 @@ func NewDeployerService(conn sqrlx.Connection, github github.IClient) (*Deployer
 	}
 
 	return &DeployerService{
-		db:              db,
-		github:          github,
-		DeploymentQuery: deploymentQuery,
-		StackQuery:      stackQuery,
+		db:                     db,
+		github:                 github,
+		DeploymentQuery:        deploymentQuery,
+		deploymentStateMachine: deploymentStateMachine,
+		StackQuery:             stackQuery,
 	}, nil
 }
 
@@ -122,6 +128,26 @@ func (ds *DeployerService) TriggerDeployment(ctx context.Context, req *deployer_
 	}
 
 	return &deployer_spb.TriggerDeploymentResponse{}, nil
+}
+
+func (ds *DeployerService) TerminateDeployment(ctx context.Context, req *deployer_spb.TerminateDeploymentRequest) (*deployer_spb.TerminateDeploymentResponse, error) {
+
+	event := &deployer_pb.DeploymentEvent{
+		DeploymentId: req.DeploymentId,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+	}
+
+	event.SetPSMEvent(&deployer_pb.DeploymentEventType_Terminated{})
+
+	_, err := ds.deploymentStateMachine.Transition(ctx, ds.db, event)
+	if err != nil {
+		return nil, err
+	}
+
+	return &deployer_spb.TerminateDeploymentResponse{}, nil
 }
 
 func (ds *DeployerService) GetDeployment(ctx context.Context, req *deployer_spb.GetDeploymentRequest) (*deployer_spb.GetDeploymentResponse, error) {

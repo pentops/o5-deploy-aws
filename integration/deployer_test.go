@@ -10,6 +10,7 @@ import (
 	"github.com/pentops/o5-go/github/v1/github_pb"
 
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 )
 
@@ -355,12 +356,15 @@ func TestStackLock(t *testing.T) {
 	})
 
 	deployment2CompleteMessage := &deployer_tpb.DeploymentCompleteMessage{}
-	ss.Step("Complete the second deployment", func(t UniverseAsserter) {
-		// Deployment: UPSERTING --> UPSERTED --> DONE
-		// Stack: CREATING --> STABLE --> MIGRATING
-		t.AWSStack.StackCreateComplete(t)
+	ss.Step("Terminate the second deployment", func(t UniverseAsserter) {
+		// Deployment: UPSERTING --> TERMIATED
+		_, err := t.DeployerCommand.TerminateDeployment(ctx, &deployer_spb.TerminateDeploymentRequest{
+			DeploymentId: secondDeploymentRequest.DeploymentId,
+		})
 
-		t.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_DONE)
+		t.NoError(err)
+
+		t.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_TERMINATED)
 		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_MIGRATING,
 			[]string{})
