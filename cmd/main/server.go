@@ -27,7 +27,6 @@ import (
 	"github.com/pentops/o5-go/github/v1/github_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_tpb"
 	"github.com/pentops/outbox.pg.go/outbox"
-	"github.com/pentops/runner"
 	"github.com/pentops/runner/commander"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"github.com/pressly/goose"
@@ -47,6 +46,7 @@ func main() {
 
 	cmdGroup.RunMain("o5-deploy-aws", Version)
 }
+
 func runMigrate(ctx context.Context, config struct {
 	MigrationsDir string `env:"MIGRATIONS_DIR" default:"./ext/db"`
 }) error {
@@ -125,8 +125,6 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	log.Debug(ctx, "Got DB")
-
 	githubClient, err := github.NewEnvClient(ctx)
 	if err != nil {
 		return err
@@ -148,35 +146,29 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	runGroup := runner.NewGroup(runner.WithName("main"), runner.WithCancelOnSignals())
+	grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(
+		grpc_log.UnaryServerInterceptor(log.DefaultContext, log.DefaultTrace, log.DefaultLogger),
+	))
+	github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
+	deployer_spb.RegisterDeploymentQueryServiceServer(grpcServer, service)
+	deployer_spb.RegisterDeploymentCommandServiceServer(grpcServer, service)
+	deployer_tpb.RegisterAWSCommandTopicServer(grpcServer, awsInfraRunner)
+	deployer_tpb.RegisterDeployerTopicServer(grpcServer, deploymentWorker)
+	messaging_tpb.RegisterRawMessageTopicServer(grpcServer, awsInfraRunner)
 
-	runGroup.Add("grpcServer", func(ctx context.Context) error {
-		grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(
-			grpc_log.UnaryServerInterceptor(log.DefaultContext, log.DefaultTrace, log.DefaultLogger),
-		))
-		github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
-		deployer_spb.RegisterDeploymentQueryServiceServer(grpcServer, service)
-		deployer_spb.RegisterDeploymentCommandServiceServer(grpcServer, service)
-		deployer_tpb.RegisterAWSCommandTopicServer(grpcServer, awsInfraRunner)
-		deployer_tpb.RegisterDeployerTopicServer(grpcServer, deploymentWorker)
-		messaging_tpb.RegisterRawMessageTopicServer(grpcServer, awsInfraRunner)
+	reflection.Register(grpcServer)
 
-		reflection.Register(grpcServer)
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
+	if err != nil {
+		return err
+	}
+	log.WithField(ctx, "port", cfg.GRPCPort).Info("Begin Worker Server")
+	go func() {
+		<-ctx.Done()
+		grpcServer.GracefulStop() // nolint:errcheck
+	}()
 
-		lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
-		if err != nil {
-			return err
-		}
-		log.WithField(ctx, "port", cfg.GRPCPort).Info("Begin Worker Server")
-		go func() {
-			<-ctx.Done()
-			grpcServer.GracefulStop() // nolint:errcheck
-		}()
-
-		return grpcServer.Serve(lis)
-	})
-
-	return runGroup.Run(ctx)
+	return grpcServer.Serve(lis)
 }
 
 type outboxSender struct {
