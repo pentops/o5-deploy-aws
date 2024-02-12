@@ -178,6 +178,8 @@ func (cf *InfraAdapter) pollStack(
 
 	stackName := stackID.StackName
 
+	beginTime := time.Now()
+
 	ctx = log.WithFields(ctx, map[string]interface{}{
 		"stackName": stackName,
 	})
@@ -206,6 +208,7 @@ func (cf *InfraAdapter) pollStack(
 			"lifecycle":   remoteStack.SummaryType.ShortString(),
 			"stackStatus": remoteStack.StackStatus,
 			"outputs":     remoteStack.Outputs,
+			"duration":    time.Since(beginTime).String(),
 		}).Info("PollStack Final Result")
 
 		return &deployer_tpb.StackStatusChangedMessage{

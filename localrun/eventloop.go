@@ -139,7 +139,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		if err != nil {
 			return err
 		}
-		unwrapped := innerEvent.Event
+		unwrapped := innerEvent.Event.UnwrapPSMEvent()
 		if err := transition.RunTransition(ctx, baton, deployment, unwrapped); err != nil {
 			return err
 		}
