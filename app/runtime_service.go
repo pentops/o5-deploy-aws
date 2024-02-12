@@ -485,6 +485,13 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 			Tags: sourceTags(),
 		}
 	}
+	// faster deregistration
+	a := elbv2.TargetGroup_TargetGroupAttribute{
+		Key:   String("deregistration_delay.timeout_seconds"),
+		Value: String("30"),
+	}
+	targetGroupDefinition.TargetGroupAttributes = []elbv2.TargetGroup_TargetGroupAttribute{a}
+
 	targetGroupResource := NewResource(lookupKey, targetGroupDefinition)
 	rs.TargetGroups[lookupKey] = targetGroupResource
 
