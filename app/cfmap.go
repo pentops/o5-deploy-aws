@@ -79,7 +79,6 @@ func sourceTags() []tags.Tag {
 }
 
 func BuildApplication(app *application_pb.Application, versionTag string) (*Application, error) {
-
 	stackTemplate := NewApplication(app.Name, versionTag)
 
 	if app.DeploymentConfig != nil {
@@ -173,7 +172,6 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 	runtimes := map[string]*RuntimeService{}
 
 	for _, database := range app.Databases {
-
 		switch dbType := database.Engine.(type) {
 		case *application_pb.Database_Postgres_:
 
@@ -306,6 +304,16 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		if app.AwsConfig != nil {
 			if app.AwsConfig.Ses != nil {
 				runtimeStack.Policy.AddSES(app.AwsConfig.Ses)
+			}
+			if app.AwsConfig.SqsPublishAnywhere != nil && app.AwsConfig.SqsPublishAnywhere.SendAnywhere {
+				runtimeStack.Policy.AddSQSPublish(cloudformation.Join("", []string{
+					"arn:aws:sqs:",
+					"*",
+					":",
+					cloudformation.Ref(AWSAccountIDParameter),
+					":",
+					"*",
+				}))
 			}
 		}
 
