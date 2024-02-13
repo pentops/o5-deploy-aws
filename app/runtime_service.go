@@ -484,6 +484,8 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 			},
 			Tags: sourceTags(),
 		}
+	default:
+		return nil, fmt.Errorf("unsupported protocol %s", protocol)
 	}
 	// faster deregistration
 	a := elbv2.TargetGroup_TargetGroupAttribute{

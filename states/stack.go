@@ -75,7 +75,13 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		})
 	*/
 
+	// The 'Triggered' event arrives when a Deployment is *created*.
+	// The deployment starts in a 'QUEUED' status
+	// Then we send a Trigger back to the deployer to kick off the
+	// deployment, `QUEUED --> TRIGGERED : Trigger`
+
 	// [*] --> CREATING : Triggered
+	// As this is the first deployment for the stack, we can trigger the deployment immediately.
 	sm.From(
 		deployer_pb.StackStatus_UNSPECIFIED,
 	).Do(deployer_pb.StackPSMFunc(func(
@@ -102,58 +108,7 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 	},
 	))
 
-	// CREATING --> STABLE : DeploymentCompleted
-	// MIGRATING --> STABLE : DeploymentCompleted
-	sm.From(
-		deployer_pb.StackStatus_CREATING,
-		deployer_pb.StackStatus_MIGRATING,
-	).Do(deployer_pb.StackPSMFunc(func(
-		ctx context.Context,
-		tb deployer_pb.StackPSMTransitionBaton,
-		state *deployer_pb.StackState,
-		event *deployer_pb.StackEventType_DeploymentCompleted,
-	) error {
-		state.Status = deployer_pb.StackStatus_STABLE
-
-		if len(state.QueuedDeployments) == 0 {
-			// CHAIN NEXT
-			tb.ChainEvent(chainStackEvent(tb, &deployer_pb.StackEventType_Available{}))
-			return nil
-		}
-
-		tb.ChainEvent(chainStackEvent(tb, &deployer_pb.StackEventType_Triggered{
-			Deployment: state.QueuedDeployments[0],
-		}))
-		return nil
-	},
-	))
-
-	// STABLE --> MIGRATING : Triggered (Int)
-	sm.From(
-		deployer_pb.StackStatus_STABLE,
-	).Do(deployer_pb.StackPSMFunc(func(
-		ctx context.Context,
-		tb deployer_pb.StackPSMTransitionBaton,
-		state *deployer_pb.StackState,
-		event *deployer_pb.StackEventType_Triggered,
-	) error {
-		state.Status = deployer_pb.StackStatus_MIGRATING
-
-		state.CurrentDeployment = state.QueuedDeployments[0]
-		state.QueuedDeployments = state.QueuedDeployments[1:]
-
-		tb.SideEffect(&deployer_tpb.TriggerDeploymentMessage{
-			DeploymentId:    state.CurrentDeployment.DeploymentId,
-			StackId:         state.StackId,
-			Version:         state.CurrentDeployment.Version,
-			EnvironmentName: state.EnvironmentName,
-			ApplicationName: state.ApplicationName,
-		})
-		return nil
-	},
-	))
-
-	// AVAILABLE --> MIGRATING : Triggered (Ext)
+	// AVAILABLE --> MIGRATING : Triggered externally, run now
 	sm.From(
 		deployer_pb.StackStatus_AVAILABLE,
 	).Do(deployer_pb.StackPSMFunc(func(
@@ -177,6 +132,23 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 	},
 	))
 
+	// CREATING --> STABLE : DeploymentCompleted
+	// MIGRATING --> STABLE : DeploymentCompleted
+	sm.From(
+		deployer_pb.StackStatus_CREATING,
+		deployer_pb.StackStatus_MIGRATING,
+	).Do(deployer_pb.StackPSMFunc(func(
+		ctx context.Context,
+		tb deployer_pb.StackPSMTransitionBaton,
+		state *deployer_pb.StackState,
+		event *deployer_pb.StackEventType_DeploymentCompleted,
+	) error {
+		state.Status = deployer_pb.StackStatus_STABLE
+		tb.ChainEvent(chainStackEvent(tb, &deployer_pb.StackEventType_Available{}))
+		return nil
+	},
+	))
+
 	// STABLE -> AVAILABLE : Available
 	sm.From(
 		deployer_pb.StackStatus_STABLE,
@@ -186,7 +158,26 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		state *deployer_pb.StackState,
 		event *deployer_pb.StackEventType_Available,
 	) error {
-		state.Status = deployer_pb.StackStatus_AVAILABLE
+
+		if len(state.QueuedDeployments) == 0 {
+			state.Status = deployer_pb.StackStatus_AVAILABLE
+			// Nothing left to do, leave the stack in available
+			return nil
+		}
+
+		state.Status = deployer_pb.StackStatus_MIGRATING
+
+		state.CurrentDeployment = state.QueuedDeployments[0]
+		state.QueuedDeployments = state.QueuedDeployments[1:]
+
+		tb.SideEffect(&deployer_tpb.TriggerDeploymentMessage{
+			DeploymentId:    state.CurrentDeployment.DeploymentId,
+			StackId:         state.StackId,
+			Version:         state.CurrentDeployment.Version,
+			EnvironmentName: state.EnvironmentName,
+			ApplicationName: state.ApplicationName,
+		})
+
 		return nil
 	},
 	))

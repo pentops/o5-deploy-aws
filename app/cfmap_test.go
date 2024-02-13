@@ -55,6 +55,7 @@ func TestDirectPortAccess(t *testing.T) {
 				BypassIngress:   true,
 				TargetContainer: "main",
 				Port:            1234,
+				Protocol:        application_pb.RouteProtocol_GRPC,
 			}},
 			Containers: []*application_pb.Container{{
 				Name: "main",
@@ -93,6 +94,7 @@ func TestIndirectPortAccess(t *testing.T) {
 				BypassIngress:   false,
 				TargetContainer: "main",
 				Port:            1234,
+				Protocol:        application_pb.RouteProtocol_GRPC,
 			}},
 			Containers: []*application_pb.Container{{
 				Name: "main",
