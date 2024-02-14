@@ -8,6 +8,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
+	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
 
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
@@ -59,7 +60,8 @@ func TestCreateHappy(t *testing.T) {
 
 	})
 
-	var stackID *deployer_tpb.StackID
+	var stackRequest *messaging_pb.RequestMetadata
+	var stackName string
 
 	ss.Step("QUEUED --> TRIGGERED --> WAITING", func(t UniverseAsserter) {
 		_, err := t.DeployerTopic.TriggerDeployment(ctx, triggerMessage)
@@ -69,19 +71,21 @@ func TestCreateHappy(t *testing.T) {
 
 		stabalizeRequest := &deployer_tpb.StabalizeStackMessage{}
 		t.Outbox.PopMessage(t, stabalizeRequest)
-		stackID = stabalizeRequest.StackId
+		stackRequest = stabalizeRequest.Request
+		stackName = stabalizeRequest.StackName
 
 		/*
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventTriggered, deployer_pb.DeploymentStatus_TRIGGERED)
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackWait, deployer_pb.DeploymentStatus_WAITING)
 		*/
 
-		t.AssertDeploymentStatus(t, stackID.DeploymentId, deployer_pb.DeploymentStatus_WAITING)
+		t.AssertDeploymentStatus(t, triggerMessage.DeploymentId, deployer_pb.DeploymentStatus_WAITING)
 	})
 
 	ss.Step("WAITING --> AVAILABLE --> CREATING : StackStatus.Missing", func(t UniverseAsserter) {
-		_, err := t.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
-			StackId:   stackID,
+		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
+			Request:   stackRequest,
+			StackName: stackName,
 			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_MISSING,
 		})
 		if err != nil {
@@ -90,19 +94,20 @@ func TestCreateHappy(t *testing.T) {
 
 		createRequest := &deployer_tpb.CreateNewStackMessage{}
 		t.Outbox.PopMessage(t, createRequest)
-		stackID = createRequest.StackId
+		stackRequest = createRequest.Request
 
 		/*
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackStatus, deployer_pb.DeploymentStatus_AVAILABLE)
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackCreate, deployer_pb.DeploymentStatus_CREATING)
 		*/
 
-		t.AssertDeploymentStatus(t, stackID.DeploymentId, deployer_pb.DeploymentStatus_CREATING)
+		t.AssertDeploymentStatus(t, triggerMessage.DeploymentId, deployer_pb.DeploymentStatus_CREATING)
 	})
 
 	ss.Step("CREATING --> CREATING : StackStatus.Progress", func(t UniverseAsserter) {
-		_, err := t.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
-			StackId:   stackID,
+		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
+			Request:   stackRequest,
+			StackName: stackName,
 			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_PROGRESS,
 		})
 		if err != nil {
@@ -111,12 +116,13 @@ func TestCreateHappy(t *testing.T) {
 
 		//t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackStatus, deployer_pb.DeploymentStatus_CREATING)
 
-		t.AssertDeploymentStatus(t, stackID.DeploymentId, deployer_pb.DeploymentStatus_CREATING)
+		t.AssertDeploymentStatus(t, triggerMessage.DeploymentId, deployer_pb.DeploymentStatus_CREATING)
 	})
 
 	ss.Step("CREATING --> INFRA_MIGRATED --> DB_MIGRATING --> DB_MIGRATED --> SCALING_UP : StackStatus.Stable", func(t UniverseAsserter) {
-		_, err := t.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
-			StackId:   stackID,
+		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
+			Request:   stackRequest,
+			StackName: stackName,
 			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_COMPLETE,
 			Status:    "FOOBAR",
 			Outputs: []*deployer_pb.KeyValue{{
@@ -132,7 +138,7 @@ func TestCreateHappy(t *testing.T) {
 
 		scaleUpRequest := &deployer_tpb.ScaleStackMessage{}
 		t.Outbox.PopMessage(t, scaleUpRequest)
-		stackID = scaleUpRequest.StackId
+		stackRequest = scaleUpRequest.Request
 
 		t.Equal(int(1), int(scaleUpRequest.DesiredCount))
 
@@ -143,12 +149,13 @@ func TestCreateHappy(t *testing.T) {
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackScale, deployer_pb.DeploymentStatus_SCALING_UP)
 		*/
 
-		t.AssertDeploymentStatus(t, stackID.DeploymentId, deployer_pb.DeploymentStatus_SCALING_UP)
+		t.AssertDeploymentStatus(t, triggerMessage.DeploymentId, deployer_pb.DeploymentStatus_SCALING_UP)
 	})
 
 	ss.Step("SCALING_UP --> SCALED_UP --> DONE", func(t UniverseAsserter) {
-		_, err := t.DeployerTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
-			StackId:   stackID,
+		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
+			Request:   stackRequest,
+			StackName: stackName,
 			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_COMPLETE,
 			Status:    "FOOBAR",
 			Outputs: []*deployer_pb.KeyValue{{
@@ -168,7 +175,7 @@ func TestCreateHappy(t *testing.T) {
 			t.PopStackEvent(t, deployer_pb.StackPSMEventAvailable, deployer_pb.StackStatus_AVAILABLE)
 		*/
 
-		t.AssertDeploymentStatus(t, stackID.DeploymentId, deployer_pb.DeploymentStatus_DONE)
+		t.AssertDeploymentStatus(t, triggerMessage.DeploymentId, deployer_pb.DeploymentStatus_DONE)
 
 	})
 }

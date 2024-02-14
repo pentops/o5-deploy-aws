@@ -13,12 +13,16 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/protostate/psm"
 	"github.com/pentops/sqrlx.go/sqrlx"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type DeployerWorker struct {
 	*deployer_tpb.UnimplementedDeployerTopicServer
+	*deployer_tpb.UnimplementedCloudFormationReplyTopicServer
+	*deployer_tpb.UnimplementedPostgresMigrationReplyTopicServer
+
 	db *sqrlx.Wrapper
 
 	specBuilder       *SpecBuilder
@@ -122,8 +126,13 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 }
 
 func TranslateStackStatusChanged(msg *deployer_tpb.StackStatusChangedMessage) (*deployer_pb.DeploymentEvent, error) {
+	context := &deployer_pb.DeploymentStackContext{}
+	if err := proto.Unmarshal(msg.Request.Context, context); err != nil {
+		return nil, err
+	}
+
 	return &deployer_pb.DeploymentEvent{
-		DeploymentId: msg.StackId.DeploymentId,
+		DeploymentId: context.DeploymentId,
 		Metadata: &deployer_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
@@ -134,7 +143,7 @@ func TranslateStackStatusChanged(msg *deployer_tpb.StackStatusChangedMessage) (*
 					Lifecycle:       msg.Lifecycle,
 					FullStatus:      msg.Status,
 					StackOutput:     msg.Outputs,
-					DeploymentPhase: msg.StackId.DeploymentPhase,
+					DeploymentPhase: context.DeploymentPhase,
 				},
 			},
 		},
@@ -147,6 +156,7 @@ func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *deployer_
 	if err != nil {
 		return nil, err
 	}
+	stackStatus := event.Event.GetStackStatus()
 
 	if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
 		deployment, err := getDeployment(ctx, tx, event.DeploymentId)
@@ -158,14 +168,14 @@ func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *deployer_
 			return err
 		}
 
-		if deployment.WaitingOnRemotePhase == nil || *deployment.WaitingOnRemotePhase != msg.StackId.DeploymentPhase {
+		if deployment.WaitingOnRemotePhase == nil || *deployment.WaitingOnRemotePhase != stackStatus.DeploymentPhase {
 			waiting := ""
 			if deployment.WaitingOnRemotePhase != nil {
 				waiting = *deployment.WaitingOnRemotePhase
 			}
 
 			ctx := log.WithFields(ctx, map[string]interface{}{
-				"cfReturnPhase":        msg.StackId.DeploymentPhase,
+				"cfReturnPhase":        stackStatus.DeploymentPhase,
 				"waitingOnRemotePhase": waiting,
 			})
 			if msg.Lifecycle == deployer_pb.StackLifecycle_COMPLETE || msg.Lifecycle == deployer_pb.StackLifecycle_PROGRESS {
@@ -188,17 +198,33 @@ func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *deployer_
 	return &emptypb.Empty{}, nil
 }
 
-func TranslateMigrationStatusChanged(msg *deployer_tpb.MigrationStatusChangedMessage) (*deployer_pb.DeploymentEvent, error) {
+func (dw *DeployerWorker) MigrationStatusChanged(ctx context.Context, msg *deployer_tpb.PostgresMigrationEventMessage) (*emptypb.Empty, error) {
+
+	context := &deployer_pb.DeploymentMigrationContext{}
+	if err := proto.Unmarshal(msg.Request.Context, context); err != nil {
+		return nil, err
+	}
+
 	migrationStatus := &deployer_pb.DeploymentEventType_DbMigrateStatus{
 		DbMigrateStatus: &deployer_pb.DeploymentEventType_DBMigrateStatus{
-			MigrationId: msg.MigrationId,
-			Status:      msg.Status,
-			Error:       msg.Error,
+			MigrationId: context.MigrationId,
 		},
 	}
 
-	return &deployer_pb.DeploymentEvent{
-		DeploymentId: msg.DeploymentId,
+	switch inner := msg.Event.UnwrapPSMEvent().(type) {
+	case *deployer_pb.PostgresMigrationEventType_Prepare:
+		migrationStatus.DbMigrateStatus.Status = deployer_pb.DatabaseMigrationStatus_PENDING
+	case *deployer_pb.PostgresMigrationEventType_Done:
+		migrationStatus.DbMigrateStatus.Status = deployer_pb.DatabaseMigrationStatus_COMPLETED
+	case *deployer_pb.PostgresMigrationEventType_Error:
+		migrationStatus.DbMigrateStatus.Status = deployer_pb.DatabaseMigrationStatus_FAILED
+		migrationStatus.DbMigrateStatus.Error = &inner.Error
+	default:
+		return &emptypb.Empty{}, nil // ignore
+	}
+
+	event := &deployer_pb.DeploymentEvent{
+		DeploymentId: context.DeploymentId,
 		Metadata: &deployer_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
@@ -207,14 +233,6 @@ func TranslateMigrationStatusChanged(msg *deployer_tpb.MigrationStatusChangedMes
 		Event: &deployer_pb.DeploymentEventType{
 			Type: migrationStatus,
 		},
-	}, nil
-}
-
-func (dw *DeployerWorker) MigrationStatusChanged(ctx context.Context, msg *deployer_tpb.MigrationStatusChangedMessage) (*emptypb.Empty, error) {
-
-	event, err := TranslateMigrationStatusChanged(msg)
-	if err != nil {
-		return nil, err
 	}
 
 	return &emptypb.Empty{}, dw.doDeploymentEvent(ctx, event)

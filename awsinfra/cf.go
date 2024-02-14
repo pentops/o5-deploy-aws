@@ -74,28 +74,6 @@ func (cf *CFClient) getOneStack(ctx context.Context, stackName string) (*types.S
 	return &remoteStack, nil
 }
 
-func buildClientID(stackID *deployer_tpb.StackID) *string {
-	str := fmt.Sprintf("%s-%s", stackID.DeploymentId, stackID.DeploymentPhase)
-	return &str
-}
-
-func parseStackID(stackName, clientToken string) (*deployer_tpb.StackID, error) {
-	stackID := &deployer_tpb.StackID{
-		StackName: stackName,
-	}
-
-	parts := strings.SplitN(clientToken, "-", 6)
-	fmt.Printf("%#v\n", parts)
-	if len(parts) == 6 {
-		stackID.DeploymentId = strings.Join(parts[0:5], "-")
-		stackID.DeploymentPhase = parts[5]
-	} else {
-		return nil, fmt.Errorf("invalid client token %s", clientToken)
-	}
-
-	return stackID, nil
-}
-
 func (cf *CFClient) resolveParameters(ctx context.Context, lastInput []types.Parameter, input []*deployer_pb.CloudFormationStackParameter, desiredCount int32) ([]types.Parameter, error) {
 	parameters := make([]types.Parameter, len(input))
 
@@ -146,7 +124,7 @@ func (cf *CFClient) resolveParameters(ctx context.Context, lastInput []types.Par
 	return parameters, nil
 }
 
-func (cf *CFClient) CreateNewStack(ctx context.Context, msg *deployer_tpb.CreateNewStackMessage) error {
+func (cf *CFClient) CreateNewStack(ctx context.Context, reqToken string, msg *deployer_tpb.CreateNewStackMessage) error {
 	clients, err := cf.Clients.Clients(ctx)
 	if err != nil {
 		return err
@@ -164,8 +142,8 @@ func (cf *CFClient) CreateNewStack(ctx context.Context, msg *deployer_tpb.Create
 	}
 
 	_, err = clients.CloudFormation.CreateStack(ctx, &cloudformation.CreateStackInput{
-		StackName:          aws.String(msg.StackId.StackName),
-		ClientRequestToken: buildClientID(msg.StackId),
+		StackName:          aws.String(msg.StackName),
+		ClientRequestToken: aws.String(reqToken),
 		TemplateURL:        aws.String(msg.TemplateUrl),
 		Parameters:         parameters,
 		Capabilities: []types.Capability{
@@ -180,7 +158,7 @@ func (cf *CFClient) CreateNewStack(ctx context.Context, msg *deployer_tpb.Create
 	return nil
 }
 
-func (cf *CFClient) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateStackMessage) error {
+func (cf *CFClient) UpdateStack(ctx context.Context, reqToken string, msg *deployer_tpb.UpdateStackMessage) error {
 	clients, err := cf.Clients.Clients(ctx)
 	if err != nil {
 		return err
@@ -192,7 +170,7 @@ func (cf *CFClient) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateSta
 		}
 	}
 
-	current, err := cf.getOneStack(ctx, msg.StackId.StackName)
+	current, err := cf.getOneStack(ctx, msg.StackName)
 	if err != nil {
 		return err
 	}
@@ -204,8 +182,8 @@ func (cf *CFClient) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateSta
 	}
 
 	_, err = clients.CloudFormation.UpdateStack(ctx, &cloudformation.UpdateStackInput{
-		StackName:          aws.String(msg.StackId.StackName),
-		ClientRequestToken: buildClientID(msg.StackId),
+		StackName:          aws.String(msg.StackName),
+		ClientRequestToken: aws.String(reqToken),
 		TemplateURL:        aws.String(msg.TemplateUrl),
 		Parameters:         parameters,
 		Capabilities: []types.Capability{
@@ -220,9 +198,9 @@ func (cf *CFClient) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateSta
 	return nil
 }
 
-func (cf *CFClient) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStackMessage) error {
+func (cf *CFClient) ScaleStack(ctx context.Context, reqToken string, msg *deployer_tpb.ScaleStackMessage) error {
 
-	current, err := cf.getOneStack(ctx, msg.StackId.StackName)
+	current, err := cf.getOneStack(ctx, msg.StackName)
 	if err != nil {
 		return err
 	}
@@ -250,8 +228,8 @@ func (cf *CFClient) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStack
 	}
 
 	_, err = client.UpdateStack(ctx, &cloudformation.UpdateStackInput{
-		StackName:           aws.String(msg.StackId.StackName),
-		ClientRequestToken:  buildClientID(msg.StackId),
+		StackName:           aws.String(msg.StackName),
+		ClientRequestToken:  aws.String(reqToken),
 		UsePreviousTemplate: aws.Bool(true),
 		Parameters:          parameters,
 		Capabilities: []types.Capability{
@@ -266,28 +244,28 @@ func (cf *CFClient) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStack
 	return nil
 }
 
-func (cf *CFClient) CancelStackUpdate(ctx context.Context, msg *deployer_tpb.CancelStackUpdateMessage) error {
+func (cf *CFClient) CancelStackUpdate(ctx context.Context, reqToken string, msg *deployer_tpb.CancelStackUpdateMessage) error {
 	client, err := cf.getClient(ctx)
 	if err != nil {
 		return err
 	}
 
 	_, err = client.CancelUpdateStack(ctx, &cloudformation.CancelUpdateStackInput{
-		StackName:          aws.String(msg.StackId.StackName),
-		ClientRequestToken: buildClientID(msg.StackId),
+		StackName:          aws.String(msg.StackName),
+		ClientRequestToken: aws.String(reqToken),
 	})
 	return err
 }
 
-func (cf *CFClient) DeleteStack(ctx context.Context, msg *deployer_tpb.DeleteStackMessage) error {
+func (cf *CFClient) DeleteStack(ctx context.Context, reqToken string, msg *deployer_tpb.DeleteStackMessage) error {
 	client, err := cf.getClient(ctx)
 	if err != nil {
 		return err
 	}
 
 	_, err = client.DeleteStack(ctx, &cloudformation.DeleteStackInput{
-		StackName:          aws.String(msg.StackId.StackName),
-		ClientRequestToken: buildClientID(msg.StackId),
+		StackName:          aws.String(msg.StackName),
+		ClientRequestToken: aws.String(reqToken),
 	})
 	return err
 }

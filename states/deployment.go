@@ -8,9 +8,23 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+func buildRequestMetadata(contextMessage proto.Message) (*messaging_pb.RequestMetadata, error) {
+	contextBytes, err := proto.Marshal(contextMessage)
+	if err != nil {
+		return nil, err
+	}
+
+	req := &messaging_pb.RequestMetadata{
+		ReplyTo: "o5-deployer",
+		Context: contextBytes,
+	}
+	return req, nil
+}
 
 func chainDeploymentEvent(tb deployer_pb.DeploymentPSMTransitionBaton, event deployer_pb.IsDeploymentEventTypeWrappedType) *deployer_pb.DeploymentEvent {
 	md := tb.FullCause().Metadata
@@ -127,12 +141,17 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 			deployment.Status = deployer_pb.DeploymentStatus_WAITING
 			deployment.WaitingOnRemotePhase = proto.String("wait")
 
+			requestMetadata, err := buildRequestMetadata(&deployer_pb.DeploymentStackContext{
+				DeploymentId:    deployment.DeploymentId,
+				DeploymentPhase: "wait",
+			})
+			if err != nil {
+				return err
+			}
+
 			tb.SideEffect(&deployer_tpb.StabalizeStackMessage{
-				StackId: &deployer_tpb.StackID{
-					StackName:       deployment.StackName,
-					DeploymentId:    deployment.DeploymentId,
-					DeploymentPhase: "wait",
-				},
+				Request:      requestMetadata,
+				StackName:    deployment.StackName,
 				CancelUpdate: deployment.Spec.CancelUpdates,
 			})
 
@@ -155,14 +174,18 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 			}
 
 			deployment.WaitingOnRemotePhase = proto.String("create")
+			requestMetadata, err := buildRequestMetadata(&deployer_pb.DeploymentStackContext{
+				DeploymentId:    deployment.DeploymentId,
+				DeploymentPhase: "create",
+			})
+			if err != nil {
+				return err
+			}
 
 			// Create, scale 0
 			tb.SideEffect(&deployer_tpb.CreateNewStackMessage{
-				StackId: &deployer_tpb.StackID{
-					StackName:       deployment.StackName,
-					DeploymentId:    deployment.DeploymentId,
-					DeploymentPhase: "create",
-				},
+				Request:      requestMetadata,
+				StackName:    deployment.StackName,
 				Parameters:   deployment.Spec.Parameters,
 				TemplateUrl:  deployment.Spec.TemplateUrl,
 				DesiredCount: 0,
@@ -242,12 +265,16 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 			if deployment.LastStackLifecycle == deployer_pb.StackLifecycle_MISSING {
 				// Create a new stack
 				deployment.WaitingOnRemotePhase = proto.String("create")
+				requestMetadata, err := buildRequestMetadata(&deployer_pb.DeploymentStackContext{
+					DeploymentId:    deployment.DeploymentId,
+					DeploymentPhase: "create",
+				})
+				if err != nil {
+					return err
+				}
 				tb.SideEffect(&deployer_tpb.CreateNewStackMessage{
-					StackId: &deployer_tpb.StackID{
-						StackName:       deployment.StackName,
-						DeploymentId:    deployment.DeploymentId,
-						DeploymentPhase: "create",
-					},
+					Request:      requestMetadata,
+					StackName:    deployment.StackName,
 					Parameters:   deployment.Spec.Parameters,
 					TemplateUrl:  deployment.Spec.TemplateUrl,
 					DesiredCount: 1, // TODO: Pull from spec
@@ -257,12 +284,16 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 				})
 			} else {
 				deployment.WaitingOnRemotePhase = proto.String("infra-migrate")
+				requestMetadata, err := buildRequestMetadata(&deployer_pb.DeploymentStackContext{
+					DeploymentId:    deployment.DeploymentId,
+					DeploymentPhase: "infra-migrate",
+				})
+				if err != nil {
+					return err
+				}
 				tb.SideEffect(&deployer_tpb.UpdateStackMessage{
-					StackId: &deployer_tpb.StackID{
-						StackName:       deployment.StackName,
-						DeploymentId:    deployment.DeploymentId,
-						DeploymentPhase: "infra-migrate",
-					},
+					Request:      requestMetadata,
+					StackName:    deployment.StackName,
 					Parameters:   deployment.Spec.Parameters,
 					TemplateUrl:  deployment.Spec.TemplateUrl,
 					DesiredCount: 1, // TODO: Pull from spec
@@ -469,15 +500,24 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 					return fmt.Errorf("no host found for server group %q", db.Database.GetPostgres().ServerGroup)
 				}
 
-				migrationMsg := &deployer_tpb.RunDatabaseMigrationMessage{
-					MigrationId:       migration.MigrationId,
-					DeploymentId:      deployment.DeploymentId,
-					MigrationTaskArn:  migrationTaskARN,
-					SecretArn:         secretARN,
-					Database:          db,
-					RotateCredentials: migration.RotateCredentials,
-					EcsClusterName:    deployment.Spec.EcsCluster,
-					RootSecretName:    secretName,
+				request, err := buildRequestMetadata(&deployer_pb.DeploymentMigrationContext{
+					DeploymentId: deployment.DeploymentId,
+					MigrationId:  migration.MigrationId,
+				})
+				if err != nil {
+					return err
+				}
+
+				migrationMsg := &deployer_tpb.MigratePostgresDatabaseMessage{
+					Request: request,
+					MigrationSpec: &deployer_pb.PostgresMigrationSpec{
+						MigrationTaskArn:  migrationTaskARN,
+						SecretArn:         secretARN,
+						Database:          db,
+						RotateCredentials: migration.RotateCredentials,
+						EcsClusterName:    deployment.Spec.EcsCluster,
+						RootSecretName:    secretName,
+					},
 				}
 
 				tb.SideEffect(migrationMsg)
@@ -590,13 +630,17 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_SCALING_UP
 			deployment.WaitingOnRemotePhase = proto.String("scale-up")
+			requestMetadata, err := buildRequestMetadata(&deployer_pb.DeploymentStackContext{
+				DeploymentId:    deployment.DeploymentId,
+				DeploymentPhase: "scale-up",
+			})
+			if err != nil {
+				return err
+			}
 
 			tb.SideEffect(&deployer_tpb.ScaleStackMessage{
-				StackId: &deployer_tpb.StackID{
-					StackName:       deployment.StackName,
-					DeploymentId:    deployment.DeploymentId,
-					DeploymentPhase: "scale-up",
-				},
+				Request:      requestMetadata,
+				StackName:    deployment.StackName,
 				DesiredCount: event.DesiredCount,
 			})
 			return nil
@@ -613,14 +657,18 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_SCALING_DOWN
 			deployment.WaitingOnRemotePhase = proto.String("scale-down")
+			requestMetadata, err := buildRequestMetadata(&deployer_pb.DeploymentStackContext{
+				DeploymentId:    deployment.DeploymentId,
+				DeploymentPhase: "scale-down",
+			})
+			if err != nil {
+				return err
+			}
 
 			tb.SideEffect(&deployer_tpb.ScaleStackMessage{
 				DesiredCount: event.DesiredCount,
-				StackId: &deployer_tpb.StackID{
-					StackName:       deployment.StackName,
-					DeploymentId:    deployment.DeploymentId,
-					DeploymentPhase: "scale-down",
-				},
+				Request:      requestMetadata,
+				StackName:    deployment.StackName,
 			})
 			return nil
 		},
@@ -636,6 +684,13 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_INFRA_MIGRATE
 			deployment.WaitingOnRemotePhase = proto.String("infra-migrate")
+			requestMetadata, err := buildRequestMetadata(&deployer_pb.DeploymentStackContext{
+				DeploymentId:    deployment.DeploymentId,
+				DeploymentPhase: "infra-migrate",
+			})
+			if err != nil {
+				return err
+			}
 
 			topicNames := make([]string, len(deployment.Spec.SnsTopics))
 			for i, topic := range deployment.Spec.SnsTopics {
@@ -643,11 +698,8 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 			}
 
 			msg := &deployer_tpb.UpdateStackMessage{
-				StackId: &deployer_tpb.StackID{
-					StackName:       deployment.StackName,
-					DeploymentId:    deployment.DeploymentId,
-					DeploymentPhase: "infra-migrate",
-				},
+				Request:      requestMetadata,
+				StackName:    deployment.StackName,
 				Parameters:   deployment.Spec.Parameters,
 				TemplateUrl:  deployment.Spec.TemplateUrl,
 				DesiredCount: 0,

@@ -3,34 +3,7 @@ package awsinfra
 import (
 	"encoding/base64"
 	"testing"
-
-	"github.com/google/uuid"
-	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 )
-
-func TestClientToken(t *testing.T) {
-
-	clientToken := &deployer_tpb.StackID{
-		DeploymentId:    uuid.NewString(),
-		DeploymentPhase: "foo-bar",
-	}
-
-	outStr := buildClientID(clientToken)
-
-	out, err := parseStackID("", *outStr)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if out.DeploymentId != clientToken.DeploymentId {
-		t.Errorf("Expected %s, got %s", clientToken.DeploymentId, out.DeploymentId)
-	}
-
-	if out.DeploymentPhase != clientToken.DeploymentPhase {
-		t.Errorf("Expected %s, got %s", clientToken.DeploymentPhase, out.DeploymentPhase)
-	}
-
-}
 
 func TestParseRawMessage(t *testing.T) {
 

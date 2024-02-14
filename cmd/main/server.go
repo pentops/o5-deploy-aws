@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
+	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_tpb"
 	"github.com/pentops/outbox.pg.go/outbox"
 	"github.com/pentops/runner/commander"
@@ -103,12 +105,14 @@ func runServe(ctx context.Context, cfg struct {
 		AWSConfig:     awsConfig,
 	}
 
-	outbox, err := newOutboxSender(db)
+	dbLite, err := newLiteDB(db)
 	if err != nil {
 		return err
 	}
-	awsInfraRunner := awsinfra.NewInfraWorker(clientSet, outbox)
+	awsInfraRunner := awsinfra.NewInfraWorker(clientSet, dbLite)
 	awsInfraRunner.CallbackARNs = []string{cfg.CallbackARN}
+
+	pgMigrateRunner := awsinfra.NewPostgresMigrateWorker(clientSet, dbLite)
 
 	specBuilder, err := deployer.NewSpecBuilder(environments, cfg.CFTemplates, s3Client)
 	if err != nil {
@@ -152,8 +156,11 @@ func runServe(ctx context.Context, cfg struct {
 	github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
 	deployer_spb.RegisterDeploymentQueryServiceServer(grpcServer, service)
 	deployer_spb.RegisterDeploymentCommandServiceServer(grpcServer, service)
-	deployer_tpb.RegisterAWSCommandTopicServer(grpcServer, awsInfraRunner)
+	deployer_tpb.RegisterCloudFormationRequestTopicServer(grpcServer, awsInfraRunner)
+	deployer_tpb.RegisterPostgresMigrationTopicServer(grpcServer, pgMigrateRunner)
 	deployer_tpb.RegisterDeployerTopicServer(grpcServer, deploymentWorker)
+	deployer_tpb.RegisterCloudFormationReplyTopicServer(grpcServer, deploymentWorker)
+	deployer_tpb.RegisterPostgresMigrationReplyTopicServer(grpcServer, deploymentWorker)
 	messaging_tpb.RegisterRawMessageTopicServer(grpcServer, awsInfraRunner)
 
 	reflection.Register(grpcServer)
@@ -171,22 +178,22 @@ func runServe(ctx context.Context, cfg struct {
 	return grpcServer.Serve(lis)
 }
 
-type outboxSender struct {
+type liteDB struct {
 	db *sqrlx.Wrapper
 }
 
-func newOutboxSender(conn sqrlx.Connection) (*outboxSender, error) {
+func newLiteDB(conn sqrlx.Connection) (*liteDB, error) {
 	db, err := sqrlx.New(conn, sq.Dollar)
 	if err != nil {
 		return nil, err
 	}
 
-	return &outboxSender{
+	return &liteDB{
 		db: db,
 	}, nil
 }
 
-func (s *outboxSender) PublishEvent(ctx context.Context, msg outbox.OutboxMessage) error {
+func (s *liteDB) PublishEvent(ctx context.Context, msg outbox.OutboxMessage) error {
 	return s.db.Transact(ctx, &sqrlx.TxOptions{
 		Isolation: sql.LevelReadCommitted,
 		ReadOnly:  false,
@@ -194,6 +201,49 @@ func (s *outboxSender) PublishEvent(ctx context.Context, msg outbox.OutboxMessag
 	}, func(ctx context.Context, tx sqrlx.Transaction) error {
 		return outbox.Send(ctx, tx, msg)
 	})
+}
+
+func (s *liteDB) RequestToClientToken(ctx context.Context, req *messaging_pb.RequestMetadata) (string, error) {
+	token := uuid.NewString()
+
+	return token, s.db.Transact(ctx, &sqrlx.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+		ReadOnly:  false,
+		Retryable: true,
+	}, func(ctx context.Context, tx sqrlx.Transaction) error {
+		didInsert, err := tx.InsertRow(ctx, sq.Insert("client_tokens").
+			SetMap(map[string]interface{}{
+				"token":   token,
+				"dest":    req.ReplyTo,
+				"request": req.Context,
+			}))
+		if err != nil {
+			return err
+		}
+		if !didInsert {
+			return errors.New("client token not unique")
+		}
+		return nil
+	})
+}
+
+func (s *liteDB) ClientTokenToRequest(ctx context.Context, token string) (*messaging_pb.RequestMetadata, error) {
+	response := &messaging_pb.RequestMetadata{}
+
+	err := s.db.Transact(ctx, &sqrlx.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+		ReadOnly:  true,
+		Retryable: true,
+	}, func(ctx context.Context, tx sqrlx.Transaction) error {
+		return tx.QueryRow(ctx, sq.Select("dest", "request").
+			From("client_tokens").
+			Where(sq.Eq{"token": token})).
+			Scan(&response.ReplyTo, &response.Context)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return response, nil
 }
 
 type RefLookup []*github_pb.RefLink

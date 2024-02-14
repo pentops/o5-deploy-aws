@@ -11,8 +11,10 @@ import (
 )
 
 type StateMachines struct {
-	Deployment *deployer_pb.DeploymentPSM
-	Stack      *deployer_pb.StackPSM
+	Deployment      *deployer_pb.DeploymentPSM
+	Stack           *deployer_pb.StackPSM
+	PostgresMigrate *deployer_pb.PostgresMigrationPSM
+	EcsTask         *deployer_pb.EcsTaskPSM
 }
 
 func NewStateMachines() (*StateMachines, error) {
@@ -24,6 +26,16 @@ func NewStateMachines() (*StateMachines, error) {
 	stack, err := NewStackEventer()
 	if err != nil {
 		return nil, fmt.Errorf("NewStackEventer: %w", err)
+	}
+
+	postrgresMigrate, err := NewPostgresMigrateEventer()
+	if err != nil {
+		return nil, fmt.Errorf("NewPostgresMigrateEventer: %w", err)
+	}
+
+	ecsTask, err := NewEcsTaskEventer()
+	if err != nil {
+		return nil, fmt.Errorf("NewEcsTaskEventer: %w", err)
 	}
 
 	deployment.AddHook(func(
@@ -92,7 +104,9 @@ func NewStateMachines() (*StateMachines, error) {
 	})
 
 	return &StateMachines{
-		Deployment: deployment,
-		Stack:      stack,
+		Deployment:      deployment,
+		Stack:           stack,
+		PostgresMigrate: postrgresMigrate,
+		EcsTask:         ecsTask,
 	}, nil
 }

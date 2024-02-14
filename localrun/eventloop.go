@@ -184,11 +184,12 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 				log.WithError(ctx, err).Error("Side Effect Error")
 				return err
 			}
-			mapped, err := mapSideEffectResult(result)
-			if err != nil {
-				return err
-			}
-			if mapped != nil {
+
+			if result != nil {
+				mapped := &deployer_pb.DeploymentEvent{
+					DeploymentId: deploymentId,
+				}
+				mapped.SetPSMEvent(result)
 				log.WithField(ctx, "nextEvent", protojson.Format(mapped)).Debug("Side Effect Result")
 				eventQueue = append(eventQueue, mapped)
 			}
@@ -199,25 +200,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 	return nil
 }
 
-func mapSideEffectResult(result proto.Message) (*deployer_pb.DeploymentEvent, error) {
-
-	switch result := result.(type) {
-	case *deployer_tpb.StackStatusChangedMessage:
-		return deployer.TranslateStackStatusChanged(result)
-
-	case *deployer_tpb.MigrationStatusChangedMessage:
-		return deployer.TranslateMigrationStatusChanged(result)
-
-	case *deployer_tpb.DeploymentCompleteMessage:
-		return nil, nil
-
-	default:
-		return nil, fmt.Errorf("unknown side effect result type: %T", result)
-	}
-
-}
-
-func (lel *EventLoop) handleSideEffect(ctx context.Context, msg proto.Message) (proto.Message, error) {
+func (lel *EventLoop) handleSideEffect(ctx context.Context, msg proto.Message) (deployer_pb.DeploymentPSMEvent, error) {
 
 	switch msg := msg.(type) {
 	case *deployer_tpb.UpdateStackMessage:
@@ -232,11 +215,11 @@ func (lel *EventLoop) handleSideEffect(ctx context.Context, msg proto.Message) (
 	case *deployer_tpb.StabalizeStackMessage:
 		return lel.awsRunner.StabalizeStack(ctx, msg)
 
-	case *deployer_tpb.RunDatabaseMigrationMessage:
-		return lel.awsRunner.RunDatabaseMigration(ctx, msg)
+	case *deployer_tpb.MigratePostgresDatabaseMessage:
+		return lel.awsRunner.MigratePostgresDatabase(ctx, msg)
 
 	case *deployer_tpb.DeploymentCompleteMessage:
-		return msg, nil
+		return nil, nil
 	}
 
 	return nil, fmt.Errorf("unknown side effect message type: %T", msg)

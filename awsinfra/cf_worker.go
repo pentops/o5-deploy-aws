@@ -2,6 +2,7 @@ package awsinfra
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -9,38 +10,42 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_tpb"
 	"github.com/pentops/outbox.pg.go/outbox"
 	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type MessageHandler interface {
+type DBLite interface {
 	PublishEvent(context.Context, outbox.OutboxMessage) error
+	RequestToClientToken(context.Context, *messaging_pb.RequestMetadata) (string, error)
+	ClientTokenToRequest(context.Context, string) (*messaging_pb.RequestMetadata, error)
 }
 
+var RequestTokenNotFound = errors.New("request token not found")
+
 type InfraWorker struct {
-	*deployer_tpb.UnimplementedAWSCommandTopicServer
+	*deployer_tpb.UnimplementedCloudFormationRequestTopicServer
 	*messaging_tpb.UnimplementedRawMessageTopicServer
 
-	messageHandler MessageHandler
+	db DBLite
 	*CFClient
 }
 
-func NewInfraWorker(clients ClientBuilder, messageHandler MessageHandler) *InfraWorker {
+func NewInfraWorker(clients ClientBuilder, db DBLite) *InfraWorker {
 	cfClient := &CFClient{
 		Clients: clients,
 	}
 	return &InfraWorker{
-		CFClient:       cfClient,
-		messageHandler: messageHandler,
+		CFClient: cfClient,
+		db:       db,
 	}
 }
 
 func (cf *InfraWorker) eventOut(ctx context.Context, msg outbox.OutboxMessage) error {
 	fmt.Printf("eventOut: %s\n", protojson.Format(msg))
-	return cf.messageHandler.PublishEvent(ctx, msg)
+	return cf.db.PublishEvent(ctx, msg)
 }
 
 func parseAWSRawMessage(raw []byte) (map[string]string, error) {
@@ -116,13 +121,16 @@ func (cf *InfraWorker) Raw(ctx context.Context, msg *messaging_tpb.RawMessage) (
 		outputs = mapOutputs(stack.Outputs)
 	}
 
-	stackID, err := parseStackID(stackName, clientToken)
-	if err != nil {
+	requestMetadata, err := cf.db.ClientTokenToRequest(ctx, clientToken)
+	if errors.Is(err, RequestTokenNotFound) {
+		return nil, nil
+	} else if err != nil {
 		return nil, err
 	}
 
 	if err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
-		StackId:   stackID,
+		Request:   requestMetadata,
+		StackName: stackName,
 		Status:    resourceStatus,
 		Outputs:   outputs,
 		Lifecycle: lifecycle,
@@ -135,7 +143,12 @@ func (cf *InfraWorker) Raw(ctx context.Context, msg *messaging_tpb.RawMessage) (
 
 func (cf *InfraWorker) CreateNewStack(ctx context.Context, msg *deployer_tpb.CreateNewStackMessage) (*emptypb.Empty, error) {
 
-	err := cf.CFClient.CreateNewStack(ctx, msg)
+	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
+	if err != nil {
+		return nil, err
+	}
+
+	err = cf.CFClient.CreateNewStack(ctx, reqToken, msg)
 	if err != nil {
 		return nil, err
 	}
@@ -144,14 +157,18 @@ func (cf *InfraWorker) CreateNewStack(ctx context.Context, msg *deployer_tpb.Cre
 }
 
 func (cf *InfraWorker) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateStackMessage) (*emptypb.Empty, error) {
+	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
+	if err != nil {
+		return nil, err
+	}
 
-	err := cf.CFClient.UpdateStack(ctx, msg)
+	err = cf.CFClient.UpdateStack(ctx, reqToken, msg)
 	if err != nil {
 		if !IsNoUpdatesError(err) {
 			return nil, fmt.Errorf("UpdateStack: %w", err)
 		}
 
-		if err := cf.noUpdatesToBePerformed(ctx, msg.StackId); err != nil {
+		if err := cf.noUpdatesToBePerformed(ctx, msg.StackName, msg.Request); err != nil {
 			return nil, err
 		}
 	}
@@ -160,7 +177,11 @@ func (cf *InfraWorker) UpdateStack(ctx context.Context, msg *deployer_tpb.Update
 }
 
 func (cf *InfraWorker) CancelStackUpdate(ctx context.Context, msg *deployer_tpb.CancelStackUpdateMessage) (*emptypb.Empty, error) {
-	err := cf.CFClient.CancelStackUpdate(ctx, msg)
+	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
+	if err != nil {
+		return nil, err
+	}
+	err = cf.CFClient.CancelStackUpdate(ctx, reqToken, msg)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +190,11 @@ func (cf *InfraWorker) CancelStackUpdate(ctx context.Context, msg *deployer_tpb.
 }
 
 func (cf *InfraWorker) DeleteStack(ctx context.Context, msg *deployer_tpb.DeleteStackMessage) (*emptypb.Empty, error) {
-	err := cf.CFClient.DeleteStack(ctx, msg)
+	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
+	if err != nil {
+		return nil, err
+	}
+	err = cf.CFClient.DeleteStack(ctx, reqToken, msg)
 	if err != nil {
 		return nil, err
 	}
@@ -178,13 +203,17 @@ func (cf *InfraWorker) DeleteStack(ctx context.Context, msg *deployer_tpb.Delete
 }
 
 func (cf *InfraWorker) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStackMessage) (*emptypb.Empty, error) {
-	err := cf.CFClient.ScaleStack(ctx, msg)
+	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
+	if err != nil {
+		return nil, err
+	}
+	err = cf.CFClient.ScaleStack(ctx, reqToken, msg)
 	if err != nil {
 		if !IsNoUpdatesError(err) {
 			return nil, fmt.Errorf("ScaleStack: %w", err)
 		}
 
-		if err := cf.noUpdatesToBePerformed(ctx, msg.StackId); err != nil {
+		if err := cf.noUpdatesToBePerformed(ctx, msg.StackName, msg.Request); err != nil {
 			return nil, err
 		}
 	}
@@ -194,14 +223,15 @@ func (cf *InfraWorker) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleSt
 
 func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.StabalizeStackMessage) (*emptypb.Empty, error) {
 
-	remoteStack, err := cf.getOneStack(ctx, msg.StackId.StackName)
+	remoteStack, err := cf.getOneStack(ctx, msg.StackName)
 	if err != nil {
 		return nil, fmt.Errorf("getOneStack: %w", err)
 	}
 
 	if remoteStack == nil {
 		err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
-			StackId:   msg.StackId,
+			Request:   msg.Request,
+			StackName: msg.StackName,
 			Status:    "MISSING",
 			Lifecycle: deployer_pb.StackLifecycle_MISSING,
 		})
@@ -219,7 +249,8 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 
 	if remoteStack.StackStatus == types.StackStatusRollbackComplete {
 		err := cf.eventOut(ctx, &deployer_tpb.DeleteStackMessage{
-			StackId: msg.StackId,
+			Request:   msg.Request,
+			StackName: msg.StackName,
 		})
 		if err != nil {
 			return nil, err
@@ -231,7 +262,8 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 	needsCancel := msg.CancelUpdate && remoteStack.StackStatus == types.StackStatusUpdateInProgress
 	if needsCancel {
 		err := cf.eventOut(ctx, &deployer_tpb.CancelStackUpdateMessage{
-			StackId: msg.StackId,
+			Request:   msg.Request,
+			StackName: msg.StackName,
 		})
 		if err != nil {
 			return nil, err
@@ -246,7 +278,8 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 		// is stable and ready for another attempt
 		lifecycle = deployer_pb.StackLifecycle_COMPLETE
 		err = cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
-			StackId:   msg.StackId,
+			Request:   msg.Request,
+			StackName: msg.StackName,
 			Status:    string(remoteStack.StackStatus),
 			Lifecycle: lifecycle,
 		})
@@ -262,7 +295,7 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 	}
 
 	log.WithFields(ctx, map[string]interface{}{
-		"stackName":   msg.StackId.StackName,
+		"stackName":   msg.StackName,
 		"lifecycle":   lifecycle.ShortString(),
 		"stackStatus": remoteStack.StackStatus,
 	}).Debug("StabalizeStack Result")
@@ -270,7 +303,8 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 	// This only runs if we aren't running the poller, as the poller will do
 	// the same thing
 	err = cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
-		StackId:   msg.StackId,
+		Request:   msg.Request,
+		StackName: msg.StackName,
 		Status:    string(remoteStack.StackStatus),
 		Lifecycle: lifecycle,
 	})
@@ -283,9 +317,9 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 
 // sends a fake status update message back to the deployer so that it thinks
 // something has happened and continues the event chain
-func (cf *InfraWorker) noUpdatesToBePerformed(ctx context.Context, stackID *deployer_tpb.StackID) error {
+func (cf *InfraWorker) noUpdatesToBePerformed(ctx context.Context, stackName string, request *messaging_pb.RequestMetadata) error {
 
-	remoteStack, err := cf.getOneStack(ctx, stackID.StackName)
+	remoteStack, err := cf.getOneStack(ctx, stackName)
 	if err != nil {
 		return err
 	}
@@ -296,7 +330,8 @@ func (cf *InfraWorker) noUpdatesToBePerformed(ctx context.Context, stackID *depl
 	}
 
 	if err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
-		StackId:   stackID,
+		Request:   request,
+		StackName: stackName,
 		Status:    "NO UPDATES TO BE PERFORMED",
 		Outputs:   summary.Outputs,
 		Lifecycle: deployer_pb.StackLifecycle_COMPLETE,
@@ -305,42 +340,4 @@ func (cf *InfraWorker) noUpdatesToBePerformed(ctx context.Context, stackID *depl
 	}
 
 	return nil
-}
-
-func (d *InfraWorker) RunDatabaseMigration(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) (*emptypb.Empty, error) {
-	if err := d.messageHandler.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
-		MigrationId:  msg.MigrationId,
-		DeploymentId: msg.DeploymentId,
-		Status:       deployer_pb.DatabaseMigrationStatus_PENDING,
-	}); err != nil {
-		return nil, err
-	}
-
-	migrator := &DBMigrator{
-		Clients: d.Clients,
-	}
-	migrateErr := migrator.RunDatabaseMigration(ctx, msg)
-
-	if migrateErr != nil {
-		log.WithError(ctx, migrateErr).Error("RunDatabaseMigration")
-		if err := d.messageHandler.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
-			MigrationId:  msg.MigrationId,
-			DeploymentId: msg.DeploymentId,
-			Status:       deployer_pb.DatabaseMigrationStatus_FAILED,
-			Error:        proto.String(migrateErr.Error()),
-		}); err != nil {
-			return nil, err
-		}
-		return &emptypb.Empty{}, nil
-	}
-
-	if err := d.messageHandler.PublishEvent(ctx, &deployer_tpb.MigrationStatusChangedMessage{
-		DeploymentId: msg.DeploymentId,
-		MigrationId:  msg.MigrationId,
-		Status:       deployer_pb.DatabaseMigrationStatus_COMPLETED,
-	}); err != nil {
-		return nil, err
-	}
-
-	return &emptypb.Empty{}, nil
 }

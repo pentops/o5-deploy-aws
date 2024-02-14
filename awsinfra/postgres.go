@@ -16,6 +16,7 @@ import (
 	sq "github.com/elgris/sqrl"
 	_ "github.com/lib/pq"
 	"github.com/pentops/log.go/log"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/sqrlx.go/sqrlx"
 )
@@ -24,32 +25,28 @@ type DBMigrator struct {
 	Clients ClientBuilder
 }
 
-func (d *DBMigrator) RunDatabaseMigration(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
-	if err := d.upsertPostgresDatabase(ctx, msg); err != nil {
+func (d *DBMigrator) MigratePostgresDatabase(ctx context.Context, msg *deployer_tpb.MigratePostgresDatabaseMessage) error {
+	if err := d.upsertPostgresDatabase(ctx, msg.MigrationSpec); err != nil {
 		return err
 	}
 
-	if msg.Database.MigrationTaskOutputName == nil {
-		return nil
+	if err := d.fixPostgresOwnership(ctx, msg.MigrationSpec); err != nil {
+		return err
 	}
 
-	if msg.MigrationTaskArn == "" {
-		return fmt.Errorf("stack output '%s' not found, for database %q", *msg.Database.MigrationTaskOutputName, msg.Database.Database.Name)
-	}
-
-	if err := d.runMigrationTask(ctx, msg); err != nil {
+	if err := d.runMigrationTask(ctx, msg.MigrationSpec); err != nil {
 		return err
 	}
 
 	// This runs both before and after migration
-	if err := d.fixPostgresOwnership(ctx, msg); err != nil {
+	if err := d.fixPostgresOwnership(ctx, msg.MigrationSpec); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (d *DBMigrator) runMigrationTask(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
+func (d *DBMigrator) runMigrationTask(ctx context.Context, msg *deployer_pb.PostgresMigrationSpec) error {
 
 	clients, err := d.Clients.Clients(ctx)
 	if err != nil {
@@ -61,6 +58,7 @@ func (d *DBMigrator) runMigrationTask(ctx context.Context, msg *deployer_tpb.Run
 		TaskDefinition: aws.String(msg.MigrationTaskArn),
 		Cluster:        aws.String(msg.EcsClusterName),
 		Count:          aws.Int32(1),
+		//ClientToken:    aws.String(msg.MigrationId),
 	})
 	if err != nil {
 		return err
@@ -124,7 +122,7 @@ func (ss DBSecret) buildURLForDB(dbName string) string {
 	return fmt.Sprintf("postgres://%s:%s@%s:5432/%s", ss.Username, ss.Password, ss.Hostname, dbName)
 }
 
-func (d *DBMigrator) rootPostgresCredentials(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) (*DBSecret, error) {
+func (d *DBMigrator) rootPostgresCredentials(ctx context.Context, msg *deployer_pb.PostgresMigrationSpec) (*DBSecret, error) {
 	// "/${var.env_name}/global/rds/${var.name}/root" from TF
 
 	clients, err := d.Clients.Clients(ctx)
@@ -147,7 +145,7 @@ func (d *DBMigrator) rootPostgresCredentials(ctx context.Context, msg *deployer_
 	return secretVal, nil
 }
 
-func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
+func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *deployer_pb.PostgresMigrationSpec) error {
 
 	log.Info(ctx, "Fix object ownership")
 	pgSpec := msg.Database.Database.GetPostgres()
@@ -262,7 +260,7 @@ func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *deployer_tpb
 	return nil
 }
 
-func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
+func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *deployer_pb.PostgresMigrationSpec) error {
 
 	// spec *deployer_pb.PostgresDatabase, secretARN string, rotateExisting bool) error {
 	//.Database, msg.SecretArn, msg.RotateCredentials); err != nil {
@@ -330,10 +328,6 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *deployer_t
 		if err != nil {
 			return err
 		}
-	}
-
-	if err := d.fixPostgresOwnership(ctx, msg); err != nil {
-		return err
 	}
 
 	if count == 1 && !msg.RotateCredentials {

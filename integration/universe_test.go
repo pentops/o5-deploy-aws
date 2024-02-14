@@ -21,6 +21,7 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
+	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	"github.com/pentops/outbox.pg.go/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
 )
@@ -106,7 +107,9 @@ func NewStepper(ctx context.Context, t testing.TB) *Stepper {
 }
 
 type Universe struct {
-	DeployerTopic      deployer_tpb.DeployerTopicClient
+	DeployerTopic deployer_tpb.DeployerTopicClient
+	CFReplyTopic  deployer_tpb.CloudFormationReplyTopicClient
+
 	GithubWebhookTopic github_pb.WebhookTopicClient
 	DeployerQuery      deployer_spb.DeploymentQueryServiceClient
 	DeployerCommand    deployer_spb.DeploymentCommandServiceClient
@@ -122,7 +125,8 @@ type Universe struct {
 }
 
 type cfMock struct {
-	lastRequest *deployer_tpb.StackID
+	lastRequest *messaging_pb.RequestMetadata
+	lastStack   string
 	uu          *Universe
 }
 
@@ -130,21 +134,24 @@ func (cf *cfMock) ExpectStabalizeStack(t flowtest.TB) {
 	t.Helper()
 	stabalizeRequest := &deployer_tpb.StabalizeStackMessage{}
 	cf.uu.Outbox.PopMessage(t, stabalizeRequest)
-	cf.lastRequest = stabalizeRequest.StackId
+	cf.lastRequest = stabalizeRequest.Request
+	cf.lastStack = stabalizeRequest.StackName
 }
 
 func (cf *cfMock) ExpectCreateStack(t flowtest.TB) *deployer_tpb.CreateNewStackMessage {
 	t.Helper()
 	createRequest := &deployer_tpb.CreateNewStackMessage{}
 	cf.uu.Outbox.PopMessage(t, createRequest)
-	cf.lastRequest = createRequest.StackId
+	cf.lastRequest = createRequest.Request
+	cf.lastStack = createRequest.StackName
 	return createRequest
 }
 
 func (cf *cfMock) StackStatusMissing(t flowtest.TB) {
 	t.Helper()
-	_, err := cf.uu.DeployerTopic.StackStatusChanged(context.Background(), &deployer_tpb.StackStatusChangedMessage{
-		StackId:   cf.lastRequest,
+	_, err := cf.uu.CFReplyTopic.StackStatusChanged(context.Background(), &deployer_tpb.StackStatusChangedMessage{
+		Request:   cf.lastRequest,
+		StackName: cf.lastStack,
 		Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_MISSING,
 		Status:    "",
 	})
@@ -154,8 +161,9 @@ func (cf *cfMock) StackStatusMissing(t flowtest.TB) {
 }
 
 func (cf *cfMock) StackCreateComplete(t flowtest.TB) {
-	_, err := cf.uu.DeployerTopic.StackStatusChanged(context.Background(), &deployer_tpb.StackStatusChangedMessage{
-		StackId:   cf.lastRequest,
+	_, err := cf.uu.CFReplyTopic.StackStatusChanged(context.Background(), &deployer_tpb.StackStatusChangedMessage{
+		Request:   cf.lastRequest,
+		StackName: cf.lastStack,
 		Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_COMPLETE,
 		Status:    "CREATE_COMPLETE",
 		Outputs: []*deployer_pb.KeyValue{{
@@ -295,6 +303,9 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 	}
 	deployer_tpb.RegisterDeployerTopicServer(topicPair.Server, deploymentWorker)
 	uu.DeployerTopic = deployer_tpb.NewDeployerTopicClient(topicPair.Client)
+
+	deployer_tpb.RegisterCloudFormationReplyTopicServer(topicPair.Server, deploymentWorker)
+	uu.CFReplyTopic = deployer_tpb.NewCloudFormationReplyTopicClient(topicPair.Client)
 
 	githubWorker, err := github.NewWebhookWorker(conn, uu.Github, uu.Github)
 	if err != nil {
