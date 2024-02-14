@@ -36,7 +36,6 @@ type RuntimeService struct {
 }
 
 func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*RuntimeService, error) {
-
 	defs := []*ContainerDefinition{}
 	serviceLinks := []string{}
 
