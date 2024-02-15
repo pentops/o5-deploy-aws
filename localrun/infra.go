@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
+	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
@@ -36,22 +37,44 @@ func newToken() string {
 	return fmt.Sprintf("local-%d", time.Now().UnixNano())
 }
 
+func stackEvent(msg *deployer_tpb.StackStatusChangedMessage, err error) (deployer_pb.DeploymentPSMEvent, error) {
+	if err != nil {
+		return nil, err
+	}
+	event, err := deployer.StackStatusToEvent(msg)
+	if err != nil {
+		return nil, err
+	}
+	return event.UnwrapPSMEvent(), nil
+}
+
+func dbEvent(msg *deployer_tpb.PostgresMigrationEventMessage, err error) (deployer_pb.DeploymentPSMEvent, error) {
+	if err != nil {
+		return nil, err
+	}
+	event, err := deployer.PostgresMigrationToEvent(msg)
+	if err != nil {
+		return nil, err
+	}
+	return event.UnwrapPSMEvent(), nil
+}
+
 func (cf *InfraAdapter) HandleMessage(ctx context.Context, msg proto.Message) (deployer_pb.DeploymentPSMEvent, error) {
 	switch msg := msg.(type) {
 	case *deployer_tpb.UpdateStackMessage:
-		return cf.UpdateStack(ctx, msg)
+		return stackEvent(cf.UpdateStack(ctx, msg))
 
 	case *deployer_tpb.CreateNewStackMessage:
-		return cf.CreateNewStack(ctx, msg)
+		return stackEvent(cf.CreateNewStack(ctx, msg))
 
 	case *deployer_tpb.ScaleStackMessage:
-		return cf.ScaleStack(ctx, msg)
+		return stackEvent(cf.ScaleStack(ctx, msg))
 
 	case *deployer_tpb.StabalizeStackMessage:
-		return cf.StabalizeStack(ctx, msg)
+		return stackEvent(cf.StabalizeStack(ctx, msg))
 
 	case *deployer_tpb.MigratePostgresDatabaseMessage:
-		return cf.MigratePostgresDatabase(ctx, msg)
+		return dbEvent(cf.MigratePostgresDatabase(ctx, msg))
 
 	case *deployer_tpb.DeploymentCompleteMessage:
 		return nil, nil
@@ -60,7 +83,7 @@ func (cf *InfraAdapter) HandleMessage(ctx context.Context, msg proto.Message) (d
 	return nil, fmt.Errorf("unknown side effect message type: %T", msg)
 }
 
-func (cf *InfraAdapter) CreateNewStack(ctx context.Context, msg *deployer_tpb.CreateNewStackMessage) (*deployer_pb.DeploymentEventType_StackStatus, error) {
+func (cf *InfraAdapter) CreateNewStack(ctx context.Context, msg *deployer_tpb.CreateNewStackMessage) (*deployer_tpb.StackStatusChangedMessage, error) {
 
 	reqToken := newToken()
 
@@ -69,10 +92,10 @@ func (cf *InfraAdapter) CreateNewStack(ctx context.Context, msg *deployer_tpb.Cr
 		return nil, err
 	}
 
-	return cf.pollStack(ctx, msg.StackName, reqToken, msg.Request)
+	return cf.pollStack(ctx, msg.Spec.StackName, reqToken, msg.Request)
 }
 
-func (cf *InfraAdapter) StabalizeStack(ctx context.Context, msg *deployer_tpb.StabalizeStackMessage) (*deployer_pb.DeploymentEventType_StackStatus, error) {
+func (cf *InfraAdapter) StabalizeStack(ctx context.Context, msg *deployer_tpb.StabalizeStackMessage) (*deployer_tpb.StackStatusChangedMessage, error) {
 
 	remoteStack, err := cf.cfClient.GetOneStack(ctx, msg.StackName)
 	if err != nil {
@@ -80,9 +103,9 @@ func (cf *InfraAdapter) StabalizeStack(ctx context.Context, msg *deployer_tpb.St
 	}
 
 	if remoteStack == nil {
-		return &deployer_pb.DeploymentEventType_StackStatus{
-			FullStatus: "MISSING",
-			Lifecycle:  deployer_pb.StackLifecycle_MISSING,
+		return &deployer_tpb.StackStatusChangedMessage{
+			Status:    "MISSING",
+			Lifecycle: deployer_pb.StackLifecycle_MISSING,
 		}, nil
 	}
 
@@ -120,10 +143,10 @@ func (cf *InfraAdapter) StabalizeStack(ctx context.Context, msg *deployer_tpb.St
 		// In the Stabalize handler ONLY, this counts as a success, as the stack
 		// is stable and ready for another attempt
 		lifecycle = deployer_pb.StackLifecycle_COMPLETE
-		return &deployer_pb.DeploymentEventType_StackStatus{
-			FullStatus:  string(remoteStack.StackStatus),
-			Lifecycle:   lifecycle,
-			StackOutput: remoteStack.Outputs,
+		return &deployer_tpb.StackStatusChangedMessage{
+			Status:    string(remoteStack.StackStatus),
+			Lifecycle: lifecycle,
+			Outputs:   remoteStack.Outputs,
 		}, nil
 
 	case types.StackStatusRollbackInProgress:
@@ -140,23 +163,23 @@ func (cf *InfraAdapter) StabalizeStack(ctx context.Context, msg *deployer_tpb.St
 	return cf.pollStack(ctx, msg.StackName, "", msg.Request)
 }
 
-func (cf *InfraAdapter) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateStackMessage) (*deployer_pb.DeploymentEventType_StackStatus, error) {
+func (cf *InfraAdapter) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateStackMessage) (*deployer_tpb.StackStatusChangedMessage, error) {
 
 	reqToken := newToken()
 
 	err := cf.cfClient.UpdateStack(ctx, reqToken, msg)
 	if err != nil {
 		if awsinfra.IsNoUpdatesError(err) {
-			return cf.noUpdatesToBePerformed(ctx, msg.StackName, msg.Request)
+			return cf.noUpdatesToBePerformed(ctx, msg.Spec.StackName, msg.Request)
 		}
 
 		return nil, err
 	}
 
-	return cf.pollStack(ctx, msg.StackName, reqToken, msg.Request)
+	return cf.pollStack(ctx, msg.Spec.StackName, reqToken, msg.Request)
 }
 
-func (cf *InfraAdapter) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStackMessage) (*deployer_pb.DeploymentEventType_StackStatus, error) {
+func (cf *InfraAdapter) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStackMessage) (*deployer_tpb.StackStatusChangedMessage, error) {
 
 	reqToken := newToken()
 
@@ -171,43 +194,43 @@ func (cf *InfraAdapter) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleS
 	return cf.pollStack(ctx, msg.StackName, reqToken, msg.Request)
 }
 
-func (cf *InfraAdapter) MigratePostgresDatabase(ctx context.Context, msg *deployer_tpb.MigratePostgresDatabaseMessage) (*deployer_pb.DeploymentEventType_DBMigrateStatus, error) {
+func (cf *InfraAdapter) MigratePostgresDatabase(ctx context.Context, msg *deployer_tpb.MigratePostgresDatabaseMessage) (*deployer_tpb.PostgresMigrationEventMessage, error) {
+
+	replyMsg := &deployer_tpb.PostgresMigrationEventMessage{
+		Request:     msg.Request,
+		MigrationId: msg.MigrationId,
+	}
 
 	migrateError := cf.dbClient.MigratePostgresDatabase(ctx, msg)
 
-	reqState := &deployer_pb.DeploymentMigrationContext{}
+	reqState := &deployer_pb.StepContext{}
 	if err := proto.Unmarshal(msg.Request.Context, reqState); err != nil {
 		return nil, err
 	}
 
 	if migrateError != nil {
 		errMsg := migrateError.Error()
-		return &deployer_pb.DeploymentEventType_DBMigrateStatus{
-			Status:      deployer_pb.DatabaseMigrationStatus_FAILED,
-			Error:       &errMsg,
-			MigrationId: reqState.MigrationId,
-			DbName:      msg.MigrationSpec.Database.Database.Name,
-		}, nil
+		replyMsg.Status = deployer_tpb.PostgresStatus_ERROR
+		replyMsg.Error = &errMsg
+	} else {
+		replyMsg.Status = deployer_tpb.PostgresStatus_AVAILABLE
 	}
-	return &deployer_pb.DeploymentEventType_DBMigrateStatus{
-		Status:      deployer_pb.DatabaseMigrationStatus_COMPLETED,
-		MigrationId: reqState.MigrationId,
-		DbName:      msg.MigrationSpec.Database.Database.Name,
-	}, nil
-
+	return replyMsg, nil
 }
 
-func (cf *InfraAdapter) noUpdatesToBePerformed(ctx context.Context, stackName string, request *messaging_pb.RequestMetadata) (*deployer_pb.DeploymentEventType_StackStatus, error) {
+func (cf *InfraAdapter) noUpdatesToBePerformed(ctx context.Context, stackName string, request *messaging_pb.RequestMetadata) (*deployer_tpb.StackStatusChangedMessage, error) {
 
 	remoteStack, err := cf.cfClient.GetOneStack(ctx, stackName)
 	if err != nil {
 		return nil, err
 	}
 
-	return &deployer_pb.DeploymentEventType_StackStatus{
-		FullStatus:  "NO UPDATES TO BE PERFORMED",
-		StackOutput: remoteStack.Outputs,
-		Lifecycle:   deployer_pb.StackLifecycle_COMPLETE,
+	return &deployer_tpb.StackStatusChangedMessage{
+		Request:   request,
+		StackName: stackName,
+		Status:    "NO UPDATES TO BE PERFORMED",
+		Outputs:   remoteStack.Outputs,
+		Lifecycle: deployer_pb.StackLifecycle_COMPLETE,
 	}, nil
 }
 
@@ -216,7 +239,7 @@ func (cf *InfraAdapter) pollStack(
 	stackName string,
 	reqToken string,
 	request *messaging_pb.RequestMetadata,
-) (*deployer_pb.DeploymentEventType_StackStatus, error) {
+) (*deployer_tpb.StackStatusChangedMessage, error) {
 
 	beginTime := time.Now()
 
@@ -250,10 +273,12 @@ func (cf *InfraAdapter) pollStack(
 			"outputs":     remoteStack.Outputs,
 			"duration":    time.Since(beginTime).String(),
 		}).Info("PollStack Final Result")
-		return &deployer_pb.DeploymentEventType_StackStatus{
-			Lifecycle:   remoteStack.SummaryType,
-			FullStatus:  string(remoteStack.StackStatus),
-			StackOutput: remoteStack.Outputs,
+		return &deployer_tpb.StackStatusChangedMessage{
+			Request:   request,
+			StackName: stackName,
+			Status:    string(remoteStack.StackStatus),
+			Lifecycle: remoteStack.SummaryType,
+			Outputs:   remoteStack.Outputs,
 		}, nil
 
 	}

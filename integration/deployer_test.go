@@ -121,7 +121,7 @@ func TestCreateHappy(t *testing.T) {
 		t.AssertDeploymentStatus(t, triggerMessage.DeploymentId, deployer_pb.DeploymentStatus_WAITING)
 	})
 
-	ss.Step("WAITING --> AVAILABLE --> CREATING : StackStatus.Missing", func(t UniverseAsserter) {
+	ss.Step("WAITING --> AVAILABLE --> RUNNING : StackStatus.Missing", func(t UniverseAsserter) {
 		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
 			Request:   stackRequest,
 			StackName: stackName,
@@ -140,10 +140,10 @@ func TestCreateHappy(t *testing.T) {
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackCreate, deployer_pb.DeploymentStatus_CREATING)
 		*/
 
-		t.AssertDeploymentStatus(t, triggerMessage.DeploymentId, deployer_pb.DeploymentStatus_CREATING)
+		t.AssertDeploymentStatus(t, triggerMessage.DeploymentId, deployer_pb.DeploymentStatus_RUNNING)
 	})
 
-	ss.Step("CREATING --> CREATING : StackStatus.Progress", func(t UniverseAsserter) {
+	ss.Step("NOP : StackStatus.Progress", func(t UniverseAsserter) {
 		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
 			Request:   stackRequest,
 			StackName: stackName,
@@ -153,12 +153,10 @@ func TestCreateHappy(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		//t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackStatus, deployer_pb.DeploymentStatus_CREATING)
-
-		t.AssertDeploymentStatus(t, triggerMessage.DeploymentId, deployer_pb.DeploymentStatus_CREATING)
+		t.AssertDeploymentStatus(t, triggerMessage.DeploymentId, deployer_pb.DeploymentStatus_RUNNING)
 	})
 
-	ss.Step("CREATING --> INFRA_MIGRATED --> DB_MIGRATING --> DB_MIGRATED --> SCALING_UP : StackStatus.Stable", func(t UniverseAsserter) {
+	ss.Step("RUNNING --> RUNNING: StackStatus.Stable", func(t UniverseAsserter) {
 		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
 			Request:   stackRequest,
 			StackName: stackName,
@@ -188,10 +186,10 @@ func TestCreateHappy(t *testing.T) {
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackScale, deployer_pb.DeploymentStatus_SCALING_UP)
 		*/
 
-		t.AssertDeploymentStatus(t, triggerMessage.DeploymentId, deployer_pb.DeploymentStatus_SCALING_UP)
+		t.AssertDeploymentStatus(t, triggerMessage.DeploymentId, deployer_pb.DeploymentStatus_RUNNING)
 	})
 
-	ss.Step("SCALING_UP --> SCALED_UP --> DONE", func(t UniverseAsserter) {
+	ss.Step("RUNNING --> DONE", func(t UniverseAsserter) {
 		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
 			Request:   stackRequest,
 			StackName: stackName,
@@ -293,13 +291,13 @@ func TestStackLock(t *testing.T) {
 
 	})
 
-	ss.Step("First -> Upserting", func(t UniverseAsserter) {
+	ss.Step("First -> Running", func(t UniverseAsserter) {
 		// Deployment WAITING --> AVAILABLE --> UPSERTING
 		// Stack: Stays CREATING
 		t.AWSStack.StackStatusMissing(t)
 		t.AWSStack.ExpectCreateStack(t)
 
-		t.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_UPSERTING)
+		t.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_RUNNING)
 		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_CREATING,
 			[]string{})
@@ -375,13 +373,13 @@ func TestStackLock(t *testing.T) {
 
 	})
 
-	ss.Step("Second -> Upserting", func(t UniverseAsserter) {
+	ss.Step("Second -> Running", func(t UniverseAsserter) {
 		// Deployment WAITING --> AVAILABLE --> UPSERTING
 		t.AWSStack.StackStatusMissing(t)
 
 		t.AWSStack.ExpectCreateStack(t)
 
-		t.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_UPSERTING)
+		t.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_RUNNING)
 		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_MIGRATING,
 			[]string{})

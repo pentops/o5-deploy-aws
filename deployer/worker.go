@@ -8,7 +8,6 @@ import (
 
 	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
-	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
@@ -156,68 +155,100 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 	return &emptypb.Empty{}, nil
 }
 
-func TranslateStackStatusChanged(msg *deployer_tpb.StackStatusChangedMessage) (*deployer_pb.DeploymentEvent, error) {
-	context := &deployer_pb.DeploymentStackContext{}
-	if err := proto.Unmarshal(msg.Request.Context, context); err != nil {
+func StackStatusToEvent(msg *deployer_tpb.StackStatusChangedMessage) (*deployer_pb.DeploymentEvent, error) {
+
+	stepContext := &deployer_pb.StepContext{}
+	if err := proto.Unmarshal(msg.Request.Context, stepContext); err != nil {
 		return nil, err
 	}
 
-	return &deployer_pb.DeploymentEvent{
-		DeploymentId: context.DeploymentId,
+	event := &deployer_pb.DeploymentEvent{
+		DeploymentId: stepContext.DeploymentId,
 		Metadata: &deployer_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
 		},
-		Event: &deployer_pb.DeploymentEventType{
-			Type: &deployer_pb.DeploymentEventType_StackStatus_{
-				StackStatus: &deployer_pb.DeploymentEventType_StackStatus{
-					Lifecycle:       msg.Lifecycle,
-					FullStatus:      msg.Status,
-					StackOutput:     msg.Outputs,
-					DeploymentPhase: context.DeploymentPhase,
+	}
+
+	cfOutput := &deployer_pb.CFStackOutput{
+		Lifecycle: msg.Lifecycle,
+		Outputs:   msg.Outputs,
+	}
+	switch stepContext.Phase {
+	case deployer_pb.StepPhase_STEPS:
+		if stepContext.StepId == nil {
+			return nil, fmt.Errorf("StepId is required when Phase is STEPS")
+		}
+
+		stepResult := &deployer_pb.DeploymentEventType_StepResult{
+			StepId: *stepContext.StepId,
+			Output: &deployer_pb.StepOutputType{
+				Type: &deployer_pb.StepOutputType_CfStatus{
+					CfStatus: &deployer_pb.StepOutputType_CFStatus{
+						Output: cfOutput,
+					},
 				},
 			},
-		},
-	}, nil
+		}
+
+		switch msg.Lifecycle {
+		case deployer_pb.StackLifecycle_PROGRESS,
+			deployer_pb.StackLifecycle_ROLLING_BACK:
+			return nil, nil
+
+		case deployer_pb.StackLifecycle_COMPLETE:
+			stepResult.Status = deployer_pb.StepStatus_DONE
+		case deployer_pb.StackLifecycle_CREATE_FAILED,
+			deployer_pb.StackLifecycle_ROLLED_BACK,
+			deployer_pb.StackLifecycle_MISSING:
+			stepResult.Status = deployer_pb.StepStatus_FAILED
+		default:
+			return nil, fmt.Errorf("unknown lifecycle: %s", msg.Lifecycle)
+		}
+
+		event.SetPSMEvent(stepResult)
+
+	case deployer_pb.StepPhase_WAIT:
+		switch msg.Lifecycle {
+		case deployer_pb.StackLifecycle_PROGRESS,
+			deployer_pb.StackLifecycle_ROLLING_BACK:
+			return nil, nil
+
+		case deployer_pb.StackLifecycle_COMPLETE,
+			deployer_pb.StackLifecycle_ROLLED_BACK:
+
+			event.SetPSMEvent(&deployer_pb.DeploymentEventType_StackAvailable{
+				StackExists: true,
+			})
+
+		case deployer_pb.StackLifecycle_MISSING:
+			event.SetPSMEvent(&deployer_pb.DeploymentEventType_StackAvailable{
+				StackExists: false,
+			})
+
+		default:
+			event.SetPSMEvent(&deployer_pb.DeploymentEventType_StackWaitFailure{
+				Error: fmt.Sprintf("Stack Status: %s", msg.Status),
+			})
+		}
+
+	}
+
+	return event, nil
 }
 
 func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *deployer_tpb.StackStatusChangedMessage) (*emptypb.Empty, error) {
 
-	event, err := TranslateStackStatusChanged(msg)
+	event, err := StackStatusToEvent(msg)
 	if err != nil {
 		return nil, err
 	}
-	stackStatus := event.Event.GetStackStatus()
+
+	if event == nil {
+		return &emptypb.Empty{}, nil
+	}
 
 	if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
-		deployment, err := getDeployment(ctx, tx, event.DeploymentId)
-		if err != nil {
-			if errors.Is(err, DeploymentNotFoundError) {
-				log.WithError(ctx, err).Error("Deployment not found")
-				return nil
-			}
-			return err
-		}
-
-		if deployment.WaitingOnRemotePhase == nil || *deployment.WaitingOnRemotePhase != stackStatus.DeploymentPhase {
-			waiting := ""
-			if deployment.WaitingOnRemotePhase != nil {
-				waiting = *deployment.WaitingOnRemotePhase
-			}
-
-			ctx := log.WithFields(ctx, map[string]interface{}{
-				"cfReturnPhase":        stackStatus.DeploymentPhase,
-				"waitingOnRemotePhase": waiting,
-			})
-			if msg.Lifecycle == deployer_pb.StackLifecycle_COMPLETE || msg.Lifecycle == deployer_pb.StackLifecycle_PROGRESS {
-				log.Error(ctx, "Deployment phase mismatch, Ignoring")
-				return nil
-			} else {
-				log.Error(ctx, "Deployment phase mismatch")
-				return fmt.Errorf("deployment phase mismatch")
-			}
-		}
-
 		if _, err := dw.deploymentEventer.TransitionInTx(ctx, tx, event); err != nil {
 			return err
 		}
@@ -229,41 +260,55 @@ func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *deployer_
 	return &emptypb.Empty{}, nil
 }
 
-func (dw *DeployerWorker) MigrationStatusChanged(ctx context.Context, msg *deployer_tpb.PostgresMigrationEventMessage) (*emptypb.Empty, error) {
+func PostgresMigrationToEvent(msg *deployer_tpb.PostgresMigrationEventMessage) (*deployer_pb.DeploymentEvent, error) {
 
-	context := &deployer_pb.DeploymentMigrationContext{}
-	if err := proto.Unmarshal(msg.Request.Context, context); err != nil {
+	stepContext := &deployer_pb.StepContext{}
+	if err := proto.Unmarshal(msg.Request.Context, stepContext); err != nil {
 		return nil, err
 	}
 
-	migrationStatus := &deployer_pb.DeploymentEventType_DbMigrateStatus{
-		DbMigrateStatus: &deployer_pb.DeploymentEventType_DBMigrateStatus{
-			MigrationId: context.MigrationId,
-		},
-	}
-
-	switch inner := msg.Event.UnwrapPSMEvent().(type) {
-	case *deployer_pb.PostgresMigrationEventType_Prepare:
-		migrationStatus.DbMigrateStatus.Status = deployer_pb.DatabaseMigrationStatus_PENDING
-	case *deployer_pb.PostgresMigrationEventType_Done:
-		migrationStatus.DbMigrateStatus.Status = deployer_pb.DatabaseMigrationStatus_COMPLETED
-	case *deployer_pb.PostgresMigrationEventType_Error:
-		migrationStatus.DbMigrateStatus.Status = deployer_pb.DatabaseMigrationStatus_FAILED
-		migrationStatus.DbMigrateStatus.Error = &inner.Error
-	default:
-		return &emptypb.Empty{}, nil // ignore
-	}
-
 	event := &deployer_pb.DeploymentEvent{
-		DeploymentId: context.DeploymentId,
+		DeploymentId: stepContext.DeploymentId,
 		Metadata: &deployer_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
 		},
+	}
 
-		Event: &deployer_pb.DeploymentEventType{
-			Type: migrationStatus,
-		},
+	if stepContext.Phase != deployer_pb.StepPhase_STEPS || stepContext.StepId == nil {
+		return nil, fmt.Errorf("DB Migration context expects STEPS and an ID")
+	}
+
+	stepStatus := &deployer_pb.DeploymentEventType_StepResult{
+		StepId: *stepContext.StepId,
+	}
+	event.SetPSMEvent(stepStatus)
+
+	switch msg.Status {
+	case deployer_tpb.PostgresStatus_AVAILABLE:
+		stepStatus.Status = deployer_pb.StepStatus_DONE
+	case deployer_tpb.PostgresStatus_ERROR:
+		stepStatus.Status = deployer_pb.StepStatus_FAILED
+		stepStatus.Error = msg.Error
+
+	case deployer_tpb.PostgresStatus_UPDATING, deployer_tpb.PostgresStatus_CREATING:
+		return nil, nil
+
+	default:
+		return nil, fmt.Errorf("unknown status: %s", msg.Status)
+	}
+
+	return event, nil
+}
+
+func (dw *DeployerWorker) PostgresMigrationEvent(ctx context.Context, msg *deployer_tpb.PostgresMigrationEventMessage) (*emptypb.Empty, error) {
+
+	event, err := PostgresMigrationToEvent(msg)
+	if err != nil {
+		return nil, err
+	}
+	if event == nil {
+		return &emptypb.Empty{}, nil
 	}
 
 	return &emptypb.Empty{}, dw.doDeploymentEvent(ctx, event)

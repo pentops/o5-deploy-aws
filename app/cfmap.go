@@ -222,7 +222,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 				// database is added early which it is.
 				migrationContainer, err := buildContainer(global, dbType.Postgres.MigrateContainer)
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("building migration container for %s: %w", database.Name, err)
 				}
 				addLogs(migrationContainer.Container, fmt.Sprintf("%s/migrate", global.appName))
 				name := fmt.Sprintf("MigrationTaskDefinition%s", CleanParameterName(database.Name))

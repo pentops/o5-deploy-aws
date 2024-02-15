@@ -168,7 +168,7 @@ func (cf *InfraWorker) UpdateStack(ctx context.Context, msg *deployer_tpb.Update
 			return nil, fmt.Errorf("UpdateStack: %w", err)
 		}
 
-		if err := cf.noUpdatesToBePerformed(ctx, msg.StackName, msg.Request); err != nil {
+		if err := cf.noUpdatesToBePerformed(ctx, msg.Spec.StackName, msg.Request); err != nil {
 			return nil, err
 		}
 	}

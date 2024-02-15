@@ -47,7 +47,7 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 
 		container, err := buildContainer(globals, def)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("building service container %s: %w", def.Name, err)
 		}
 
 		needsDockerVolume = needsDockerVolume || def.MountDockerSocket

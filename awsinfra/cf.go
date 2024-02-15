@@ -130,21 +130,19 @@ func (cf *CFClient) CreateNewStack(ctx context.Context, reqToken string, msg *de
 		return err
 	}
 
-	if msg.ExtraResources != nil {
-		if err := upsertExtraResources(ctx, clients, msg.ExtraResources); err != nil {
-			return err
-		}
+	if err := upsertExtraResources(ctx, clients, msg.Spec); err != nil {
+		return err
 	}
 
-	parameters, err := cf.resolveParameters(ctx, nil, msg.Parameters, msg.DesiredCount)
+	parameters, err := cf.resolveParameters(ctx, nil, msg.Spec.Parameters, msg.Spec.DesiredCount)
 	if err != nil {
 		return err
 	}
 
 	_, err = clients.CloudFormation.CreateStack(ctx, &cloudformation.CreateStackInput{
-		StackName:          aws.String(msg.StackName),
+		StackName:          aws.String(msg.Spec.StackName),
 		ClientRequestToken: aws.String(reqToken),
-		TemplateURL:        aws.String(msg.TemplateUrl),
+		TemplateURL:        aws.String(msg.Spec.TemplateUrl),
 		Parameters:         parameters,
 		Capabilities: []types.Capability{
 			types.CapabilityCapabilityNamedIam,
@@ -164,27 +162,25 @@ func (cf *CFClient) UpdateStack(ctx context.Context, reqToken string, msg *deplo
 		return err
 	}
 
-	if msg.ExtraResources != nil {
-		if err := upsertExtraResources(ctx, clients, msg.ExtraResources); err != nil {
-			return err
-		}
+	if err := upsertExtraResources(ctx, clients, msg.Spec); err != nil {
+		return err
 	}
 
-	current, err := cf.getOneStack(ctx, msg.StackName)
+	current, err := cf.getOneStack(ctx, msg.Spec.StackName)
 	if err != nil {
 		return err
 	}
 
 	// TODO: Re-use assigned priorities for routes by using the previous input
-	parameters, err := cf.resolveParameters(ctx, current.Parameters, msg.Parameters, msg.DesiredCount)
+	parameters, err := cf.resolveParameters(ctx, current.Parameters, msg.Spec.Parameters, msg.Spec.DesiredCount)
 	if err != nil {
 		return err
 	}
 
 	_, err = clients.CloudFormation.UpdateStack(ctx, &cloudformation.UpdateStackInput{
-		StackName:          aws.String(msg.StackName),
+		StackName:          aws.String(msg.Spec.StackName),
 		ClientRequestToken: aws.String(reqToken),
-		TemplateURL:        aws.String(msg.TemplateUrl),
+		TemplateURL:        aws.String(msg.Spec.TemplateUrl),
 		Parameters:         parameters,
 		Capabilities: []types.Capability{
 			types.CapabilityCapabilityNamedIam,
@@ -270,7 +266,7 @@ func (cf *CFClient) DeleteStack(ctx context.Context, reqToken string, msg *deplo
 	return err
 }
 
-func upsertExtraResources(ctx context.Context, clients *DeployerClients, evt *deployer_tpb.ExtraResources) error {
+func upsertExtraResources(ctx context.Context, clients *DeployerClients, evt *deployer_pb.CFStackInput) error {
 	snsClient := clients.SNS
 
 	for _, topic := range evt.SnsTopics {

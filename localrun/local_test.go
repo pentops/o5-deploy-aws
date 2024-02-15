@@ -11,6 +11,7 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
+	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -40,19 +41,44 @@ func (m *MockInfra) HandleMessage(ctx context.Context, msg proto.Message) (deplo
 	}
 }
 
+func (m *MockInfra) CFResult(md *messaging_pb.RequestMetadata, status deployer_pb.StepStatus, result *deployer_pb.CFStackOutput) {
+	m.StepResult(md, &deployer_pb.DeploymentEventType_StepResult{
+		Status: status,
+		Output: &deployer_pb.StepOutputType{
+			Type: &deployer_pb.StepOutputType_CfStatus{
+				CfStatus: &deployer_pb.StepOutputType_CFStatus{
+					Output: result,
+				},
+			},
+		},
+	})
+}
+
+func (m *MockInfra) StepResult(md *messaging_pb.RequestMetadata, result *deployer_pb.DeploymentEventType_StepResult) {
+	stepContext := &deployer_pb.StepContext{}
+	if err := proto.Unmarshal(md.Context, stepContext); err != nil {
+		panic(err)
+	}
+
+	result.StepId = *stepContext.StepId
+
+	m.Send(result)
+}
+
 func (m *MockInfra) Send(msg deployer_pb.DeploymentPSMEvent) {
 	fmt.Printf("Send %s\n", msg.PSMEventKey())
 	m.outgoing <- msg
 	fmt.Printf("Sent %s\n", msg.PSMEventKey())
 }
 
-func (m *MockInfra) Pop(ctx context.Context) proto.Message {
-	fmt.Printf("Pop\n")
+func (m *MockInfra) Pop(t flowtest.TB, ctx context.Context) proto.Message {
+	t.Logf("Pop Request")
 	select {
 	case <-ctx.Done():
+		t.Logf("Pop Timeout\n")
 		return nil
 	case in := <-m.incoming:
-		fmt.Printf("Popped %s\n", in.ProtoReflect().Descriptor().FullName())
+		t.Logf("Popped %s\n", in.ProtoReflect().Descriptor().FullName())
 		return in
 	}
 }
@@ -74,6 +100,14 @@ func TestLocalRun(t *testing.T) {
 				Engine: &application_pb.Database_Postgres_{
 					Postgres: &application_pb.Database_Postgres{
 						ServerGroup: "default",
+						MigrateContainer: &application_pb.Container{
+							Name: "foo",
+							Source: &application_pb.Container_Image_{
+								Image: &application_pb.Container_Image{
+									Name: "foo",
+								},
+							},
+						},
 					},
 				},
 			}},
@@ -103,55 +137,60 @@ func TestLocalRun(t *testing.T) {
 	}
 
 	ss.StepC("Stabalize", func(ctx context.Context, t flowtest.Asserter) {
-		_, ok := infra.Pop(ctx).(*deployer_tpb.StabalizeStackMessage)
+		_, ok := infra.Pop(t, ctx).(*deployer_tpb.StabalizeStackMessage)
 		if !ok {
 			t.Fatalf("expected StabalizeStackMessage")
 		}
 
-		infra.Send(&deployer_pb.DeploymentEventType_StackStatus{
-			Lifecycle: deployer_pb.StackLifecycle_MISSING,
+		infra.Send(&deployer_pb.DeploymentEventType_StackAvailable{
+			StackExists: false,
 		})
 	})
 
 	ss.StepC("CreateNewStack", func(ctx context.Context, t flowtest.Asserter) {
-		_, ok := infra.Pop(ctx).(*deployer_tpb.CreateNewStackMessage)
+		req, ok := infra.Pop(t, ctx).(*deployer_tpb.CreateNewStackMessage)
 		if !ok {
 			t.Fatalf("expected CreateNewStackMessage")
 		}
 
-		infra.Send(&deployer_pb.DeploymentEventType_StackStatus{
+		infra.CFResult(req.Request, deployer_pb.StepStatus_DONE, &deployer_pb.CFStackOutput{
 			Lifecycle: deployer_pb.StackLifecycle_COMPLETE,
+			Outputs: []*deployer_pb.KeyValue{{
+				Name:  "MigrationTaskDefinitionFoo",
+				Value: "arn:taskdef",
+			}, {
+				Name:  "DatabaseSecretFoo",
+				Value: "arn:secret",
+			}},
 		})
 	})
 
 	ss.StepC("MigratePostgresDatabase", func(ctx context.Context, t flowtest.Asserter) {
-		msg, ok := infra.Pop(ctx).(*deployer_tpb.MigratePostgresDatabaseMessage)
+		msg, ok := infra.Pop(t, ctx).(*deployer_tpb.MigratePostgresDatabaseMessage)
 		if !ok {
 			t.Fatalf("expected MigratePostgresDatabaseMessage")
 		}
 
 		t.Equal("foo", msg.MigrationSpec.Database.Database.Name)
+		t.Equal("arn:secret", msg.MigrationSpec.SecretArn)
+		t.Equal("arn:taskdef", msg.MigrationSpec.MigrationTaskArn)
 
-		reqState := &deployer_pb.DeploymentMigrationContext{}
-		err := proto.Unmarshal(msg.Request.Context, reqState)
-		t.NoError(err)
-
-		infra.Send(&deployer_pb.DeploymentEventType_DBMigrateStatus{
-			MigrationId: reqState.MigrationId,
-			Status:      deployer_pb.DatabaseMigrationStatus_COMPLETED,
+		infra.StepResult(msg.Request, &deployer_pb.DeploymentEventType_StepResult{
+			Status: deployer_pb.StepStatus_DONE,
 		})
 	})
 
 	ss.StepC("ScaleUp", func(ctx context.Context, t flowtest.Asserter) {
-		msg, ok := infra.Pop(ctx).(*deployer_tpb.ScaleStackMessage)
+		msg, ok := infra.Pop(t, ctx).(*deployer_tpb.ScaleStackMessage)
 		if !ok {
 			t.Fatalf("expected ScaleStackMessage")
 		}
 
 		t.Equal(int32(1), msg.DesiredCount)
 
-		infra.Send(&deployer_pb.DeploymentEventType_StackStatus{
+		infra.CFResult(msg.Request, deployer_pb.StepStatus_DONE, &deployer_pb.CFStackOutput{
 			Lifecycle: deployer_pb.StackLifecycle_COMPLETE,
+			Outputs:   []*deployer_pb.KeyValue{},
 		})
 	})
 

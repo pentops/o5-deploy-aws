@@ -138,7 +138,7 @@ func (cf *cfMock) ExpectCreateStack(t flowtest.TB) *deployer_tpb.CreateNewStackM
 	createRequest := &deployer_tpb.CreateNewStackMessage{}
 	cf.uu.Outbox.PopMessage(t, createRequest)
 	cf.lastRequest = createRequest.Request
-	cf.lastStack = createRequest.StackName
+	cf.lastStack = createRequest.Spec.StackName
 	return createRequest
 }
 
@@ -291,6 +291,10 @@ func (uu *Universe) AssertDeploymentStatus(t flowtest.Asserter, deploymentID str
 		t.Fatalf("GetDeployment: %v", err)
 	}
 	if deployment.State.Status != status {
+
+		for _, step := range deployment.State.Steps {
+			t.Logf("step %s is %s", step.Name, step.Status.ShortString())
+		}
 		t.Fatalf("unexpected status: %v, want %s", deployment.State.Status.ShortString(), status.ShortString())
 	}
 }
