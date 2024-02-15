@@ -50,10 +50,6 @@ func OpenDatabase(ctx context.Context) (*sql.DB, error) {
 }
 
 type DeployerService struct {
-	deploymentQuery  *deployer_spb.DeploymentPSMQuerySet
-	stackQuery       *deployer_spb.StackPSMQuerySet
-	environmentQuery *deployer_spb.EnvironmentPSMQuerySet
-
 	deploymentStateMachine  *deployer_pb.DeploymentPSM
 	environmentStateMachine *deployer_pb.EnvironmentPSM
 	stackStateMachine       *deployer_pb.StackPSM

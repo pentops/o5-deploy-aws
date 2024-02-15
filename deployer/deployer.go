@@ -88,6 +88,9 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		return nil, err
 	}
 	templateURL, err := dd.templateStore.PutTemplate(ctx, environment.FullName, app.Name, deploymentID, templateJSON)
+	if err != nil {
+		return nil, err
+	}
 
 	postgresDatabases := app.PostgresDatabases()
 
