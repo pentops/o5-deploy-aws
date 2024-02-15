@@ -2,20 +2,16 @@ package integration
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"strings"
 	"testing"
 
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/pentops/flowtest"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/github"
+	"github.com/pentops/o5-deploy-aws/integration/mocks"
 	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-deploy-aws/states"
-	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
@@ -115,8 +111,8 @@ type Universe struct {
 
 	SpecBuilder *deployer.SpecBuilder
 
-	Github *GithubMock
-	S3     *S3Mock
+	Github *mocks.Github
+	S3     *mocks.S3
 
 	Outbox *outboxtest.OutboxAsserter
 
@@ -175,46 +171,6 @@ func (cf *cfMock) StackCreateComplete(t flowtest.TB) {
 	}
 }
 
-type S3Mock struct {
-	awsinfra.S3API
-	files map[string][]byte
-}
-
-func (s3m *S3Mock) MockGet(bucket string, key string) ([]byte, bool) {
-	fullPath := fmt.Sprintf("s3://%s/%s", bucket, key)
-	val, ok := s3m.files[fullPath]
-	return val, ok
-}
-
-func (s3m *S3Mock) MockGetHTTP(uri string) ([]byte, bool) {
-	fullPath := "s3://" + strings.TrimPrefix(uri, "https://s3.us-east-1.amazonaws.com/")
-	val, ok := s3m.files[fullPath]
-	return val, ok
-}
-
-func (s3m *S3Mock) PutObject(ctx context.Context, input *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error) {
-	fullPath := fmt.Sprintf("s3://%s/%s", *input.Bucket, *input.Key)
-	bodyBytes, err := io.ReadAll(input.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	s3m.files[fullPath] = bodyBytes
-	return &s3.PutObjectOutput{}, nil
-}
-
-type GithubMock struct {
-	Configs map[string][]*application_pb.Application
-}
-
-func (gm *GithubMock) PullO5Configs(ctx context.Context, org string, repo string, ref string) ([]*application_pb.Application, error) {
-	key := fmt.Sprintf("%s/%s/%s", org, repo, ref)
-	if configs, ok := gm.Configs[key]; ok {
-		return configs, nil
-	}
-	return []*application_pb.Application{}, nil
-}
-
 /*
 func (uu *Universe) PopStackEvent(t flowtest.TB, eventKey deployer_pb.StackPSMEventKey, status deployer_pb.StackStatus) *deployer_epb.StackEventMessage {
 	t.Helper()
@@ -257,15 +213,11 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 		uu: uu,
 	}
 
-	uu.Github = &GithubMock{
-		Configs: map[string][]*application_pb.Application{},
-	}
+	uu.Github = mocks.NewGithub()
 
 	log.DefaultLogger = log.NewCallbackLogger(ss.stepper.Log)
 
-	uu.S3 = &S3Mock{
-		files: map[string][]byte{},
-	}
+	uu.S3 = mocks.NewS3()
 
 	uu.Outbox = outboxtest.NewOutboxAsserter(t, conn)
 
