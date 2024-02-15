@@ -20,10 +20,6 @@ type IClient interface {
 	PullO5Configs(ctx context.Context, org string, repo string, commit string) ([]*application_pb.Application, error)
 }
 
-type RefMatcher interface {
-	PushTargets(*github_pb.PushMessage) []string
-}
-
 type WebhookWorker struct {
 	github IClient
 	refs   RefMatcher
@@ -54,8 +50,11 @@ func (ww *WebhookWorker) Push(ctx context.Context, event *github_pb.PushMessage)
 	})
 	log.Debug(ctx, "Push")
 
-	targetEnvNames := ww.refs.PushTargets(event)
-	if len(targetEnvNames) < 1 {
+	targetEnvs, err := ww.refs.PushTargets(ctx, event)
+	if err != nil {
+		return nil, err
+	}
+	if len(targetEnvs) < 1 {
 		log.Info(ctx, "No refs match, nothing to do")
 		return &emptypb.Empty{}, nil
 	}
@@ -75,13 +74,13 @@ func (ww *WebhookWorker) Push(ctx context.Context, event *github_pb.PushMessage)
 
 	var triggers []outbox.OutboxMessage
 
-	for _, envName := range targetEnvNames {
+	for _, envID := range targetEnvs {
 
 		triggers = append(triggers, &deployer_tpb.RequestDeploymentMessage{
-			DeploymentId:    uuid.NewString(),
-			Application:     apps[0],
-			Version:         event.After,
-			EnvironmentName: envName,
+			DeploymentId:  uuid.NewString(),
+			Application:   apps[0],
+			Version:       event.After,
+			EnvironmentId: envID,
 		})
 	}
 

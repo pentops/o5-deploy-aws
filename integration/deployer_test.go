@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
 
@@ -22,6 +23,44 @@ func TestCreateHappy(t *testing.T) {
 	defer ss.RunSteps(t)
 
 	initialTrigger := &deployer_tpb.RequestDeploymentMessage{}
+
+	envID := uuid.NewString()
+	stackID := uuid.NewString()
+
+	ss.Step("Configure Environment", func(t UniverseAsserter) {
+		_, err := t.DeployerCommand.UpsertEnvironment(ctx, &deployer_spb.UpsertEnvironmentRequest{
+			EnvironmentId: envID,
+			Config: &environment_pb.Environment{
+				FullName: "env",
+				Provider: &environment_pb.Environment_Aws{
+					Aws: &environment_pb.AWS{
+						ListenerArn: "arn:listener",
+					},
+				},
+			},
+		})
+		t.NoError(err)
+
+		_, err = t.DeployerCommand.UpsertStack(ctx, &deployer_spb.UpsertStackRequest{
+			StackId:         stackID,
+			ApplicationName: "app",
+			EnvironmentId:   envID,
+			Config: &deployer_pb.StackConfig{
+				CodeSource: &deployer_pb.CodeSourceType{
+					Type: &deployer_pb.CodeSourceType_Github_{
+						Github: &deployer_pb.CodeSourceType_Github{
+							Owner:      "owner",
+							Repo:       "repo",
+							RefPattern: "ref1",
+						},
+					},
+				},
+			},
+		})
+		t.NoError(err)
+
+	})
+
 	ss.Step("Github Trigger", func(t UniverseAsserter) {
 		t.Github.Configs["owner/repo/after"] = []*application_pb.Application{{
 			Name: "app",
@@ -32,7 +71,7 @@ func TestCreateHappy(t *testing.T) {
 		_, err := t.GithubWebhookTopic.Push(ctx, &github_pb.PushMessage{
 			Owner: "owner",
 			Repo:  "repo",
-			Ref:   "ref",
+			Ref:   "ref1",
 			After: "after",
 		})
 		if err != nil {
@@ -186,14 +225,31 @@ func TestStackLock(t *testing.T) {
 	ss := NewStepper(ctx, t)
 	defer ss.RunSteps(t)
 
+	environmentId := uuid.NewString()
+
 	firstDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
 		DeploymentId: uuid.NewString(),
 		Application: &application_pb.Application{
 			Name: "app",
 		},
-		Version:         "1",
-		EnvironmentName: "env",
+		Version:       "1",
+		EnvironmentId: environmentId,
 	}
+
+	ss.StepC("setup", func(ctx context.Context, t UniverseAsserter) {
+		_, err := t.DeployerCommand.UpsertEnvironment(ctx, &deployer_spb.UpsertEnvironmentRequest{
+			EnvironmentId: environmentId,
+			Config: &environment_pb.Environment{
+				FullName: "env",
+				Provider: &environment_pb.Environment_Aws{
+					Aws: &environment_pb.AWS{
+						ListenerArn: "arn:listener",
+					},
+				},
+			},
+		})
+		t.NoError(err)
+	})
 
 	firstTriggerMessage := &deployer_tpb.TriggerDeploymentMessage{}
 	ss.Step("Request First", func(t UniverseAsserter) {
@@ -256,10 +312,10 @@ func TestStackLock(t *testing.T) {
 	})
 
 	secondDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
-		DeploymentId:    uuid.NewString(),
-		Application:     firstDeploymentRequest.Application,
-		Version:         "2",
-		EnvironmentName: "env",
+		DeploymentId:  uuid.NewString(),
+		Application:   firstDeploymentRequest.Application,
+		Version:       "2",
+		EnvironmentId: environmentId,
 	}
 
 	ss.Step("Request a second deployment", func(t UniverseAsserter) {
@@ -365,10 +421,10 @@ func TestStackLock(t *testing.T) {
 	ss.Step("A third deployment should begin immediately", func(t UniverseAsserter) {
 
 		thirdDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
-			DeploymentId:    uuid.NewString(),
-			Application:     firstDeploymentRequest.Application,
-			Version:         "3",
-			EnvironmentName: "env",
+			DeploymentId:  uuid.NewString(),
+			Application:   firstDeploymentRequest.Application,
+			Version:       "3",
+			EnvironmentId: environmentId,
 		}
 
 		// Stack: AVAILABLE --> MIGRATING : Trigger

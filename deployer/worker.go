@@ -2,6 +2,7 @@ package deployer
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 
@@ -11,8 +12,10 @@ import (
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/protostate/psm"
 	"github.com/pentops/sqrlx.go/sqrlx"
+	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -96,9 +99,37 @@ func (dw *DeployerWorker) TriggerDeployment(ctx context.Context, msg *deployer_t
 	return &emptypb.Empty{}, nil
 }
 
+func (dw *DeployerWorker) getEnvironment(ctx context.Context, environmentId string) (*environment_pb.Environment, error) {
+	var envJSON []byte
+
+	err := dw.db.Transact(ctx, &sqrlx.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+		ReadOnly:  true,
+		Retryable: true,
+	}, func(ctx context.Context, tx sqrlx.Transaction) error {
+
+		return tx.SelectRow(ctx, sq.Select("state").From("environment").Where("id = ?", environmentId)).Scan(&envJSON)
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("environment %q not found", environmentId)
+	} else if err != nil {
+		return nil, err
+	}
+	env := &deployer_pb.EnvironmentState{}
+	if err := protojson.Unmarshal(envJSON, env); err != nil {
+		return nil, fmt.Errorf("unmarshal environment: %w", err)
+	}
+	return env.Config, nil
+}
+
 func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_tpb.RequestDeploymentMessage) (*emptypb.Empty, error) {
 
-	spec, err := dw.specBuilder.BuildSpec(ctx, msg)
+	environment, err := dw.getEnvironment(ctx, msg.EnvironmentId)
+	if err != nil {
+		return nil, err
+	}
+
+	spec, err := dw.specBuilder.BuildSpec(ctx, msg, environment)
 	if err != nil {
 		return nil, err
 	}

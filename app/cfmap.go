@@ -78,7 +78,7 @@ func sourceTags() []tags.Tag {
 	}}
 }
 
-func BuildApplication(app *application_pb.Application, versionTag string) (*Application, error) {
+func BuildApplication(app *application_pb.Application, versionTag string) (*BuiltApplication, error) {
 
 	stackTemplate := NewApplication(app.Name, versionTag)
 
@@ -319,5 +319,5 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		stackTemplate.AddResource(listenerRule)
 	}
 
-	return stackTemplate, nil
+	return stackTemplate.Build(), nil
 }

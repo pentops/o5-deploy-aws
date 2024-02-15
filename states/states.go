@@ -12,6 +12,7 @@ import (
 
 type StateMachines struct {
 	Deployment      *deployer_pb.DeploymentPSM
+	Environment     *deployer_pb.EnvironmentPSM
 	Stack           *deployer_pb.StackPSM
 	PostgresMigrate *deployer_pb.PostgresMigrationPSM
 	EcsTask         *deployer_pb.EcsTaskPSM
@@ -21,6 +22,11 @@ func NewStateMachines() (*StateMachines, error) {
 	deployment, err := NewDeploymentEventer()
 	if err != nil {
 		return nil, fmt.Errorf("NewDeploymentEventer: %w", err)
+	}
+
+	environment, err := NewEnvironmentEventer()
+	if err != nil {
+		return nil, fmt.Errorf("NewEnvironmentEventer: %w", err)
 	}
 
 	stack, err := NewStackEventer()
@@ -62,6 +68,7 @@ func NewStateMachines() (*StateMachines, error) {
 								Version:      state.Spec.Version,
 							},
 							EnvironmentName: state.Spec.EnvironmentName,
+							EnvironmentId:   state.Spec.EnvironmentId,
 							ApplicationName: state.Spec.AppName,
 						},
 					},
@@ -105,6 +112,7 @@ func NewStateMachines() (*StateMachines, error) {
 
 	return &StateMachines{
 		Deployment:      deployment,
+		Environment:     environment,
 		Stack:           stack,
 		PostgresMigrate: postrgresMigrate,
 		EcsTask:         ecsTask,

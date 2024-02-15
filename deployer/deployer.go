@@ -17,9 +17,37 @@ import (
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
 
-type Environment struct {
-	Environment *environment_pb.Environment
-	AWS         *environment_pb.AWS
+type TemplateStore interface {
+	PutTemplate(ctx context.Context, envName, appName, deploymentID string, template []byte) (string, error)
+}
+
+type S3TemplateStore struct {
+	s3Client         awsinfra.S3API
+	cfTemplateBucket string
+}
+
+func (s3ts *S3TemplateStore) PutTemplate(ctx context.Context, envName string, appName string, deploymentID string, templateJSON []byte) (string, error) {
+
+	templateKey := fmt.Sprintf("%s/%s/%s.json", envName, appName, deploymentID)
+	_, err := s3ts.s3Client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(s3ts.cfTemplateBucket),
+		Key:    aws.String(templateKey),
+		Body:   bytes.NewReader(templateJSON),
+	})
+	if err != nil {
+		return "", err
+	}
+
+	templateURL := fmt.Sprintf("https://s3.us-east-1.amazonaws.com/%s/%s", s3ts.cfTemplateBucket, templateKey)
+	return templateURL, nil
+}
+
+func NewS3TemplateStore(s3Client awsinfra.S3API, cfTemplateBucket string) *S3TemplateStore {
+	cfTemplateBucket = strings.TrimPrefix(cfTemplateBucket, "s3://")
+	return &S3TemplateStore{
+		s3Client:         s3Client,
+		cfTemplateBucket: cfTemplateBucket,
+	}
 }
 
 type SpecBuilder struct {
@@ -27,58 +55,30 @@ type SpecBuilder struct {
 	CancelUpdates bool
 	QuickMode     bool
 
-	s3Client         awsinfra.S3API
-	cfTemplateBucket string
-
-	storage EnvironmentStore
+	templateStore TemplateStore
 }
 
-type EnvironmentStore interface {
-	GetEnvironment(ctx context.Context, environmentName string) (*environment_pb.Environment, error)
-}
-
-type EnvList []*environment_pb.Environment
-
-func (es EnvList) GetEnvironment(ctx context.Context, name string) (*environment_pb.Environment, error) {
-	for _, env := range es {
-		if env.FullName == name {
-			return env, nil
-		}
-	}
-	return nil, fmt.Errorf("environment %q not found", name)
-}
-
-func NewSpecBuilder(storage EnvironmentStore, cfTemplateBucket string, s3Client awsinfra.S3API) (*SpecBuilder, error) {
-	cfTemplateBucket = strings.TrimPrefix(cfTemplateBucket, "s3://")
+func NewSpecBuilder(templateStore TemplateStore) (*SpecBuilder, error) {
 	return &SpecBuilder{
-		s3Client:         s3Client,
-		storage:          storage,
-		cfTemplateBucket: cfTemplateBucket,
+		templateStore: templateStore,
 	}, nil
 }
 
-func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage) (*deployer_pb.DeploymentSpec, error) {
+func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage, environment *environment_pb.Environment) (*deployer_pb.DeploymentSpec, error) {
 
-	appStack, err := app.BuildApplication(trigger.Application, trigger.Version)
+	app, err := app.BuildApplication(trigger.Application, trigger.Version)
 	if err != nil {
 		return nil, err
 	}
-
-	app := appStack.Build()
 
 	ctx = log.WithFields(ctx, map[string]interface{}{
 		"appName":     app.Name,
-		"environment": trigger.EnvironmentName,
+		"environment": environment.FullName,
 	})
-
-	environment, err := dd.storage.GetEnvironment(ctx, trigger.EnvironmentName)
-	if err != nil {
-		return nil, err
-	}
 
 	awsEnv := environment.GetAws()
 	if awsEnv == nil {
-		return nil, fmt.Errorf("environment %s is not an AWS environment", trigger.EnvironmentName)
+		return nil, fmt.Errorf("environment %s is not an AWS environment", environment.FullName)
 	}
 
 	deploymentID := uuid.NewString()
@@ -87,17 +87,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 	if err != nil {
 		return nil, err
 	}
-
-	templateKey := fmt.Sprintf("%s/%s/%s.json", environment.FullName, app.Name, deploymentID)
-	_, err = dd.s3Client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(dd.cfTemplateBucket),
-		Key:    aws.String(templateKey),
-		Body:   bytes.NewReader(templateJSON),
-	})
-
-	if err != nil {
-		return nil, err
-	}
+	templateURL, err := dd.templateStore.PutTemplate(ctx, environment.FullName, app.Name, deploymentID, templateJSON)
 
 	postgresDatabases := app.PostgresDatabases()
 
@@ -114,8 +104,6 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		}
 
 	}
-
-	templateURL := fmt.Sprintf("https://s3.us-east-1.amazonaws.com/%s/%s", dd.cfTemplateBucket, templateKey)
 
 	deployerResolver, err := BuildParameterResolver(ctx, environment)
 	if err != nil {
@@ -136,6 +124,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		AppName:         app.Name,
 		Version:         app.Version,
 		EnvironmentName: environment.FullName,
+		EnvironmentId:   trigger.EnvironmentId,
 		TemplateUrl:     templateURL,
 		Databases:       postgresDatabases,
 		Parameters:      parameters,

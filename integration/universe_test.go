@@ -19,7 +19,6 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
-	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	"github.com/pentops/outbox.pg.go/outboxtest"
@@ -208,10 +207,6 @@ type GithubMock struct {
 	Configs map[string][]*application_pb.Application
 }
 
-func (gm *GithubMock) PushTargets(msg *github_pb.PushMessage) []string {
-	return []string{"env"}
-}
-
 func (gm *GithubMock) PullO5Configs(ctx context.Context, org string, repo string, ref string) ([]*application_pb.Application, error) {
 	key := fmt.Sprintf("%s/%s/%s", org, repo, ref)
 	if configs, ok := gm.Configs[key]; ok {
@@ -258,15 +253,6 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 	uu := &Universe{}
 	ss.currentUniverse = uu
 
-	environments := deployer.EnvList([]*environment_pb.Environment{{
-		FullName: "env",
-		Provider: &environment_pb.Environment_Aws{
-			Aws: &environment_pb.AWS{
-				ListenerArn: "arn:listener",
-			},
-		},
-	}})
-
 	uu.AWSStack = cfMock{
 		uu: uu,
 	}
@@ -283,19 +269,26 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 
 	uu.Outbox = outboxtest.NewOutboxAsserter(t, conn)
 
-	trigger, err := deployer.NewSpecBuilder(environments, "bucket", uu.S3)
+	refStore, err := github.NewRefStore(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tplStore := deployer.NewS3TemplateStore(uu.S3, "bucket")
+
+	trigger, err := deployer.NewSpecBuilder(tplStore)
 	if err != nil {
 		t.Fatal(err)
 	}
 	uu.SpecBuilder = trigger
 
-	topicPair := flowtest.NewGRPCPair(t)
-	servicePair := flowtest.NewGRPCPair(t) // TODO: Middleware
-
 	stateMachines, err := states.NewStateMachines()
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	topicPair := flowtest.NewGRPCPair(t)
+	servicePair := flowtest.NewGRPCPair(t) // TODO: Middleware
 
 	deploymentWorker, err := deployer.NewDeployerWorker(conn, trigger, stateMachines)
 	if err != nil {
@@ -307,7 +300,7 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 	deployer_tpb.RegisterCloudFormationReplyTopicServer(topicPair.Server, deploymentWorker)
 	uu.CFReplyTopic = deployer_tpb.NewCloudFormationReplyTopicClient(topicPair.Client)
 
-	githubWorker, err := github.NewWebhookWorker(conn, uu.Github, uu.Github)
+	githubWorker, err := github.NewWebhookWorker(conn, uu.Github, refStore)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,14 +308,19 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 	github_pb.RegisterWebhookTopicServer(topicPair.Server, githubWorker)
 	uu.GithubWebhookTopic = github_pb.NewWebhookTopicClient(topicPair.Client)
 
-	deployerService, err := service.NewDeployerService(conn, uu.Github, stateMachines.Deployment)
+	deployerService, err := service.NewDeployerService(conn, uu.Github, stateMachines)
 	if err != nil {
 		t.Fatal(err)
 	}
-	deployer_spb.RegisterDeploymentQueryServiceServer(servicePair.Server, deployerService)
 	deployer_spb.RegisterDeploymentCommandServiceServer(servicePair.Server, deployerService)
-	uu.DeployerQuery = deployer_spb.NewDeploymentQueryServiceClient(servicePair.Client)
 	uu.DeployerCommand = deployer_spb.NewDeploymentCommandServiceClient(servicePair.Client)
+
+	queryService, err := service.NewQueryService(conn, stateMachines)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deployer_spb.RegisterDeploymentQueryServiceServer(servicePair.Server, queryService)
+	uu.DeployerQuery = deployer_spb.NewDeploymentQueryServiceClient(servicePair.Client)
 
 	topicPair.ServeUntilDone(t, ctx)
 	servicePair.ServeUntilDone(t, ctx)

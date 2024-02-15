@@ -34,7 +34,7 @@ func TestBasicMap(t *testing.T) {
 		t.Fatal(err.Error())
 	}
 
-	template := out.Build().Template
+	template := out.Template
 	yy, err := template.YAML()
 	if err != nil {
 		t.Fatal(err.Error())
@@ -118,11 +118,11 @@ func TestIndirectPortAccess(t *testing.T) {
 	t.Logf("ports: %v", taskDef.ContainerDefinitions[1].PortMappings)
 }
 
-func getResource(t testing.TB, template *Application, name string, into cloudformation.Resource) {
+func getResource(t testing.TB, template *BuiltApplication, name string, into cloudformation.Resource) {
 	t.Helper()
 
 	fullName := resourceName(name, into)
-	raw, ok := template.resources[fullName]
+	raw, ok := template.Template.Resources[fullName]
 	if !ok {
 		t.Fatalf("resource %s not found", fullName)
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/outbox.pg.go/outbox"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -24,11 +25,15 @@ import (
 type EventLoop struct {
 	validator   *protovalidate.Validator
 	storage     *StateStore
-	awsRunner   *InfraAdapter
+	awsRunner   IInfra
 	specBuilder *deployer.SpecBuilder
 }
 
-func NewEventLoop(awsRunner *InfraAdapter, stateStore *StateStore, specBuilder *deployer.SpecBuilder) *EventLoop {
+type IInfra interface {
+	HandleMessage(ctx context.Context, msg proto.Message) (deployer_pb.DeploymentPSMEvent, error)
+}
+
+func NewEventLoop(awsRunner IInfra, stateStore *StateStore, specBuilder *deployer.SpecBuilder) *EventLoop {
 	validator, err := protovalidate.New()
 	if err != nil {
 		panic(err)
@@ -63,12 +68,12 @@ func (td *TransitionData) FullCause() *deployer_pb.DeploymentEvent {
 	return td.CausedBy
 }
 
-func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage) error {
+func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage, environment *environment_pb.Environment) error {
 	if err := lel.validator.Validate(trigger); err != nil {
 		return err
 	}
 
-	spec, err := lel.specBuilder.BuildSpec(ctx, trigger)
+	spec, err := lel.specBuilder.BuildSpec(ctx, trigger, environment)
 	if err != nil {
 		return err
 	}
@@ -179,7 +184,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		for _, sideEffect := range baton.SideEffects {
 			ctx = log.WithField(ctx, "inputMessage", sideEffect.ProtoReflect().Descriptor().FullName())
 			log.Debug(ctx, "Side Effect")
-			result, err := lel.handleSideEffect(ctx, sideEffect)
+			result, err := lel.awsRunner.HandleMessage(ctx, sideEffect)
 			if err != nil {
 				log.WithError(ctx, err).Error("Side Effect Error")
 				return err
@@ -188,6 +193,10 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 			if result != nil {
 				mapped := &deployer_pb.DeploymentEvent{
 					DeploymentId: deploymentId,
+					Metadata: &deployer_pb.EventMetadata{
+						EventId:   uuid.NewString(),
+						Timestamp: timestamppb.Now(),
+					},
 				}
 				mapped.SetPSMEvent(result)
 				log.WithField(ctx, "nextEvent", protojson.Format(mapped)).Debug("Side Effect Result")
@@ -198,29 +207,4 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 	}
 
 	return nil
-}
-
-func (lel *EventLoop) handleSideEffect(ctx context.Context, msg proto.Message) (deployer_pb.DeploymentPSMEvent, error) {
-
-	switch msg := msg.(type) {
-	case *deployer_tpb.UpdateStackMessage:
-		return lel.awsRunner.UpdateStack(ctx, msg)
-
-	case *deployer_tpb.CreateNewStackMessage:
-		return lel.awsRunner.CreateNewStack(ctx, msg)
-
-	case *deployer_tpb.ScaleStackMessage:
-		return lel.awsRunner.ScaleStack(ctx, msg)
-
-	case *deployer_tpb.StabalizeStackMessage:
-		return lel.awsRunner.StabalizeStack(ctx, msg)
-
-	case *deployer_tpb.MigratePostgresDatabaseMessage:
-		return lel.awsRunner.MigratePostgresDatabase(ctx, msg)
-
-	case *deployer_tpb.DeploymentCompleteMessage:
-		return nil, nil
-	}
-
-	return nil, fmt.Errorf("unknown side effect message type: %T", msg)
 }

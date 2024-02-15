@@ -568,7 +568,7 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 					return fmt.Errorf("migration %s is %s, not valid for FAILED", thisMigration.MigrationId, thisMigration.Status)
 				}
 			default:
-				return fmt.Errorf("unexpected migration status: %s", thisMigration.Status)
+				return fmt.Errorf("unexpected migration status: %s", event.Status)
 			}
 			thisMigration.Status = event.Status
 

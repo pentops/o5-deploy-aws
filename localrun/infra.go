@@ -11,6 +11,7 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
+	"google.golang.org/protobuf/proto"
 )
 
 type InfraAdapter struct {
@@ -33,6 +34,30 @@ func NewInfraAdapter(clients awsinfra.ClientBuilder) *InfraAdapter {
 
 func newToken() string {
 	return fmt.Sprintf("local-%d", time.Now().UnixNano())
+}
+
+func (cf *InfraAdapter) HandleMessage(ctx context.Context, msg proto.Message) (deployer_pb.DeploymentPSMEvent, error) {
+	switch msg := msg.(type) {
+	case *deployer_tpb.UpdateStackMessage:
+		return cf.UpdateStack(ctx, msg)
+
+	case *deployer_tpb.CreateNewStackMessage:
+		return cf.CreateNewStack(ctx, msg)
+
+	case *deployer_tpb.ScaleStackMessage:
+		return cf.ScaleStack(ctx, msg)
+
+	case *deployer_tpb.StabalizeStackMessage:
+		return cf.StabalizeStack(ctx, msg)
+
+	case *deployer_tpb.MigratePostgresDatabaseMessage:
+		return cf.MigratePostgresDatabase(ctx, msg)
+
+	case *deployer_tpb.DeploymentCompleteMessage:
+		return nil, nil
+	}
+
+	return nil, fmt.Errorf("unknown side effect message type: %T", msg)
 }
 
 func (cf *InfraAdapter) CreateNewStack(ctx context.Context, msg *deployer_tpb.CreateNewStackMessage) (*deployer_pb.DeploymentEventType_StackStatus, error) {
@@ -150,15 +175,24 @@ func (cf *InfraAdapter) MigratePostgresDatabase(ctx context.Context, msg *deploy
 
 	migrateError := cf.dbClient.MigratePostgresDatabase(ctx, msg)
 
+	reqState := &deployer_pb.DeploymentMigrationContext{}
+	if err := proto.Unmarshal(msg.Request.Context, reqState); err != nil {
+		return nil, err
+	}
+
 	if migrateError != nil {
 		errMsg := migrateError.Error()
 		return &deployer_pb.DeploymentEventType_DBMigrateStatus{
-			Status: deployer_pb.DatabaseMigrationStatus_FAILED,
-			Error:  &errMsg,
+			Status:      deployer_pb.DatabaseMigrationStatus_FAILED,
+			Error:       &errMsg,
+			MigrationId: reqState.MigrationId,
+			DbName:      msg.MigrationSpec.Database.Database.Name,
 		}, nil
 	}
 	return &deployer_pb.DeploymentEventType_DBMigrateStatus{
-		Status: deployer_pb.DatabaseMigrationStatus_COMPLETED,
+		Status:      deployer_pb.DatabaseMigrationStatus_COMPLETED,
+		MigrationId: reqState.MigrationId,
+		DbName:      msg.MigrationSpec.Database.Database.Name,
 	}, nil
 
 }

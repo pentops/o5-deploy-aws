@@ -7,6 +7,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -36,10 +38,25 @@ func StackTableSpec() deployer_pb.StackPSMTableSpec {
 	tableSpec := deployer_pb.DefaultStackPSMTableSpec
 	tableSpec.StateDataColumn = "state"
 	tableSpec.StateColumns = func(s *deployer_pb.StackState) (map[string]interface{}, error) {
-		return map[string]interface{}{
-			"env_name": s.EnvironmentName,
-			"app_name": s.ApplicationName,
-		}, nil
+		mm := map[string]interface{}{
+			"env_name":       s.EnvironmentName,
+			"app_name":       s.ApplicationName,
+			"environment_id": s.EnvironmentId,
+			"github_owner":   "", // TODO: Support NIL in PSM conversion
+			"github_repo":    "",
+			"github_ref":     "",
+		}
+
+		if s.Config != nil && s.Config.CodeSource != nil {
+			githubConfig := s.Config.CodeSource.GetGithub()
+			if githubConfig != nil {
+				mm["github_owner"] = githubConfig.Owner
+				mm["github_repo"] = githubConfig.Repo
+				mm["github_ref"] = githubConfig.RefPattern
+			}
+		}
+
+		return mm, nil
 	}
 	tableSpec.EventDataColumn = "event"
 	tableSpec.EventColumns = func(e *deployer_pb.StackEvent) (map[string]interface{}, error) {
@@ -80,6 +97,37 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 	// Then we send a Trigger back to the deployer to kick off the
 	// deployment, `QUEUED --> TRIGGERED : Trigger`
 
+	sm.From(
+		deployer_pb.StackStatus_UNSPECIFIED,
+	).Do(deployer_pb.StackPSMFunc(func(
+		ctx context.Context,
+		tb deployer_pb.StackPSMTransitionBaton,
+		state *deployer_pb.StackState,
+		event *deployer_pb.StackEventType_Configured,
+	) error {
+		state.Config = event.Config
+		state.EnvironmentId = event.EnvironmentId
+		state.EnvironmentName = event.EnvironmentName
+		return nil
+	}))
+
+	sm.From().Do(deployer_pb.StackPSMFunc(func(
+		ctx context.Context,
+		tb deployer_pb.StackPSMTransitionBaton,
+		state *deployer_pb.StackState,
+		event *deployer_pb.StackEventType_Configured,
+	) error {
+		state.Config = event.Config
+
+		if state.EnvironmentId != event.EnvironmentId {
+			return status.Errorf(codes.InvalidArgument, "environment id cannot be changed")
+		}
+		if state.EnvironmentName != event.EnvironmentName {
+			return status.Errorf(codes.InvalidArgument, "environment name cannot be changed")
+		}
+		return nil
+	}))
+
 	// [*] --> CREATING : Triggered
 	// As this is the first deployment for the stack, we can trigger the deployment immediately.
 	sm.From(
@@ -94,6 +142,7 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		state.CurrentDeployment = event.Deployment
 		state.ApplicationName = event.ApplicationName
 		state.EnvironmentName = event.EnvironmentName
+		state.EnvironmentId = event.EnvironmentId
 		state.QueuedDeployments = []*deployer_pb.StackDeployment{}
 
 		tb.SideEffect(&deployer_tpb.TriggerDeploymentMessage{
