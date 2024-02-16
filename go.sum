@@ -173,6 +173,8 @@ github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e h1:yvHE4gTqT6dva
 github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e/go.mod h1:BgX0+UvohWaq7Vr3McsBWt8FpzerKaNRsmG2uH7L1FE=
 github.com/pentops/protostate v0.0.0-20240212192652-e95f65995fda h1:TL4u3nmPdiJiAE0jiCF53iKAiSdcEQ+qGuYFmdnkJjU=
 github.com/pentops/protostate v0.0.0-20240212192652-e95f65995fda/go.mod h1:OR/JNZv/KtAIgBDJ6e5tSeK7iAUMXhXlMZzj2tvvi4I=
+github.com/pentops/protostate v0.0.0-20240215002450-b4b3a3f85b8c h1:EEgTEqkkkGRrZ0Fq+8CI6/v4+oNpG3QKMATmGZ2RJlo=
+github.com/pentops/protostate v0.0.0-20240215002450-b4b3a3f85b8c/go.mod h1:OR/JNZv/KtAIgBDJ6e5tSeK7iAUMXhXlMZzj2tvvi4I=
 github.com/pentops/runner v0.0.0-20240119184422-1878cd4dc14d h1:tfghLtM96s+k51KqTPHi3AuvEiepIPkj7QvkhR/BWCI=
 github.com/pentops/runner v0.0.0-20240119184422-1878cd4dc14d/go.mod h1:WSA32DlyDDEahNuv5XZP6ymsfKKLTHWVgMLlXsgyF7Y=
 github.com/pentops/sqrlx.go v0.0.0-20240108202916-8687fdf983c0 h1:JQrYHxaxEYwjdFjqOr3TnS5fxBr4l3Nw6Wgvr/hVl+Y=

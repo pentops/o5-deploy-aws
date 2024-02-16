@@ -36,6 +36,7 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 		Cpu:               Int(128),
 		MemoryReservation: Int(256),
 	}
+	ensureEnvVar(&container.Environment, "AWS_REGION", cloudformation.RefPtr("AWS::Region"))
 
 	if len(def.Command) > 0 {
 		container.Command = def.Command
@@ -112,7 +113,6 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 				Name:  String(envVar.Name),
 				Value: value,
 			})
-			ensureEnvVar(&container.Environment, "AWS_REGION", cloudformation.RefPtr("AWS::Region"))
 
 		case *application_pb.EnvironmentVariable_Secret:
 			secretName := varType.Secret.SecretName
