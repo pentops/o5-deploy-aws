@@ -127,7 +127,9 @@ type cfMock struct {
 
 func (cf *cfMock) ExpectStabalizeStack(t flowtest.TB) {
 	t.Helper()
-	stabalizeRequest := &deployer_tpb.StabalizeStackMessage{}
+	stabalizeRequest := &deployer_tpb.StabalizeStackMessage{
+		Request: &messaging_pb.RequestMetadata{},
+	}
 	cf.uu.Outbox.PopMessage(t, stabalizeRequest)
 	cf.lastRequest = stabalizeRequest.Request
 	cf.lastStack = stabalizeRequest.StackName
@@ -135,7 +137,9 @@ func (cf *cfMock) ExpectStabalizeStack(t flowtest.TB) {
 
 func (cf *cfMock) ExpectCreateStack(t flowtest.TB) *deployer_tpb.CreateNewStackMessage {
 	t.Helper()
-	createRequest := &deployer_tpb.CreateNewStackMessage{}
+	createRequest := &deployer_tpb.CreateNewStackMessage{
+		Request: &messaging_pb.RequestMetadata{},
+	}
 	cf.uu.Outbox.PopMessage(t, createRequest)
 	cf.lastRequest = createRequest.Request
 	cf.lastStack = createRequest.Spec.StackName
@@ -147,7 +151,7 @@ func (cf *cfMock) StackStatusMissing(t flowtest.TB) {
 	_, err := cf.uu.CFReplyTopic.StackStatusChanged(context.Background(), &deployer_tpb.StackStatusChangedMessage{
 		Request:   cf.lastRequest,
 		StackName: cf.lastStack,
-		Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_MISSING,
+		Lifecycle: deployer_pb.CFLifecycle_MISSING,
 		Status:    "",
 	})
 	if err != nil {
@@ -159,7 +163,7 @@ func (cf *cfMock) StackCreateComplete(t flowtest.TB) {
 	_, err := cf.uu.CFReplyTopic.StackStatusChanged(context.Background(), &deployer_tpb.StackStatusChangedMessage{
 		Request:   cf.lastRequest,
 		StackName: cf.lastStack,
-		Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_COMPLETE,
+		Lifecycle: deployer_pb.CFLifecycle_COMPLETE,
 		Status:    "CREATE_COMPLETE",
 		Outputs: []*deployer_pb.KeyValue{{
 			Name:  "foo",

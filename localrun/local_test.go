@@ -66,9 +66,7 @@ func (m *MockInfra) StepResult(md *messaging_pb.RequestMetadata, result *deploye
 }
 
 func (m *MockInfra) Send(msg deployer_pb.DeploymentPSMEvent) {
-	fmt.Printf("Send %s\n", msg.PSMEventKey())
 	m.outgoing <- msg
-	fmt.Printf("Sent %s\n", msg.PSMEventKey())
 }
 
 func (m *MockInfra) Pop(t flowtest.TB, ctx context.Context) proto.Message {
@@ -116,7 +114,8 @@ func TestLocalRun(t *testing.T) {
 			FullName: "env",
 			Provider: &environment_pb.Environment_Aws{
 				Aws: &environment_pb.AWS{
-					ListenerArn: "arn:listener",
+					ListenerArn:    "arn:listener",
+					EcsClusterName: "ecs-cluster",
 					RdsHosts: []*environment_pb.RDSHost{{
 						ServerGroup: "default",
 						SecretName:  "secret",
@@ -154,7 +153,7 @@ func TestLocalRun(t *testing.T) {
 		}
 
 		infra.CFResult(req.Request, deployer_pb.StepStatus_DONE, &deployer_pb.CFStackOutput{
-			Lifecycle: deployer_pb.StackLifecycle_COMPLETE,
+			Lifecycle: deployer_pb.CFLifecycle_COMPLETE,
 			Outputs: []*deployer_pb.KeyValue{{
 				Name:  "MigrationTaskDefinitionFoo",
 				Value: "arn:taskdef",
@@ -165,15 +164,39 @@ func TestLocalRun(t *testing.T) {
 		})
 	})
 
+	ss.StepC("UpsertPostgresDatabase", func(ctx context.Context, t flowtest.Asserter) {
+		msg, ok := infra.Pop(t, ctx).(*deployer_tpb.UpsertPostgresDatabaseMessage)
+		if !ok {
+			t.Fatalf("expected UpsertPostgresDatabaseMessage")
+		}
+
+		t.Equal("arn:secret", msg.Spec.SecretArn)
+
+		infra.StepResult(msg.Request, &deployer_pb.DeploymentEventType_StepResult{
+			Status: deployer_pb.StepStatus_DONE,
+		})
+	})
+
 	ss.StepC("MigratePostgresDatabase", func(ctx context.Context, t flowtest.Asserter) {
 		msg, ok := infra.Pop(t, ctx).(*deployer_tpb.MigratePostgresDatabaseMessage)
 		if !ok {
 			t.Fatalf("expected MigratePostgresDatabaseMessage")
 		}
 
-		t.Equal("foo", msg.MigrationSpec.Database.Database.Name)
-		t.Equal("arn:secret", msg.MigrationSpec.SecretArn)
-		t.Equal("arn:taskdef", msg.MigrationSpec.MigrationTaskArn)
+		t.Equal("ecs-cluster", msg.Spec.EcsClusterName)
+		t.Equal("arn:secret", msg.Spec.SecretArn)
+		t.Equal("arn:taskdef", msg.Spec.MigrationTaskArn)
+
+		infra.StepResult(msg.Request, &deployer_pb.DeploymentEventType_StepResult{
+			Status: deployer_pb.StepStatus_DONE,
+		})
+	})
+
+	ss.StepC("CleanupPostgresDatabase", func(ctx context.Context, t flowtest.Asserter) {
+		msg, ok := infra.Pop(t, ctx).(*deployer_tpb.CleanupPostgresDatabaseMessage)
+		if !ok {
+			t.Fatalf("expected CleanupPostgresDatabaseMessage")
+		}
 
 		infra.StepResult(msg.Request, &deployer_pb.DeploymentEventType_StepResult{
 			Status: deployer_pb.StepStatus_DONE,
@@ -189,7 +212,7 @@ func TestLocalRun(t *testing.T) {
 		t.Equal(int32(1), msg.DesiredCount)
 
 		infra.CFResult(msg.Request, deployer_pb.StepStatus_DONE, &deployer_pb.CFStackOutput{
-			Lifecycle: deployer_pb.StackLifecycle_COMPLETE,
+			Lifecycle: deployer_pb.CFLifecycle_COMPLETE,
 			Outputs:   []*deployer_pb.KeyValue{},
 		})
 	})

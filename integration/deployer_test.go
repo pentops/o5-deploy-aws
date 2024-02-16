@@ -22,8 +22,6 @@ func TestCreateHappy(t *testing.T) {
 	ss := NewStepper(ctx, t)
 	defer ss.RunSteps(t)
 
-	initialTrigger := &deployer_tpb.RequestDeploymentMessage{}
-
 	envID := uuid.NewString()
 	stackID := uuid.NewString()
 
@@ -61,6 +59,7 @@ func TestCreateHappy(t *testing.T) {
 
 	})
 
+	initialTrigger := &deployer_tpb.RequestDeploymentMessage{}
 	ss.Step("Github Trigger", func(t UniverseAsserter) {
 		t.Github.Configs["owner/repo/after"] = []*application_pb.Application{{
 			Name: "app",
@@ -108,7 +107,9 @@ func TestCreateHappy(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		stabalizeRequest := &deployer_tpb.StabalizeStackMessage{}
+		stabalizeRequest := &deployer_tpb.StabalizeStackMessage{
+			Request: &messaging_pb.RequestMetadata{},
+		}
 		t.Outbox.PopMessage(t, stabalizeRequest)
 		stackRequest = stabalizeRequest.Request
 		stackName = stabalizeRequest.StackName
@@ -125,13 +126,15 @@ func TestCreateHappy(t *testing.T) {
 		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
 			Request:   stackRequest,
 			StackName: stackName,
-			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_MISSING,
+			Lifecycle: deployer_pb.CFLifecycle_MISSING,
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		createRequest := &deployer_tpb.CreateNewStackMessage{}
+		createRequest := &deployer_tpb.CreateNewStackMessage{
+			Request: &messaging_pb.RequestMetadata{},
+		}
 		t.Outbox.PopMessage(t, createRequest)
 		stackRequest = createRequest.Request
 
@@ -147,7 +150,7 @@ func TestCreateHappy(t *testing.T) {
 		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
 			Request:   stackRequest,
 			StackName: stackName,
-			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_PROGRESS,
+			Lifecycle: deployer_pb.CFLifecycle_PROGRESS,
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -160,7 +163,7 @@ func TestCreateHappy(t *testing.T) {
 		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
 			Request:   stackRequest,
 			StackName: stackName,
-			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_COMPLETE,
+			Lifecycle: deployer_pb.CFLifecycle_COMPLETE,
 			Status:    "FOOBAR",
 			Outputs: []*deployer_pb.KeyValue{{
 				Name:  "foo",
@@ -173,7 +176,9 @@ func TestCreateHappy(t *testing.T) {
 
 		// No DB to migrate
 
-		scaleUpRequest := &deployer_tpb.ScaleStackMessage{}
+		scaleUpRequest := &deployer_tpb.ScaleStackMessage{
+			Request: &messaging_pb.RequestMetadata{},
+		}
 		t.Outbox.PopMessage(t, scaleUpRequest)
 		stackRequest = scaleUpRequest.Request
 
@@ -193,7 +198,7 @@ func TestCreateHappy(t *testing.T) {
 		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
 			Request:   stackRequest,
 			StackName: stackName,
-			Lifecycle: deployer_pb.StackLifecycle_STACK_LIFECYCLE_COMPLETE,
+			Lifecycle: deployer_pb.CFLifecycle_COMPLETE,
 			Status:    "FOOBAR",
 			Outputs: []*deployer_pb.KeyValue{{
 				Name:  "foo",

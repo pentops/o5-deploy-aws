@@ -23,7 +23,7 @@ import (
 type DeployerWorker struct {
 	*deployer_tpb.UnimplementedDeployerTopicServer
 	*deployer_tpb.UnimplementedCloudFormationReplyTopicServer
-	*deployer_tpb.UnimplementedPostgresMigrationReplyTopicServer
+	*deployer_tpb.UnimplementedPostgresReplyTopicServer
 
 	db *sqrlx.Wrapper
 
@@ -192,15 +192,15 @@ func StackStatusToEvent(msg *deployer_tpb.StackStatusChangedMessage) (*deployer_
 		}
 
 		switch msg.Lifecycle {
-		case deployer_pb.StackLifecycle_PROGRESS,
-			deployer_pb.StackLifecycle_ROLLING_BACK:
+		case deployer_pb.CFLifecycle_PROGRESS,
+			deployer_pb.CFLifecycle_ROLLING_BACK:
 			return nil, nil
 
-		case deployer_pb.StackLifecycle_COMPLETE:
+		case deployer_pb.CFLifecycle_COMPLETE:
 			stepResult.Status = deployer_pb.StepStatus_DONE
-		case deployer_pb.StackLifecycle_CREATE_FAILED,
-			deployer_pb.StackLifecycle_ROLLED_BACK,
-			deployer_pb.StackLifecycle_MISSING:
+		case deployer_pb.CFLifecycle_CREATE_FAILED,
+			deployer_pb.CFLifecycle_ROLLED_BACK,
+			deployer_pb.CFLifecycle_MISSING:
 			stepResult.Status = deployer_pb.StepStatus_FAILED
 		default:
 			return nil, fmt.Errorf("unknown lifecycle: %s", msg.Lifecycle)
@@ -210,18 +210,18 @@ func StackStatusToEvent(msg *deployer_tpb.StackStatusChangedMessage) (*deployer_
 
 	case deployer_pb.StepPhase_WAIT:
 		switch msg.Lifecycle {
-		case deployer_pb.StackLifecycle_PROGRESS,
-			deployer_pb.StackLifecycle_ROLLING_BACK:
+		case deployer_pb.CFLifecycle_PROGRESS,
+			deployer_pb.CFLifecycle_ROLLING_BACK:
 			return nil, nil
 
-		case deployer_pb.StackLifecycle_COMPLETE,
-			deployer_pb.StackLifecycle_ROLLED_BACK:
+		case deployer_pb.CFLifecycle_COMPLETE,
+			deployer_pb.CFLifecycle_ROLLED_BACK:
 
 			event.SetPSMEvent(&deployer_pb.DeploymentEventType_StackAvailable{
 				StackExists: true,
 			})
 
-		case deployer_pb.StackLifecycle_MISSING:
+		case deployer_pb.CFLifecycle_MISSING:
 			event.SetPSMEvent(&deployer_pb.DeploymentEventType_StackAvailable{
 				StackExists: false,
 			})
@@ -260,7 +260,7 @@ func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *deployer_
 	return &emptypb.Empty{}, nil
 }
 
-func PostgresMigrationToEvent(msg *deployer_tpb.PostgresMigrationEventMessage) (*deployer_pb.DeploymentEvent, error) {
+func PostgresMigrationToEvent(msg *deployer_tpb.PostgresDatabaseStatusMessage) (*deployer_pb.DeploymentEvent, error) {
 
 	stepContext := &deployer_pb.StepContext{}
 	if err := proto.Unmarshal(msg.Request.Context, stepContext); err != nil {
@@ -285,13 +285,13 @@ func PostgresMigrationToEvent(msg *deployer_tpb.PostgresMigrationEventMessage) (
 	event.SetPSMEvent(stepStatus)
 
 	switch msg.Status {
-	case deployer_tpb.PostgresStatus_AVAILABLE:
+	case deployer_tpb.PostgresStatus_DONE:
 		stepStatus.Status = deployer_pb.StepStatus_DONE
 	case deployer_tpb.PostgresStatus_ERROR:
 		stepStatus.Status = deployer_pb.StepStatus_FAILED
 		stepStatus.Error = msg.Error
 
-	case deployer_tpb.PostgresStatus_UPDATING, deployer_tpb.PostgresStatus_CREATING:
+	case deployer_tpb.PostgresStatus_STARTED:
 		return nil, nil
 
 	default:
@@ -301,7 +301,7 @@ func PostgresMigrationToEvent(msg *deployer_tpb.PostgresMigrationEventMessage) (
 	return event, nil
 }
 
-func (dw *DeployerWorker) PostgresMigrationEvent(ctx context.Context, msg *deployer_tpb.PostgresMigrationEventMessage) (*emptypb.Empty, error) {
+func (dw *DeployerWorker) PostgresDatabaseStatus(ctx context.Context, msg *deployer_tpb.PostgresDatabaseStatusMessage) (*emptypb.Empty, error) {
 
 	event, err := PostgresMigrationToEvent(msg)
 	if err != nil {

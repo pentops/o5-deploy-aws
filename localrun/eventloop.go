@@ -113,7 +113,13 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		return err
 	}
 
-	for len(eventQueue) > 0 {
+	stopped := false
+	go func() {
+		<-ctx.Done()
+		stopped = true
+	}()
+
+	for len(eventQueue) > 0 && !stopped {
 		innerEvent := eventQueue[0]
 		eventQueue = eventQueue[1:]
 

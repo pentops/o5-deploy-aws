@@ -49,25 +49,12 @@ func CleanParameterName(unsafes ...string) string {
 }
 
 type BuiltApplication struct {
-	Template          *cloudformation.Template
-	parameters        []*deployer_pb.Parameter
-	postgresDatabases []*deployer_pb.PostgresDatabase
-	SNSTopics         []*deployer_pb.SNSTopic
-	Name              string
-	Version           string
-	QuickMode         bool
+	Template *cloudformation.Template
+	*deployer_pb.BuiltApplication
 }
 
 func (ba *BuiltApplication) TemplateJSON() ([]byte, error) {
 	return ba.Template.JSON()
-}
-
-func (ba *BuiltApplication) PostgresDatabases() []*deployer_pb.PostgresDatabase {
-	return ba.postgresDatabases
-}
-
-func (ba *BuiltApplication) Parameters() []*deployer_pb.Parameter {
-	return ba.parameters
 }
 
 type SNSTopic struct {
@@ -78,14 +65,14 @@ type PostgresDefinition struct {
 	Databse                 *application_pb.Database
 	Postgres                *application_pb.Database_Postgres
 	MigrationTaskOutputName *string
-	SecretOutputName        *string
+	SecretOutputName        string
 }
 
 type Application struct {
 	appName           string
 	version           string
 	quickMode         bool
-	postgresDatabases []*PostgresDefinition
+	postgresDatabases []*deployer_pb.PostgresDatabaseResource
 	parameters        map[string]*deployer_pb.Parameter
 	resources         map[string]IResource
 	outputs           map[string]*Output
@@ -175,11 +162,9 @@ func (ss *Application) Build() *BuiltApplication {
 			Value:       output.Value,
 		}
 	}
-	snsToipcs := []*deployer_pb.SNSTopic{}
+	snsToipcs := []string{}
 	for _, topic := range ss.snsTopics {
-		snsToipcs = append(snsToipcs, &deployer_pb.SNSTopic{
-			Name: topic.Name,
-		})
+		snsToipcs = append(snsToipcs, topic.Name)
 	}
 
 	parameterSlice := make([]*deployer_pb.Parameter, 0, len(parameters))
@@ -187,23 +172,16 @@ func (ss *Application) Build() *BuiltApplication {
 		parameterSlice = append(parameterSlice, param)
 	}
 
-	dbOut := make([]*deployer_pb.PostgresDatabase, len(ss.postgresDatabases))
-	for idx, db := range ss.postgresDatabases {
-		dbOut[idx] = &deployer_pb.PostgresDatabase{
-			MigrationTaskOutputName: db.MigrationTaskOutputName,
-			Database:                db.Databse,
-			SecretOutputName:        db.SecretOutputName,
-		}
-	}
-
 	return &BuiltApplication{
-		Template:          template,
-		parameters:        parameterSlice,
-		postgresDatabases: dbOut,
-		SNSTopics:         snsToipcs,
-		Name:              ss.appName,
-		Version:           ss.version,
-		QuickMode:         ss.quickMode,
+		Template: template,
+		BuiltApplication: &deployer_pb.BuiltApplication{
+			Parameters:        parameterSlice,
+			PostgresDatabases: ss.postgresDatabases,
+			SnsTopics:         snsToipcs,
+			Name:              ss.appName,
+			Version:           ss.version,
+			QuickMode:         ss.quickMode,
+		},
 	}
 }
 

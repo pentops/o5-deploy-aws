@@ -107,7 +107,7 @@ func (cf *InfraWorker) Raw(ctx context.Context, msg *messaging_tpb.RawMessage) (
 
 	var outputs []*deployer_pb.KeyValue
 
-	if lifecycle == deployer_pb.StackLifecycle_COMPLETE {
+	if lifecycle == deployer_pb.CFLifecycle_COMPLETE {
 
 		stack, err := cf.getOneStack(ctx, stackName)
 		if err != nil {
@@ -127,6 +127,8 @@ func (cf *InfraWorker) Raw(ctx context.Context, msg *messaging_tpb.RawMessage) (
 	} else if err != nil {
 		return nil, err
 	}
+	mm := &deployer_tpb.StackStatusChangedMessage{}
+	mm.MessagingHeaders()
 
 	if err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
 		Request:   requestMetadata,
@@ -233,7 +235,7 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 			Request:   msg.Request,
 			StackName: msg.StackName,
 			Status:    "MISSING",
-			Lifecycle: deployer_pb.StackLifecycle_MISSING,
+			Lifecycle: deployer_pb.CFLifecycle_MISSING,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("eventOut: %w", err)
@@ -276,7 +278,7 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 		// When a previous attempt has failed, the stack will be in this state
 		// In the Stabalize handler ONLY, this counts as a success, as the stack
 		// is stable and ready for another attempt
-		lifecycle = deployer_pb.StackLifecycle_COMPLETE
+		lifecycle = deployer_pb.CFLifecycle_COMPLETE
 		err = cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
 			Request:   msg.Request,
 			StackName: msg.StackName,
@@ -334,7 +336,7 @@ func (cf *InfraWorker) noUpdatesToBePerformed(ctx context.Context, stackName str
 		StackName: stackName,
 		Status:    "NO UPDATES TO BE PERFORMED",
 		Outputs:   summary.Outputs,
-		Lifecycle: deployer_pb.StackLifecycle_COMPLETE,
+		Lifecycle: deployer_pb.CFLifecycle_COMPLETE,
 	}); err != nil {
 		return err
 	}

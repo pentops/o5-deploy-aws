@@ -142,12 +142,16 @@ func runServe(ctx context.Context, cfg struct {
 	github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
 	deployer_spb.RegisterDeploymentQueryServiceServer(grpcServer, queryService)
 	deployer_spb.RegisterDeploymentCommandServiceServer(grpcServer, commandService)
-	deployer_tpb.RegisterCloudFormationRequestTopicServer(grpcServer, awsInfraRunner)
-	deployer_tpb.RegisterPostgresMigrationTopicServer(grpcServer, pgMigrateRunner)
+
 	deployer_tpb.RegisterDeployerTopicServer(grpcServer, deploymentWorker)
-	deployer_tpb.RegisterCloudFormationReplyTopicServer(grpcServer, deploymentWorker)
-	deployer_tpb.RegisterPostgresMigrationReplyTopicServer(grpcServer, deploymentWorker)
+
 	messaging_tpb.RegisterRawMessageTopicServer(grpcServer, awsInfraRunner)
+
+	deployer_tpb.RegisterCloudFormationRequestTopicServer(grpcServer, awsInfraRunner)
+	deployer_tpb.RegisterCloudFormationReplyTopicServer(grpcServer, deploymentWorker)
+
+	deployer_tpb.RegisterPostgresRequestTopicServer(grpcServer, pgMigrateRunner)
+	deployer_tpb.RegisterPostgresReplyTopicServer(grpcServer, deploymentWorker)
 
 	reflection.Register(grpcServer)
 
@@ -223,8 +227,8 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 
 		fmt.Println("-----")
 
-		for _, target := range built.SNSTopics {
-			fmt.Printf("SNS Topic: %s\n", target.Name)
+		for _, target := range built.SnsTopics {
+			fmt.Printf("SNS Topic: %s\n", target)
 		}
 		return nil
 	}

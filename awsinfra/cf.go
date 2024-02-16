@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/smithy-go"
+	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/app"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
@@ -270,6 +271,7 @@ func upsertExtraResources(ctx context.Context, clients *DeployerClients, evt *de
 	snsClient := clients.SNS
 
 	for _, topic := range evt.SnsTopics {
+		log.WithField(ctx, "topic", topic).Debug("Creating SNS topic")
 		_, err := snsClient.CreateTopic(ctx, &sns.CreateTopicInput{
 			Name: aws.String(topic),
 		})

@@ -24,7 +24,10 @@ func TestTriggerDeployment(t *testing.T) {
 
 	githubMock := mocks.NewGithub()
 
-	conn := pgtest.GetTestDB(t, pgtest.WithDir("../ext/db"))
+	conn := pgtest.GetTestDB(t,
+		pgtest.WithDir("../ext/db"),
+		pgtest.WithSchemaName("testservice"),
+	)
 	outbox := outboxtest.NewOutboxAsserter(t, conn)
 
 	ds, err := NewDeployerService(conn, githubMock, stateMachines)

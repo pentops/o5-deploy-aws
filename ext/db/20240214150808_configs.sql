@@ -18,14 +18,23 @@ ALTER TABLE stack
   ADD COLUMN github_ref TEXT,
   ADD COLUMN environment_id uuid REFERENCES environment(id);
 
+CREATE TABLE infra_client_token (
+  token uuid PRIMARY KEY,
+  dest text NOT NULL,
+  request bytea NOT NULL
+);
+
 -- +goose Down
 
-DROP TABLE environment_event;
-DROP TABLE environment;
-
+DROP TABLE infra_client_token;
 
 ALTER TABLE stack
   DROP COLUMN github_owner,
   DROP COLUMN github_repo,
   DROP COLUMN github_ref,
   DROP COLUMN environment_id;
+
+DROP TABLE environment_event;
+DROP TABLE environment;
+
+

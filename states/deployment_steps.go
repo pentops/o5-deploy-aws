@@ -20,6 +20,16 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 
 	plan := make([]*deployer_pb.DeploymentStep, 0)
 
+	stackInput := func(desiredCount int32) *deployer_pb.CFStackInput {
+		return &deployer_pb.CFStackInput{
+			StackName:    deployment.StackName,
+			DesiredCount: desiredCount,
+			TemplateUrl:  deployment.Spec.TemplateUrl,
+			Parameters:   deployment.Spec.Parameters,
+			SnsTopics:    deployment.Spec.SnsTopics,
+		}
+	}
+
 	if input.quickMode {
 		if input.stackExists {
 			infraMigrate := &deployer_pb.DeploymentStep{
@@ -29,12 +39,7 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 				Request: &deployer_pb.StepRequestType{
 					Type: &deployer_pb.StepRequestType_CfUpdate{
 						CfUpdate: &deployer_pb.StepRequestType_CFUpdate{
-							Spec: &deployer_pb.CFStackInput{
-								StackName:    deployment.StackName,
-								DesiredCount: 0,
-								TemplateUrl:  deployment.Spec.TemplateUrl,
-								Parameters:   deployment.Spec.Parameters,
-							},
+							Spec: stackInput(0),
 						},
 					},
 				},
@@ -48,12 +53,7 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 				Request: &deployer_pb.StepRequestType{
 					Type: &deployer_pb.StepRequestType_CfCreate{
 						CfCreate: &deployer_pb.StepRequestType_CFCreate{
-							Spec: &deployer_pb.CFStackInput{
-								StackName:    deployment.StackName,
-								DesiredCount: 0,
-								TemplateUrl:  deployment.Spec.TemplateUrl,
-								Parameters:   deployment.Spec.Parameters,
-							},
+							Spec: stackInput(0),
 						},
 					},
 				},
@@ -88,12 +88,7 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 			Request: &deployer_pb.StepRequestType{
 				Type: &deployer_pb.StepRequestType_CfUpdate{
 					CfUpdate: &deployer_pb.StepRequestType_CFUpdate{
-						Spec: &deployer_pb.CFStackInput{
-							StackName:    deployment.StackName,
-							DesiredCount: 0,
-							TemplateUrl:  deployment.Spec.TemplateUrl,
-							Parameters:   deployment.Spec.Parameters,
-						},
+						Spec: stackInput(0),
 					},
 				},
 			},
@@ -109,12 +104,7 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 			Request: &deployer_pb.StepRequestType{
 				Type: &deployer_pb.StepRequestType_CfCreate{
 					CfCreate: &deployer_pb.StepRequestType_CFCreate{
-						Spec: &deployer_pb.CFStackInput{
-							StackName:    deployment.StackName,
-							DesiredCount: 0,
-							TemplateUrl:  deployment.Spec.TemplateUrl,
-							Parameters:   deployment.Spec.Parameters,
-						},
+						Spec: stackInput(0),
 					},
 				},
 			},
@@ -142,47 +132,59 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 	for _, db := range deployment.Spec.Databases {
 
 		ctx = log.WithFields(ctx, map[string]interface{}{
-			"database":    db.Database.Name,
-			"serverGroup": db.Database.GetPostgres().ServerGroup,
+			"database": db.DbName,
+			"root":     db.RootSecretName,
 		})
 		log.Debug(ctx, "Upsert Database")
 
-		secretName := db.RdsHost.SecretName
-		if secretName == "" {
-			return nil, fmt.Errorf("no host found for server group %q", db.Database.GetPostgres().ServerGroup)
-		}
-
-		migrateReq := &deployer_pb.StepRequestType_PGMigrate{
-			Spec: &deployer_pb.PostgresMigrationSpec{
-				//MigrationTaskArn:  migrationTaskARN,
-				//SecretArn:         secretARN,
-				Database:          db,
-				RotateCredentials: deployment.Spec.RotateCredentials,
-				EcsClusterName:    deployment.Spec.EcsCluster,
-				RootSecretName:    secretName,
-			},
-		}
-
-		if db.MigrationTaskOutputName != nil {
-			// pull outputs from InfraMigrate for secret and migration task
-			// ARNs
-			migrateReq.InfraOutputStepId = &infraReadyStepID
-		}
-
-		pgMigrate := &deployer_pb.DeploymentStep{
+		upsertStep := &deployer_pb.DeploymentStep{
 			Id:     uuid.NewString(),
-			Name:   "PgMigrate",
+			Name:   fmt.Sprintf("PgUpsert-%s", db.DbName),
 			Status: deployer_pb.StepStatus_UNSPECIFIED,
 			Request: &deployer_pb.StepRequestType{
-				Type: &deployer_pb.StepRequestType_PgMigrate{
-					PgMigrate: migrateReq,
+				Type: &deployer_pb.StepRequestType_PgUpsert{
+					PgUpsert: &deployer_pb.StepRequestType_PGUpsert{
+						Spec:              db,
+						InfraOutputStepId: infraReadyStepID,
+					},
 				},
 			},
 			DependsOn: []string{infraReadyStepID},
 		}
 
-		plan = append(plan, pgMigrate)
-		scaleUp.DependsOn = append(scaleUp.DependsOn, pgMigrate.Id)
+		migrateStep := &deployer_pb.DeploymentStep{
+			Id:     uuid.NewString(),
+			Name:   fmt.Sprintf("PgMigrate-%s", db.DbName),
+			Status: deployer_pb.StepStatus_UNSPECIFIED,
+			Request: &deployer_pb.StepRequestType{
+				Type: &deployer_pb.StepRequestType_PgMigrate{
+					PgMigrate: &deployer_pb.StepRequestType_PGMigrate{
+						Spec:              db,
+						InfraOutputStepId: infraReadyStepID,
+					},
+				},
+			},
+			// depends on infraReady even though upsert also depends on it, so
+			// that the output of the infraStep is still injected
+			DependsOn: []string{infraReadyStepID, upsertStep.Id},
+		}
+
+		cleanupStep := &deployer_pb.DeploymentStep{
+			Id:     uuid.NewString(),
+			Name:   fmt.Sprintf("PgCleanup-%s", db.DbName),
+			Status: deployer_pb.StepStatus_UNSPECIFIED,
+			Request: &deployer_pb.StepRequestType{
+				Type: &deployer_pb.StepRequestType_PgCleanup{
+					PgCleanup: &deployer_pb.StepRequestType_PGCleanup{
+						Spec: db,
+					},
+				},
+			},
+			DependsOn: []string{migrateStep.Id},
+		}
+
+		plan = append(plan, upsertStep, migrateStep, cleanupStep)
+		scaleUp.DependsOn = append(scaleUp.DependsOn, cleanupStep.Id)
 	}
 
 	return plan, nil
@@ -198,41 +200,18 @@ func stepNext(ctx context.Context, tb deployer_pb.DeploymentPSMTransitionBaton, 
 	anyRunning := false
 	anyFailed := false
 
-	startSteps := make([]outbox.OutboxMessage, 0)
+	waitingSteps := make([]*deployer_pb.DeploymentStep, 0)
 
-steps:
 	for _, step := range deployment.Steps {
 		switch step.Status {
-		case deployer_pb.StepStatus_UNSPECIFIED:
+		case deployer_pb.StepStatus_UNSPECIFIED, deployer_pb.StepStatus_BLOCKED:
+			waitingSteps = append(waitingSteps, step)
 		case deployer_pb.StepStatus_ACTIVE:
 			anyRunning = true
-			continue steps
 		case deployer_pb.StepStatus_DONE:
-			continue steps
 		case deployer_pb.StepStatus_FAILED:
 			anyFailed = true
-			continue steps
 		}
-
-		// allows steps to pull outputs from previous steps.
-		depMap := make(map[string]*deployer_pb.DeploymentStep)
-		for _, dep := range step.DependsOn {
-			depStep, ok := stepMap[dep]
-			if !ok {
-				return fmt.Errorf("step %s depends on %s, but it does not exist", step.Id, dep)
-			}
-			if depStep.Status != deployer_pb.StepStatus_DONE {
-				anyOpen = true
-				continue steps
-			}
-			depMap[dep] = depStep
-		}
-
-		sideEffect, err := stepToSideEffect(step, deployment, depMap)
-		if err != nil {
-			return err
-		}
-		startSteps = append(startSteps, sideEffect)
 	}
 
 	if anyFailed {
@@ -249,10 +228,32 @@ steps:
 		return nil
 	}
 
-	// Only start steps if no other step has failed
-	for _, step := range startSteps {
+	// allows steps to pull outputs from previous steps.
+
+steps:
+	for _, step := range waitingSteps {
+
+		depMap := make(map[string]*deployer_pb.DeploymentStep)
+		for _, dep := range step.DependsOn {
+			depStep, ok := stepMap[dep]
+			if !ok {
+				return fmt.Errorf("step %s depends on %s, but it does not exist", step.Id, dep)
+			}
+			if depStep.Status != deployer_pb.StepStatus_DONE {
+				anyOpen = true
+				step.Status = deployer_pb.StepStatus_BLOCKED
+				continue steps
+			}
+			depMap[dep] = depStep
+		}
+
+		sideEffect, err := stepToSideEffect(step, deployment, depMap)
+		if err != nil {
+			return err
+		}
 		anyRunning = true
-		tb.SideEffect(step)
+		tb.SideEffect(sideEffect)
+		step.Status = deployer_pb.StepStatus_ACTIVE
 	}
 
 	if anyRunning {
@@ -300,41 +301,92 @@ func stepToSideEffect(step *deployer_pb.DeploymentStep, deployment *deployer_pb.
 			Spec:    st.CfCreate.Spec,
 		}, nil
 
-	case *deployer_pb.StepRequestType_PgMigrate:
-		spec := st.PgMigrate.Spec
-		if st.PgMigrate.InfraOutputStepId != nil {
-			infraOutputStep, ok := dependencies[*st.PgMigrate.InfraOutputStepId]
-			if !ok {
-				return nil, fmt.Errorf("PG Migrate step %s depends on %s for CF output, not passed in", step.Id, *st.PgMigrate.InfraOutputStepId)
-			}
-			stackOutput, ok := infraOutputStep.Output.Type.(*deployer_pb.StepOutputType_CfStatus)
-			if !ok {
-				return nil, fmt.Errorf("unexpected step type for CF Output: %T", infraOutputStep.Output)
-			}
+	case *deployer_pb.StepRequestType_PgUpsert:
+		src := st.PgUpsert.Spec
+		spec := &deployer_pb.PostgresCreationSpec{
+			DbName:            src.DbName,
+			RootSecretName:    src.RootSecretName,
+			DbExtensions:      src.DbExtensions,
+			RotateCredentials: deployment.Spec.RotateCredentials,
+		}
+		outputs, err := getStackOutputs(dependencies, st.PgUpsert.InfraOutputStepId)
+		if err != nil {
+			return nil, err
+		}
 
-			db := st.PgMigrate.Spec.Database
-
-			for _, output := range stackOutput.CfStatus.Output.Outputs {
-				if *db.MigrationTaskOutputName == output.Name {
-					spec.MigrationTaskArn = output.Value
-				}
-				if *db.SecretOutputName == output.Name {
-					spec.SecretArn = output.Value
-				}
-			}
-			if spec.MigrationTaskArn == "" {
-				return nil, fmt.Errorf("stack output missing %s for database %s", *db.MigrationTaskOutputName, db.Database.Name)
-			}
-			if spec.SecretArn == "" {
-				return nil, fmt.Errorf("stack output missing %s for database %s", *db.SecretOutputName, db.Database.Name)
+		for _, output := range outputs {
+			if src.SecretOutputName == output.Name {
+				spec.SecretArn = output.Value
 			}
 		}
+		if spec.SecretArn == "" {
+			return nil, fmt.Errorf("stack output missing %s for database %s", src.SecretOutputName, src.DbName)
+		}
+
+		return &deployer_tpb.UpsertPostgresDatabaseMessage{
+			Request:     requestMetadata,
+			MigrationId: step.Id,
+			Spec:        spec,
+		}, nil
+
+	case *deployer_pb.StepRequestType_PgMigrate:
+		src := st.PgMigrate.Spec
+		spec := &deployer_pb.PostgresMigrationSpec{
+			EcsClusterName: deployment.Spec.EcsCluster,
+		}
+		outputs, err := getStackOutputs(dependencies, st.PgMigrate.InfraOutputStepId)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, output := range outputs {
+			if *src.MigrationTaskOutputName == output.Name {
+				spec.MigrationTaskArn = output.Value
+			}
+			if src.SecretOutputName == output.Name {
+				spec.SecretArn = output.Value
+			}
+		}
+		if spec.MigrationTaskArn == "" {
+			return nil, fmt.Errorf("stack output missing %s for database %s", *src.MigrationTaskOutputName, src.DbName)
+		}
+		if spec.SecretArn == "" {
+			return nil, fmt.Errorf("stack output missing %s for database %s", src.SecretOutputName, src.DbName)
+		}
+
 		return &deployer_tpb.MigratePostgresDatabaseMessage{
-			Request:       requestMetadata,
-			MigrationSpec: spec,
+			Request:     requestMetadata,
+			MigrationId: step.Id,
+			Spec:        spec,
+		}, nil
+
+	case *deployer_pb.StepRequestType_PgCleanup:
+		src := st.PgCleanup.Spec
+		spec := &deployer_pb.PostgresCleanupSpec{
+			DbName:         src.DbName,
+			RootSecretName: src.RootSecretName,
+		}
+		return &deployer_tpb.CleanupPostgresDatabaseMessage{
+			Request:     requestMetadata,
+			MigrationId: step.Id,
+			Spec:        spec,
 		}, nil
 
 	default:
 		return nil, fmt.Errorf("unknown step type: %T", step.Request.Type)
 	}
+}
+
+func getStackOutputs(dependencies map[string]*deployer_pb.DeploymentStep, id string) ([]*deployer_pb.KeyValue, error) {
+
+	infraOutputStep, ok := dependencies[id]
+	if !ok {
+		return nil, fmt.Errorf("PG Migrate step depends on %s for CF output, not passed in", id)
+	}
+	stackOutput, ok := infraOutputStep.Output.Type.(*deployer_pb.StepOutputType_CfStatus)
+	if !ok {
+		return nil, fmt.Errorf("unexpected step type for CF Output: %T", infraOutputStep.Output)
+	}
+
+	return stackOutput.CfStatus.Output.Outputs, nil
 }

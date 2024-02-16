@@ -198,13 +198,17 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 			}
 			global.databases[database.Name] = ref
 
-			def := &PostgresDefinition{
-				Databse:  database,
-				Postgres: dbType.Postgres,
+			secretName := fmt.Sprintf("DatabaseSecret%s", CleanParameterName(database.Name))
+			def := &deployer_pb.PostgresDatabaseResource{
+				DbName:           database.Name,
+				ServerGroup:      dbType.Postgres.ServerGroup,
+				SecretOutputName: secretName,
+				DbExtensions:     dbType.Postgres.DbExtensions,
+			}
+			if dbType.Postgres.DbName != "" {
+				def.DbName = dbType.Postgres.DbName
 			}
 
-			secretName := fmt.Sprintf("DatabaseSecret%s", CleanParameterName(database.Name))
-			def.SecretOutputName = String(secretName)
 			stackTemplate.AddOutput(&Output{
 				Name:  secretName,
 				Value: secret.Ref(),

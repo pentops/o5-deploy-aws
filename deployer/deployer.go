@@ -92,20 +92,25 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		return nil, err
 	}
 
-	postgresDatabases := app.PostgresDatabases()
-
-	for _, db := range postgresDatabases {
-		pgdb := db.Database.GetPostgres()
+	dbSpecs := make([]*deployer_pb.PostgresSpec, len(app.PostgresDatabases))
+	for idx, db := range app.PostgresDatabases {
+		dbSpec := &deployer_pb.PostgresSpec{
+			DbName:                  db.DbName,
+			DbExtensions:            db.DbExtensions,
+			MigrationTaskOutputName: db.MigrationTaskOutputName,
+			SecretOutputName:        db.SecretOutputName,
+		}
 		for _, host := range awsEnv.RdsHosts {
-			if host.ServerGroup == pgdb.ServerGroup {
-				db.RdsHost = host
+			if host.ServerGroup == db.ServerGroup {
+				dbSpec.RootSecretName = host.SecretName
 				break
 			}
 		}
-		if db.RdsHost == nil {
-			return nil, fmt.Errorf("no RDS host found for database %s", db.Database.Name)
+		if dbSpec.RootSecretName == "" {
+			return nil, fmt.Errorf("no RDS host found for database %s", db.DbName)
 		}
 
+		dbSpecs[idx] = dbSpec
 	}
 
 	deployerResolver, err := BuildParameterResolver(ctx, environment)
@@ -113,14 +118,18 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		return nil, err
 	}
 
-	appParameters := app.Parameters()
-	parameters := make([]*deployer_pb.CloudFormationStackParameter, 0, len(appParameters))
-	for _, param := range appParameters {
+	parameters := make([]*deployer_pb.CloudFormationStackParameter, len(app.Parameters))
+	for idx, param := range app.Parameters {
 		parameter, err := deployerResolver.ResolveParameter(param)
 		if err != nil {
 			return nil, fmt.Errorf("parameter '%s': %w", param.Name, err)
 		}
-		parameters = append(parameters, parameter)
+		parameters[idx] = parameter
+	}
+
+	snsTopics := make([]string, len(app.SnsTopics))
+	for idx, topic := range app.SnsTopics {
+		snsTopics[idx] = fmt.Sprintf("%s-%s", environment.FullName, topic)
 	}
 
 	spec := &deployer_pb.DeploymentSpec{
@@ -129,9 +138,9 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		EnvironmentName: environment.FullName,
 		EnvironmentId:   trigger.EnvironmentId,
 		TemplateUrl:     templateURL,
-		Databases:       postgresDatabases,
+		Databases:       dbSpecs,
 		Parameters:      parameters,
-		SnsTopics:       app.SNSTopics,
+		SnsTopics:       snsTopics,
 
 		CancelUpdates:     dd.CancelUpdates,
 		RotateCredentials: dd.RotateSecrets,

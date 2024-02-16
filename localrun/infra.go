@@ -41,6 +41,9 @@ func stackEvent(msg *deployer_tpb.StackStatusChangedMessage, err error) (deploye
 	if err != nil {
 		return nil, err
 	}
+	if msg.Request == nil {
+		return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
+	}
 	event, err := deployer.StackStatusToEvent(msg)
 	if err != nil {
 		return nil, err
@@ -48,9 +51,12 @@ func stackEvent(msg *deployer_tpb.StackStatusChangedMessage, err error) (deploye
 	return event.UnwrapPSMEvent(), nil
 }
 
-func dbEvent(msg *deployer_tpb.PostgresMigrationEventMessage, err error) (deployer_pb.DeploymentPSMEvent, error) {
+func dbEvent(msg *deployer_tpb.PostgresDatabaseStatusMessage, err error) (deployer_pb.DeploymentPSMEvent, error) {
 	if err != nil {
 		return nil, err
+	}
+	if msg.Request == nil {
+		return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
 	}
 	event, err := deployer.PostgresMigrationToEvent(msg)
 	if err != nil {
@@ -60,21 +66,49 @@ func dbEvent(msg *deployer_tpb.PostgresMigrationEventMessage, err error) (deploy
 }
 
 func (cf *InfraAdapter) HandleMessage(ctx context.Context, msg proto.Message) (deployer_pb.DeploymentPSMEvent, error) {
+	log.WithField(ctx, "infraReq", msg).Debug("InfraHandleMessage")
 	switch msg := msg.(type) {
 	case *deployer_tpb.UpdateStackMessage:
+		if msg.Request == nil {
+			return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
+		}
 		return stackEvent(cf.UpdateStack(ctx, msg))
 
 	case *deployer_tpb.CreateNewStackMessage:
+		if msg.Request == nil {
+			return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
+		}
 		return stackEvent(cf.CreateNewStack(ctx, msg))
 
 	case *deployer_tpb.ScaleStackMessage:
+		if msg.Request == nil {
+			return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
+		}
 		return stackEvent(cf.ScaleStack(ctx, msg))
 
 	case *deployer_tpb.StabalizeStackMessage:
+		if msg.Request == nil {
+			return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
+		}
 		return stackEvent(cf.StabalizeStack(ctx, msg))
 
+	case *deployer_tpb.UpsertPostgresDatabaseMessage:
+		if msg.Request == nil {
+			return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
+		}
+		return dbEvent(cf.UpsertPostgresDatabase(ctx, msg))
+
 	case *deployer_tpb.MigratePostgresDatabaseMessage:
+		if msg.Request == nil {
+			return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
+		}
 		return dbEvent(cf.MigratePostgresDatabase(ctx, msg))
+
+	case *deployer_tpb.CleanupPostgresDatabaseMessage:
+		if msg.Request == nil {
+			return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
+		}
+		return dbEvent(cf.CleanupPostgresDatabase(ctx, msg))
 
 	case *deployer_tpb.DeploymentCompleteMessage:
 		return nil, nil
@@ -104,8 +138,9 @@ func (cf *InfraAdapter) StabalizeStack(ctx context.Context, msg *deployer_tpb.St
 
 	if remoteStack == nil {
 		return &deployer_tpb.StackStatusChangedMessage{
+			Request:   msg.Request,
 			Status:    "MISSING",
-			Lifecycle: deployer_pb.StackLifecycle_MISSING,
+			Lifecycle: deployer_pb.CFLifecycle_MISSING,
 		}, nil
 	}
 
@@ -142,8 +177,9 @@ func (cf *InfraAdapter) StabalizeStack(ctx context.Context, msg *deployer_tpb.St
 		// When a previous attempt has failed, the stack will be in this state
 		// In the Stabalize handler ONLY, this counts as a success, as the stack
 		// is stable and ready for another attempt
-		lifecycle = deployer_pb.StackLifecycle_COMPLETE
+		lifecycle = deployer_pb.CFLifecycle_COMPLETE
 		return &deployer_tpb.StackStatusChangedMessage{
+			Request:   msg.Request,
 			Status:    string(remoteStack.StackStatus),
 			Lifecycle: lifecycle,
 			Outputs:   remoteStack.Outputs,
@@ -194,28 +230,54 @@ func (cf *InfraAdapter) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleS
 	return cf.pollStack(ctx, msg.StackName, reqToken, msg.Request)
 }
 
-func (cf *InfraAdapter) MigratePostgresDatabase(ctx context.Context, msg *deployer_tpb.MigratePostgresDatabaseMessage) (*deployer_tpb.PostgresMigrationEventMessage, error) {
+type pgRequest interface {
+	GetRequest() *messaging_pb.RequestMetadata
+	GetMigrationId() string
+}
 
-	replyMsg := &deployer_tpb.PostgresMigrationEventMessage{
-		Request:     msg.Request,
-		MigrationId: msg.MigrationId,
+func (cf *InfraAdapter) runPostgresCallback(ctx context.Context, msg pgRequest, cb func(context.Context, *awsinfra.DBMigrator) error) (*deployer_tpb.PostgresDatabaseStatusMessage, error) {
+
+	migrator := &awsinfra.DBMigrator{
+		Clients: cf.dbClient.Clients,
 	}
 
-	migrateError := cf.dbClient.MigratePostgresDatabase(ctx, msg)
+	migrateErr := cb(ctx, migrator)
 
-	reqState := &deployer_pb.StepContext{}
-	if err := proto.Unmarshal(msg.Request.Context, reqState); err != nil {
-		return nil, err
+	if migrateErr != nil {
+		log.WithError(ctx, migrateErr).Error("RunDatabaseMigration")
+		errMsg := migrateErr.Error()
+		return &deployer_tpb.PostgresDatabaseStatusMessage{
+			Request:     msg.GetRequest(),
+			MigrationId: msg.GetMigrationId(),
+			Status:      deployer_tpb.PostgresStatus_ERROR,
+			Error:       &errMsg,
+		}, nil
 	}
 
-	if migrateError != nil {
-		errMsg := migrateError.Error()
-		replyMsg.Status = deployer_tpb.PostgresStatus_ERROR
-		replyMsg.Error = &errMsg
-	} else {
-		replyMsg.Status = deployer_tpb.PostgresStatus_AVAILABLE
-	}
-	return replyMsg, nil
+	return &deployer_tpb.PostgresDatabaseStatusMessage{
+		Request:     msg.GetRequest(),
+		MigrationId: msg.GetMigrationId(),
+		Status:      deployer_tpb.PostgresStatus_DONE,
+	}, nil
+}
+
+func (cf *InfraAdapter) MigratePostgresDatabase(ctx context.Context, msg *deployer_tpb.MigratePostgresDatabaseMessage) (*deployer_tpb.PostgresDatabaseStatusMessage, error) {
+
+	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context, migrator *awsinfra.DBMigrator) error {
+		return migrator.MigratePostgresDatabase(ctx, msg.MigrationId, msg.Spec)
+	})
+}
+
+func (cf *InfraAdapter) UpsertPostgresDatabase(ctx context.Context, msg *deployer_tpb.UpsertPostgresDatabaseMessage) (*deployer_tpb.PostgresDatabaseStatusMessage, error) {
+	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context, migrator *awsinfra.DBMigrator) error {
+		return migrator.UpsertPostgresDatabase(ctx, msg.MigrationId, msg.Spec)
+	})
+}
+
+func (cf *InfraAdapter) CleanupPostgresDatabase(ctx context.Context, msg *deployer_tpb.CleanupPostgresDatabaseMessage) (*deployer_tpb.PostgresDatabaseStatusMessage, error) {
+	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context, migrator *awsinfra.DBMigrator) error {
+		return migrator.CleanupPostgresDatabase(ctx, msg.MigrationId, msg.Spec)
+	})
 }
 
 func (cf *InfraAdapter) noUpdatesToBePerformed(ctx context.Context, stackName string, request *messaging_pb.RequestMetadata) (*deployer_tpb.StackStatusChangedMessage, error) {
@@ -230,7 +292,7 @@ func (cf *InfraAdapter) noUpdatesToBePerformed(ctx context.Context, stackName st
 		StackName: stackName,
 		Status:    "NO UPDATES TO BE PERFORMED",
 		Outputs:   remoteStack.Outputs,
-		Lifecycle: deployer_pb.StackLifecycle_COMPLETE,
+		Lifecycle: deployer_pb.CFLifecycle_COMPLETE,
 	}, nil
 }
 

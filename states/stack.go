@@ -210,6 +210,7 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 
 		if len(state.QueuedDeployments) == 0 {
 			state.Status = deployer_pb.StackStatus_AVAILABLE
+			state.CurrentDeployment = nil
 			// Nothing left to do, leave the stack in available
 			return nil
 		}

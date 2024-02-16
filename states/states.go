@@ -11,11 +11,9 @@ import (
 )
 
 type StateMachines struct {
-	Deployment      *deployer_pb.DeploymentPSM
-	Environment     *deployer_pb.EnvironmentPSM
-	Stack           *deployer_pb.StackPSM
-	PostgresMigrate *deployer_pb.PostgresMigrationPSM
-	EcsTask         *deployer_pb.EcsTaskPSM
+	Deployment  *deployer_pb.DeploymentPSM
+	Environment *deployer_pb.EnvironmentPSM
+	Stack       *deployer_pb.StackPSM
 }
 
 func NewStateMachines() (*StateMachines, error) {
@@ -32,16 +30,6 @@ func NewStateMachines() (*StateMachines, error) {
 	stack, err := NewStackEventer()
 	if err != nil {
 		return nil, fmt.Errorf("NewStackEventer: %w", err)
-	}
-
-	postrgresMigrate, err := NewPostgresMigrateEventer()
-	if err != nil {
-		return nil, fmt.Errorf("NewPostgresMigrateEventer: %w", err)
-	}
-
-	ecsTask, err := NewEcsTaskEventer()
-	if err != nil {
-		return nil, fmt.Errorf("NewEcsTaskEventer: %w", err)
 	}
 
 	deployment.AddHook(func(
@@ -111,10 +99,8 @@ func NewStateMachines() (*StateMachines, error) {
 	})
 
 	return &StateMachines{
-		Deployment:      deployment,
-		Environment:     environment,
-		Stack:           stack,
-		PostgresMigrate: postrgresMigrate,
-		EcsTask:         ecsTask,
+		Deployment:  deployment,
+		Environment: environment,
+		Stack:       stack,
 	}, nil
 }

@@ -45,7 +45,7 @@ func (s *Storage) RequestToClientToken(ctx context.Context, req *messaging_pb.Re
 		ReadOnly:  false,
 		Retryable: true,
 	}, func(ctx context.Context, tx sqrlx.Transaction) error {
-		didInsert, err := tx.InsertRow(ctx, sq.Insert("client_tokens").
+		didInsert, err := tx.InsertRow(ctx, sq.Insert("infra_client_token").
 			SetMap(map[string]interface{}{
 				"token":   token,
 				"dest":    req.ReplyTo,
@@ -70,7 +70,7 @@ func (s *Storage) ClientTokenToRequest(ctx context.Context, token string) (*mess
 		Retryable: true,
 	}, func(ctx context.Context, tx sqrlx.Transaction) error {
 		return tx.QueryRow(ctx, sq.Select("dest", "request").
-			From("client_tokens").
+			From("infra_client_token").
 			Where(sq.Eq{"token": token})).
 			Scan(&response.ReplyTo, &response.Context)
 	})
