@@ -72,7 +72,7 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 		container.Image = src.ImageUrl
 
 	default:
-		return nil, fmt.Errorf("unknown source type: %T", src)
+		return nil, fmt.Errorf("unknown container source type: %T", src)
 	}
 
 	for _, envVar := range def.EnvVars {

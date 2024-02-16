@@ -3,15 +3,8 @@ FROM golang:1.21 AS builder
 RUN mkdir /src
 WORKDIR /src
 
-
-COPY go.mod go.sum .
-RUN --mount=type=cache,target=/go/pkg/mod \
-	go mod download -x
-
-COPY . .
-
+ADD . .
 ARG VERSION
-
 RUN \
 	--mount=type=cache,target=/go/pkg/mod \
 	--mount=type=cache,target=/root/.cache/go-build \

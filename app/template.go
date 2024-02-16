@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
-	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
-	"github.com/awslabs/goformation/v7/cloudformation/sqs"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/tidwall/sjson"
@@ -49,25 +47,12 @@ func CleanParameterName(unsafes ...string) string {
 }
 
 type BuiltApplication struct {
-	Template          *cloudformation.Template
-	parameters        []*deployer_pb.Parameter
-	postgresDatabases []*deployer_pb.PostgresDatabase
-	SNSTopics         []*deployer_pb.SNSTopic
-	Name              string
-	Version           string
-	QuickMode         bool
+	Template *cloudformation.Template
+	*deployer_pb.BuiltApplication
 }
 
 func (ba *BuiltApplication) TemplateJSON() ([]byte, error) {
 	return ba.Template.JSON()
-}
-
-func (ba *BuiltApplication) PostgresDatabases() []*deployer_pb.PostgresDatabase {
-	return ba.postgresDatabases
-}
-
-func (ba *BuiltApplication) Parameters() []*deployer_pb.Parameter {
-	return ba.parameters
 }
 
 type SNSTopic struct {
@@ -78,14 +63,14 @@ type PostgresDefinition struct {
 	Databse                 *application_pb.Database
 	Postgres                *application_pb.Database_Postgres
 	MigrationTaskOutputName *string
-	SecretOutputName        *string
+	SecretOutputName        string
 }
 
 type Application struct {
 	appName           string
 	version           string
 	quickMode         bool
-	postgresDatabases []*PostgresDefinition
+	postgresDatabases []*deployer_pb.PostgresDatabaseResource
 	parameters        map[string]*deployer_pb.Parameter
 	resources         map[string]IResource
 	outputs           map[string]*Output
@@ -104,40 +89,6 @@ func NewApplication(name, version string) *Application {
 		snsTopics:  map[string]*SNSTopic{},
 		runtimes:   map[string]*RuntimeService{},
 	}
-}
-
-func (ss *Application) AppName() string {
-	return ss.appName
-}
-
-func (ss *Application) GetRuntime(name string) *RuntimeService {
-	return ss.runtimes[name]
-}
-
-func (ss *Application) Parameters() map[string]*deployer_pb.Parameter {
-	return ss.parameters
-}
-
-func (ss *Application) Refs() map[string]string {
-
-	out := map[string]string{}
-	for _, obj := range ss.resources {
-		switch obj.AWSCloudFormationType() {
-		case "AWS::SecretsManager::Secret":
-			secret, ok := obj.(*Resource[*secretsmanager.Secret])
-			if !ok {
-				panic("Not a secret")
-			}
-			out[secret.name] = *secret.Resource.Name
-		case "AWS::SQS::Queue":
-			queue, ok := obj.(*Resource[*sqs.Queue])
-			if !ok {
-				panic("Not a queue")
-			}
-			out[queue.name] = *queue.Resource.QueueName
-		}
-	}
-	return out
 }
 
 func (ss *Application) Build() *BuiltApplication {
@@ -175,11 +126,9 @@ func (ss *Application) Build() *BuiltApplication {
 			Value:       output.Value,
 		}
 	}
-	snsToipcs := []*deployer_pb.SNSTopic{}
+	snsToipcs := []string{}
 	for _, topic := range ss.snsTopics {
-		snsToipcs = append(snsToipcs, &deployer_pb.SNSTopic{
-			Name: topic.Name,
-		})
+		snsToipcs = append(snsToipcs, topic.Name)
 	}
 
 	parameterSlice := make([]*deployer_pb.Parameter, 0, len(parameters))
@@ -187,23 +136,16 @@ func (ss *Application) Build() *BuiltApplication {
 		parameterSlice = append(parameterSlice, param)
 	}
 
-	dbOut := make([]*deployer_pb.PostgresDatabase, len(ss.postgresDatabases))
-	for idx, db := range ss.postgresDatabases {
-		dbOut[idx] = &deployer_pb.PostgresDatabase{
-			MigrationTaskOutputName: db.MigrationTaskOutputName,
-			Database:                db.Databse,
-			SecretOutputName:        db.SecretOutputName,
-		}
-	}
-
 	return &BuiltApplication{
-		Template:          template,
-		parameters:        parameterSlice,
-		postgresDatabases: dbOut,
-		SNSTopics:         snsToipcs,
-		Name:              ss.appName,
-		Version:           ss.version,
-		QuickMode:         ss.quickMode,
+		Template: template,
+		BuiltApplication: &deployer_pb.BuiltApplication{
+			Parameters:        parameterSlice,
+			PostgresDatabases: ss.postgresDatabases,
+			SnsTopics:         snsToipcs,
+			Name:              ss.appName,
+			Version:           ss.version,
+			QuickMode:         ss.quickMode,
+		},
 	}
 }
 
@@ -234,17 +176,6 @@ func (ss *Application) AddParameter(param *deployer_pb.Parameter) {
 
 func (ss *Application) AddOutput(output *Output) {
 	ss.outputs[output.Name] = output
-}
-
-func (ss *Application) Parameter(name string) *string {
-	_, ok := ss.parameters[name]
-	if !ok {
-		ss.AddParameter(&deployer_pb.Parameter{
-			Name: name,
-			Type: "String",
-		})
-	}
-	return String(cloudformation.Ref(name))
 }
 
 type IResource interface {

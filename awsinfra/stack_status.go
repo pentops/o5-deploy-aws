@@ -51,51 +51,51 @@ var stackStatusesTerminalRollback = []types.StackStatus{
 
 type StackStatus struct {
 	StackStatus types.StackStatus
-	SummaryType deployer_pb.StackLifecycle
+	SummaryType deployer_pb.CFLifecycle
 	IsOK        bool
 	Stable      bool
 	Parameters  []*deployer_pb.KeyValue
 	Outputs     []*deployer_pb.KeyValue
 }
 
-func stackLifecycle(remoteStatus types.StackStatus) (deployer_pb.StackLifecycle, error) {
+func stackLifecycle(remoteStatus types.StackStatus) (deployer_pb.CFLifecycle, error) {
 	for _, status := range stackStatusesTerminal {
 		if remoteStatus == status {
-			return deployer_pb.StackLifecycle_TERMINAL, nil
+			return deployer_pb.CFLifecycle_TERMINAL, nil
 		}
 	}
 
 	for _, status := range stackStatusesTerminalRollback {
 		if remoteStatus == status {
-			return deployer_pb.StackLifecycle_ROLLED_BACK, nil
+			return deployer_pb.CFLifecycle_ROLLED_BACK, nil
 		}
 	}
 
 	for _, status := range stackStatusComplete {
 		if remoteStatus == status {
-			return deployer_pb.StackLifecycle_COMPLETE, nil
+			return deployer_pb.CFLifecycle_COMPLETE, nil
 		}
 	}
 
 	for _, status := range stackStatusCreateFailed {
 		if remoteStatus == status {
-			return deployer_pb.StackLifecycle_CREATE_FAILED, nil
+			return deployer_pb.CFLifecycle_CREATE_FAILED, nil
 		}
 	}
 
 	for _, status := range stackStatusRollingBack {
 		if remoteStatus == status {
-			return deployer_pb.StackLifecycle_ROLLING_BACK, nil
+			return deployer_pb.CFLifecycle_ROLLING_BACK, nil
 		}
 	}
 
 	for _, status := range stackStatusProgress {
 		if remoteStatus == status {
-			return deployer_pb.StackLifecycle_PROGRESS, nil
+			return deployer_pb.CFLifecycle_PROGRESS, nil
 		}
 	}
 
-	return deployer_pb.StackLifecycle_UNSPECIFIED, fmt.Errorf("unknown stack status %s", remoteStatus)
+	return deployer_pb.CFLifecycle_UNSPECIFIED, fmt.Errorf("unknown stack status %s", remoteStatus)
 
 }
 
@@ -115,7 +115,7 @@ func summarizeStackStatus(stack *types.Stack) (StackStatus, error) {
 	if stack == nil {
 		return StackStatus{
 			StackStatus: "MISSING",
-			SummaryType: deployer_pb.StackLifecycle_MISSING,
+			SummaryType: deployer_pb.CFLifecycle_MISSING,
 			Stable:      true,
 			IsOK:        false,
 		}, nil
@@ -143,27 +143,27 @@ func summarizeStackStatus(stack *types.Stack) (StackStatus, error) {
 
 	switch lifecycle {
 
-	case deployer_pb.StackLifecycle_COMPLETE:
+	case deployer_pb.CFLifecycle_COMPLETE:
 		out.IsOK = true
 		out.Stable = true
 
-	case deployer_pb.StackLifecycle_TERMINAL:
+	case deployer_pb.CFLifecycle_TERMINAL:
 		out.IsOK = false
 		out.Stable = true
 
-	case deployer_pb.StackLifecycle_CREATE_FAILED:
+	case deployer_pb.CFLifecycle_CREATE_FAILED:
 		out.IsOK = false
 		out.Stable = true
 
-	case deployer_pb.StackLifecycle_ROLLING_BACK:
+	case deployer_pb.CFLifecycle_ROLLING_BACK:
 		out.IsOK = false
 		out.Stable = false
 
-	case deployer_pb.StackLifecycle_ROLLED_BACK:
+	case deployer_pb.CFLifecycle_ROLLED_BACK:
 		out.IsOK = false
 		out.Stable = true
 
-	case deployer_pb.StackLifecycle_PROGRESS:
+	case deployer_pb.CFLifecycle_PROGRESS:
 		out.IsOK = true
 		out.Stable = false
 

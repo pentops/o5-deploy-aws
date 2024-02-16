@@ -46,7 +46,7 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 
 		container, err := buildContainer(globals, def)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("building service container %s: %w", def.Name, err)
 		}
 
 		needsDockerVolume = needsDockerVolume || def.MountDockerSocket
@@ -483,6 +483,8 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 			},
 			Tags: sourceTags(),
 		}
+	default:
+		return nil, fmt.Errorf("unsupported protocol %s", protocol)
 	}
 	// faster deregistration
 	a := elbv2.TargetGroup_TargetGroupAttribute{

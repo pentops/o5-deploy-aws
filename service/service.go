@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -15,7 +16,6 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/outbox.pg.go/outbox"
-	"github.com/pentops/protostate/psm"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -50,45 +50,29 @@ func OpenDatabase(ctx context.Context) (*sql.DB, error) {
 }
 
 type DeployerService struct {
-	DeploymentQuery *deployer_spb.DeploymentPSMQuerySet
-	StackQuery      *deployer_spb.StackPSMQuerySet
-	github          github.IClient
+	deploymentStateMachine  *deployer_pb.DeploymentPSM
+	environmentStateMachine *deployer_pb.EnvironmentPSM
+	stackStateMachine       *deployer_pb.StackPSM
 
-	deploymentStateMachine *deployer_pb.DeploymentPSM
+	db     *sqrlx.Wrapper
+	github github.IClient
 
-	db *sqrlx.Wrapper
-	*deployer_spb.UnimplementedDeploymentQueryServiceServer
 	*deployer_spb.UnimplementedDeploymentCommandServiceServer
 }
 
-func NewDeployerService(conn sqrlx.Connection, github github.IClient, deploymentStateMachine *deployer_pb.DeploymentPSM) (*DeployerService, error) {
+func NewDeployerService(conn sqrlx.Connection, github github.IClient, stateMachines *states.StateMachines) (*DeployerService, error) {
 	db, err := sqrlx.New(conn, sq.Dollar)
 	if err != nil {
 		return nil, err
 	}
 
-	deploymentQuery, err := deployer_spb.NewDeploymentPSMQuerySet(
-		deployer_spb.DefaultDeploymentPSMQuerySpec(states.DeploymentTableSpec().StateTableSpec()),
-		psm.StateQueryOptions{},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build deployment query: %w", err)
-	}
-
-	stackQuery, err := deployer_spb.NewStackPSMQuerySet(
-		deployer_spb.DefaultStackPSMQuerySpec(states.StackTableSpec().StateTableSpec()),
-		psm.StateQueryOptions{},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build stack query: %w", err)
-	}
-
 	return &DeployerService{
-		db:                     db,
-		github:                 github,
-		DeploymentQuery:        deploymentQuery,
-		deploymentStateMachine: deploymentStateMachine,
-		StackQuery:             stackQuery,
+		deploymentStateMachine:  stateMachines.Deployment,
+		environmentStateMachine: stateMachines.Environment,
+		stackStateMachine:       stateMachines.Stack,
+
+		db:     db,
+		github: github,
 	}, nil
 }
 
@@ -112,11 +96,26 @@ func (ds *DeployerService) TriggerDeployment(ctx context.Context, req *deployer_
 		return nil, fmt.Errorf("multiple applications found in push event, not yet supported")
 	}
 
+	var environmentID string
+
+	if err := ds.db.Transact(ctx, &sqrlx.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+		ReadOnly:  true,
+		Retryable: true,
+	}, func(ctx context.Context, tx sqrlx.Transaction) error {
+		return tx.SelectRow(ctx, sq.Select("id").From("environment").Where("state->'config'->>'fullName' = ?", req.EnvironmentName)).Scan(&environmentID)
+	}); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, status.Error(codes.NotFound, "environment not found")
+		}
+		return nil, err
+	}
+
 	requestMessage := &deployer_tpb.RequestDeploymentMessage{
-		DeploymentId:    req.DeploymentId,
-		Application:     apps[0],
-		Version:         gh.Commit,
-		EnvironmentName: req.EnvironmentName,
+		DeploymentId:  req.DeploymentId,
+		Application:   apps[0],
+		Version:       gh.Commit,
+		EnvironmentId: environmentID,
 	}
 	if err := ds.db.Transact(ctx, &sqrlx.TxOptions{
 		Isolation: sql.LevelReadCommitted,
@@ -150,32 +149,48 @@ func (ds *DeployerService) TerminateDeployment(ctx context.Context, req *deploye
 	return &deployer_spb.TerminateDeploymentResponse{}, nil
 }
 
-func (ds *DeployerService) GetDeployment(ctx context.Context, req *deployer_spb.GetDeploymentRequest) (*deployer_spb.GetDeploymentResponse, error) {
-	res := &deployer_spb.GetDeploymentResponse{}
-	return res, ds.DeploymentQuery.Get(ctx, ds.db, req, res)
+func (ds *DeployerService) UpsertEnvironment(ctx context.Context, req *deployer_spb.UpsertEnvironmentRequest) (*deployer_spb.UpsertEnvironmentResponse, error) {
+
+	event := &deployer_pb.EnvironmentEvent{
+		EnvironmentId: req.EnvironmentId,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+	}
+
+	event.SetPSMEvent(&deployer_pb.EnvironmentEventType_Configured{
+		Config: req.Config,
+	})
+
+	_, err := ds.environmentStateMachine.Transition(ctx, ds.db, event)
+	if err != nil {
+		return nil, err
+	}
+
+	return &deployer_spb.UpsertEnvironmentResponse{}, nil
 }
 
-func (ds *DeployerService) ListDeployments(ctx context.Context, req *deployer_spb.ListDeploymentsRequest) (*deployer_spb.ListDeploymentsResponse, error) {
-	res := &deployer_spb.ListDeploymentsResponse{}
-	return res, ds.DeploymentQuery.List(ctx, ds.db, req, res)
-}
+func (ds *DeployerService) UpsertStack(ctx context.Context, req *deployer_spb.UpsertStackRequest) (*deployer_spb.UpsertStackResponse, error) {
 
-func (ds *DeployerService) ListDeploymentEvents(ctx context.Context, req *deployer_spb.ListDeploymentEventsRequest) (*deployer_spb.ListDeploymentEventsResponse, error) {
-	res := &deployer_spb.ListDeploymentEventsResponse{}
-	return res, ds.DeploymentQuery.ListEvents(ctx, ds.db, req, res)
-}
+	event := &deployer_pb.StackEvent{
+		StackId: req.StackId,
+		Metadata: &deployer_pb.EventMetadata{
+			EventId:   uuid.NewString(),
+			Timestamp: timestamppb.Now(),
+		},
+	}
 
-func (ds *DeployerService) GetStack(ctx context.Context, req *deployer_spb.GetStackRequest) (*deployer_spb.GetStackResponse, error) {
-	res := &deployer_spb.GetStackResponse{}
-	return res, ds.StackQuery.Get(ctx, ds.db, req, res)
-}
+	event.SetPSMEvent(&deployer_pb.StackEventType_Configured{
+		Config:          req.Config,
+		EnvironmentId:   req.EnvironmentId,
+		ApplicationName: req.ApplicationName,
+	})
 
-func (ds *DeployerService) ListStacks(ctx context.Context, req *deployer_spb.ListStacksRequest) (*deployer_spb.ListStacksResponse, error) {
-	res := &deployer_spb.ListStacksResponse{}
-	return res, ds.StackQuery.List(ctx, ds.db, req, res)
-}
+	_, err := ds.stackStateMachine.Transition(ctx, ds.db, event)
+	if err != nil {
+		return nil, err
+	}
 
-func (ds *DeployerService) ListStackEvents(ctx context.Context, req *deployer_spb.ListStackEventsRequest) (*deployer_spb.ListStackEventsResponse, error) {
-	res := &deployer_spb.ListStackEventsResponse{}
-	return res, ds.StackQuery.ListEvents(ctx, ds.db, req, res)
+	return &deployer_spb.UpsertStackResponse{}, nil
 }

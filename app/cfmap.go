@@ -78,7 +78,8 @@ func sourceTags() []tags.Tag {
 	}}
 }
 
-func BuildApplication(app *application_pb.Application, versionTag string) (*Application, error) {
+func BuildApplication(app *application_pb.Application, versionTag string) (*BuiltApplication, error) {
+
 	stackTemplate := NewApplication(app.Name, versionTag)
 
 	if app.DeploymentConfig != nil {
@@ -196,13 +197,17 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 			}
 			global.databases[database.Name] = ref
 
-			def := &PostgresDefinition{
-				Databse:  database,
-				Postgres: dbType.Postgres,
+			secretName := fmt.Sprintf("DatabaseSecret%s", CleanParameterName(database.Name))
+			def := &deployer_pb.PostgresDatabaseResource{
+				DbName:           database.Name,
+				ServerGroup:      dbType.Postgres.ServerGroup,
+				SecretOutputName: secretName,
+				DbExtensions:     dbType.Postgres.DbExtensions,
+			}
+			if dbType.Postgres.DbName != "" {
+				def.DbName = dbType.Postgres.DbName
 			}
 
-			secretName := fmt.Sprintf("DatabaseSecret%s", CleanParameterName(database.Name))
-			def.SecretOutputName = String(secretName)
 			stackTemplate.AddOutput(&Output{
 				Name:  secretName,
 				Value: secret.Ref(),
@@ -220,7 +225,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 				// database is added early which it is.
 				migrationContainer, err := buildContainer(global, dbType.Postgres.MigrateContainer)
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("building migration container for %s: %w", database.Name, err)
 				}
 				addLogs(migrationContainer.Container, fmt.Sprintf("%s/migrate", global.appName))
 				name := fmt.Sprintf("MigrationTaskDefinition%s", CleanParameterName(database.Name))
@@ -327,5 +332,5 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Appl
 		stackTemplate.AddResource(listenerRule)
 	}
 
-	return stackTemplate, nil
+	return stackTemplate.Build(), nil
 }

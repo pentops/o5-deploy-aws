@@ -16,7 +16,7 @@ import (
 	sq "github.com/elgris/sqrl"
 	_ "github.com/lib/pq"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/sqrlx.go/sqrlx"
 )
 
@@ -24,32 +24,29 @@ type DBMigrator struct {
 	Clients ClientBuilder
 }
 
-func (d *DBMigrator) RunDatabaseMigration(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
+func (d *DBMigrator) UpsertPostgresDatabase(ctx context.Context, migrationID string, msg *deployer_pb.PostgresCreationSpec) error {
 	if err := d.upsertPostgresDatabase(ctx, msg); err != nil {
 		return err
 	}
 
-	if msg.Database.MigrationTaskOutputName == nil {
-		return nil
-	}
-
-	if msg.MigrationTaskArn == "" {
-		return fmt.Errorf("stack output '%s' not found, for database %q", *msg.Database.MigrationTaskOutputName, msg.Database.Database.Name)
-	}
-
-	if err := d.runMigrationTask(ctx, msg); err != nil {
+	if err := d.fixPostgresOwnership(ctx, &deployer_pb.PostgresCleanupSpec{
+		DbName:         msg.DbName,
+		RootSecretName: msg.RootSecretName,
+	}); err != nil {
 		return err
 	}
-
-	// This runs both before and after migration
-	if err := d.fixPostgresOwnership(ctx, msg); err != nil {
-		return err
-	}
-
 	return nil
 }
 
-func (d *DBMigrator) runMigrationTask(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
+func (d *DBMigrator) MigratePostgresDatabase(ctx context.Context, migrationID string, msg *deployer_pb.PostgresMigrationSpec) error {
+	return d.runMigrationTask(ctx, migrationID, msg)
+}
+
+func (d *DBMigrator) CleanupPostgresDatabase(ctx context.Context, migrationID string, msg *deployer_pb.PostgresCleanupSpec) error {
+	return d.fixPostgresOwnership(ctx, msg)
+}
+
+func (d *DBMigrator) runMigrationTask(ctx context.Context, clientToken string, msg *deployer_pb.PostgresMigrationSpec) error {
 
 	clients, err := d.Clients.Clients(ctx)
 	if err != nil {
@@ -61,6 +58,7 @@ func (d *DBMigrator) runMigrationTask(ctx context.Context, msg *deployer_tpb.Run
 		TaskDefinition: aws.String(msg.MigrationTaskArn),
 		Cluster:        aws.String(msg.EcsClusterName),
 		Count:          aws.Int32(1),
+		ClientToken:    aws.String(clientToken),
 	})
 	if err != nil {
 		return err
@@ -124,7 +122,7 @@ func (ss DBSecret) buildURLForDB(dbName string) string {
 	return fmt.Sprintf("postgres://%s:%s@%s:5432/%s", ss.Username, ss.Password, ss.Hostname, dbName)
 }
 
-func (d *DBMigrator) rootPostgresCredentials(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) (*DBSecret, error) {
+func (d *DBMigrator) rootPostgresCredentials(ctx context.Context, rootSecretName string) (*DBSecret, error) {
 	// "/${var.env_name}/global/rds/${var.name}/root" from TF
 
 	clients, err := d.Clients.Clients(ctx)
@@ -133,10 +131,10 @@ func (d *DBMigrator) rootPostgresCredentials(ctx context.Context, msg *deployer_
 	}
 
 	res, err := clients.SecretsManager.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
-		SecretId: aws.String(msg.RootSecretName),
+		SecretId: aws.String(rootSecretName),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("reading %s: %w", msg.RootSecretName, err)
+		return nil, fmt.Errorf("reading %s: %w", rootSecretName, err)
 	}
 
 	secretVal := &DBSecret{}
@@ -147,17 +145,13 @@ func (d *DBMigrator) rootPostgresCredentials(ctx context.Context, msg *deployer_
 	return secretVal, nil
 }
 
-func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
+func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *deployer_pb.PostgresCleanupSpec) error {
 
 	log.Info(ctx, "Fix object ownership")
-	pgSpec := msg.Database.Database.GetPostgres()
-	dbName := msg.Database.Database.Name
-	if pgSpec.DbName != "" {
-		dbName = pgSpec.DbName
-	}
+	dbName := msg.DbName
 	ownerName := dbName
 
-	rootSecret, err := d.rootPostgresCredentials(ctx, msg)
+	rootSecret, err := d.rootPostgresCredentials(ctx, msg.RootSecretName)
 	if err != nil {
 		return err
 	}
@@ -262,13 +256,13 @@ func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *deployer_tpb
 	return nil
 }
 
-func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *deployer_tpb.RunDatabaseMigrationMessage) error {
+func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *deployer_pb.PostgresCreationSpec) error {
 
 	// spec *deployer_pb.PostgresDatabase, secretARN string, rotateExisting bool) error {
 	//.Database, msg.SecretArn, msg.RotateCredentials); err != nil {
 
-	pgSpec := msg.Database.Database.GetPostgres()
-	rootSecret, err := d.rootPostgresCredentials(ctx, msg)
+	dbName := msg.DbName
+	rootSecret, err := d.rootPostgresCredentials(ctx, msg.RootSecretName)
 	if err != nil {
 		return err
 	}
@@ -295,11 +289,6 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *deployer_t
 
 	var count int
 
-	dbName := msg.Database.Database.Name
-	if pgSpec.DbName != "" {
-		dbName = pgSpec.DbName
-	}
-
 	err = db.SelectRow(ctx, sq.
 		Select("coalesce(count(datname), 0)").
 		From("pg_catalog.pg_database").
@@ -314,7 +303,7 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *deployer_t
 	}).Debug("Found DBs")
 
 	if count > 1 {
-		return fmt.Errorf("more than one DB matched %s:%s", pgSpec.ServerGroup, dbName)
+		return fmt.Errorf("more than one DB matched %s:%s", msg.RootSecretName, dbName)
 	} else if count == 0 {
 		_, err = db.ExecRaw(ctx, fmt.Sprintf(`CREATE ROLE %s`, dbName))
 		if err != nil {
@@ -332,17 +321,13 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *deployer_t
 		}
 	}
 
-	if err := d.fixPostgresOwnership(ctx, msg); err != nil {
-		return err
-	}
-
 	if count == 1 && !msg.RotateCredentials {
 		return nil
 	}
 
-	if len(pgSpec.DbExtensions) > 0 {
+	if len(msg.DbExtensions) > 0 {
 		log.WithFields(ctx, map[string]interface{}{
-			"count": len(pgSpec.DbExtensions),
+			"count": len(msg.DbExtensions),
 		}).Debug("Adding Extensions")
 		if err := func() error {
 			superuserURL := rootSecret.buildURLForDB(dbName)
@@ -352,7 +337,7 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *deployer_t
 			}
 			defer superuserConn.Close()
 
-			for _, ext := range pgSpec.DbExtensions {
+			for _, ext := range msg.DbExtensions {
 				if !reSafeExtensionName.MatchString(ext) {
 					return fmt.Errorf("unsafe extension name: %s", ext)
 				}

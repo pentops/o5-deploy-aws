@@ -2,14 +2,11 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	sq "github.com/elgris/sqrl"
-	"github.com/google/uuid"
 	"github.com/pentops/log.go/grpc_log"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/app"
@@ -26,9 +23,7 @@ import (
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_tpb"
-	"github.com/pentops/outbox.pg.go/outbox"
 	"github.com/pentops/runner/commander"
-	"github.com/pentops/sqrlx.go/sqrlx"
 	"github.com/pressly/goose"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -60,8 +55,7 @@ func runMigrate(ctx context.Context, config struct {
 }
 
 func runServe(ctx context.Context, cfg struct {
-	ConfigFile string `env:"CONFIG_FILE"`
-	GRPCPort   int    `env:"GRPC_PORT" default:"8081"`
+	GRPCPort int `env:"GRPC_PORT" default:"8081"`
 
 	DeployerAssumeRole string `env:"DEPLOYER_ASSUME_ROLE"`
 	CFTemplates        string `env:"CF_TEMPLATES"`
@@ -77,40 +71,28 @@ func runServe(ctx context.Context, cfg struct {
 
 	s3Client := s3.NewFromConfig(awsConfig)
 
-	configFile := &github_pb.DeployerConfig{}
-	if err := protoread.PullAndParse(ctx, s3Client, cfg.ConfigFile, configFile); err != nil {
-		return err
-	}
-
-	environments := deployer.EnvList([]*environment_pb.Environment{})
-
-	for _, envConfigFile := range configFile.TargetEnvironments {
-		env := &environment_pb.Environment{}
-		if err := protoread.PullAndParse(ctx, s3Client, envConfigFile, env); err != nil {
-			return err
-		}
-
-		environments = append(environments, env)
-	}
-
 	db, err := service.OpenDatabase(ctx)
 	if err != nil {
 		return err
 	}
+
+	templateStore := deployer.NewS3TemplateStore(s3Client, cfg.CFTemplates)
 
 	clientSet := &awsinfra.ClientSet{
 		AssumeRoleARN: cfg.DeployerAssumeRole,
 		AWSConfig:     awsConfig,
 	}
 
-	outbox, err := newOutboxSender(db)
+	infraStore, err := awsinfra.NewStorage(db)
 	if err != nil {
 		return err
 	}
-	awsInfraRunner := awsinfra.NewInfraWorker(clientSet, outbox)
+	awsInfraRunner := awsinfra.NewInfraWorker(clientSet, infraStore)
 	awsInfraRunner.CallbackARNs = []string{cfg.CallbackARN}
 
-	specBuilder, err := deployer.NewSpecBuilder(environments, cfg.CFTemplates, s3Client)
+	pgMigrateRunner := awsinfra.NewPostgresMigrateWorker(clientSet, infraStore)
+
+	specBuilder, err := deployer.NewSpecBuilder(templateStore)
 	if err != nil {
 		return err
 	}
@@ -130,7 +112,10 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	refLookup := RefLookup(configFile.Refs)
+	refLookup, err := github.NewRefStore(db)
+	if err != nil {
+		return err
+	}
 
 	githubWorker, err := github.NewWebhookWorker(
 		db,
@@ -141,7 +126,12 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	service, err := service.NewDeployerService(db, githubClient, stateMachines.Deployment)
+	commandService, err := service.NewDeployerService(db, githubClient, stateMachines)
+	if err != nil {
+		return err
+	}
+
+	queryService, err := service.NewQueryService(db, stateMachines)
 	if err != nil {
 		return err
 	}
@@ -150,11 +140,18 @@ func runServe(ctx context.Context, cfg struct {
 		grpc_log.UnaryServerInterceptor(log.DefaultContext, log.DefaultTrace, log.DefaultLogger),
 	))
 	github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
-	deployer_spb.RegisterDeploymentQueryServiceServer(grpcServer, service)
-	deployer_spb.RegisterDeploymentCommandServiceServer(grpcServer, service)
-	deployer_tpb.RegisterAWSCommandTopicServer(grpcServer, awsInfraRunner)
+	deployer_spb.RegisterDeploymentQueryServiceServer(grpcServer, queryService)
+	deployer_spb.RegisterDeploymentCommandServiceServer(grpcServer, commandService)
+
 	deployer_tpb.RegisterDeployerTopicServer(grpcServer, deploymentWorker)
+
 	messaging_tpb.RegisterRawMessageTopicServer(grpcServer, awsInfraRunner)
+
+	deployer_tpb.RegisterCloudFormationRequestTopicServer(grpcServer, awsInfraRunner)
+	deployer_tpb.RegisterCloudFormationReplyTopicServer(grpcServer, deploymentWorker)
+
+	deployer_tpb.RegisterPostgresRequestTopicServer(grpcServer, pgMigrateRunner)
+	deployer_tpb.RegisterPostgresReplyTopicServer(grpcServer, deploymentWorker)
 
 	reflection.Register(grpcServer)
 
@@ -169,53 +166,6 @@ func runServe(ctx context.Context, cfg struct {
 	}()
 
 	return grpcServer.Serve(lis)
-}
-
-type outboxSender struct {
-	db *sqrlx.Wrapper
-}
-
-func newOutboxSender(conn sqrlx.Connection) (*outboxSender, error) {
-	db, err := sqrlx.New(conn, sq.Dollar)
-	if err != nil {
-		return nil, err
-	}
-
-	return &outboxSender{
-		db: db,
-	}, nil
-}
-
-func (s *outboxSender) PublishEvent(ctx context.Context, msg outbox.OutboxMessage) error {
-	return s.db.Transact(ctx, &sqrlx.TxOptions{
-		Isolation: sql.LevelReadCommitted,
-		ReadOnly:  false,
-		Retryable: true,
-	}, func(ctx context.Context, tx sqrlx.Transaction) error {
-		return outbox.Send(ctx, tx, msg)
-	})
-}
-
-type RefLookup []*github_pb.RefLink
-
-func (rl RefLookup) PushTargets(push *github_pb.PushMessage) []string {
-	environments := []string{}
-	for _, r := range rl {
-		if r.Owner != push.Owner {
-			continue
-		}
-
-		if r.Repo != push.Repo {
-			continue
-		}
-
-		if r.RefMatch != push.Ref {
-			continue
-		}
-
-		environments = append(environments, r.Targets...)
-	}
-	return environments
 }
 
 func runLocalDeploy(ctx context.Context, cfg struct {
@@ -263,13 +213,11 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		appConfig.DeploymentConfig = &application_pb.DeploymentConfig{}
 	}
 
-	app, err := app.BuildApplication(appConfig, cfg.Version)
-	if err != nil {
-		return err
-	}
-	built := app.Build()
-
 	if cfg.DryRun {
+		built, err := app.BuildApplication(appConfig, cfg.Version)
+		if err != nil {
+			return err
+		}
 		tpl := built.Template
 		yaml, err := tpl.YAML()
 		if err != nil {
@@ -279,8 +227,8 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 
 		fmt.Println("-----")
 
-		for _, target := range built.SNSTopics {
-			fmt.Printf("SNS Topic: %s\n", target.Name)
+		for _, target := range built.SnsTopics {
+			fmt.Printf("SNS Topic: %s\n", target)
 		}
 		return nil
 	}
@@ -300,29 +248,14 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		AWSConfig:     awsConfig,
 	}
 
-	awsRunner := localrun.NewInfraAdapter(clientSet)
-	stateStore := localrun.NewStateStore()
-	deploymentManager, err := deployer.NewSpecBuilder(stateStore, cfg.ScratchBucket, s3Client)
-	if err != nil {
-		return err
-	}
-	deploymentManager.RotateSecrets = cfg.RotateSecrets
-	deploymentManager.CancelUpdates = cfg.CancelUpdate
-	deploymentManager.QuickMode = cfg.QuickMode
+	templateStore := deployer.NewS3TemplateStore(s3Client, cfg.ScratchBucket)
 
-	eventLoop := localrun.NewEventLoop(awsRunner, stateStore, deploymentManager)
+	infra := localrun.NewInfraAdapter(clientSet)
 
-	if err := stateStore.AddEnvironment(env); err != nil {
-		return err
-	}
-
-	trigger := &deployer_tpb.RequestDeploymentMessage{
-		DeploymentId:    uuid.NewString(),
-		Application:     appConfig,
-		Version:         cfg.Version,
-		EnvironmentName: env.FullName,
-	}
-
-	return eventLoop.Run(ctx, trigger)
+	return localrun.RunLocalDeploy(ctx, templateStore, infra, localrun.Spec{
+		Version:   cfg.Version,
+		AppConfig: appConfig,
+		EnvConfig: env,
+	})
 
 }
