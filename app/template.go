@@ -7,8 +7,6 @@ import (
 	"strings"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
-	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
-	"github.com/awslabs/goformation/v7/cloudformation/sqs"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/tidwall/sjson"
@@ -91,40 +89,6 @@ func NewApplication(name, version string) *Application {
 		snsTopics:  map[string]*SNSTopic{},
 		runtimes:   map[string]*RuntimeService{},
 	}
-}
-
-func (ss *Application) AppName() string {
-	return ss.appName
-}
-
-func (ss *Application) GetRuntime(name string) *RuntimeService {
-	return ss.runtimes[name]
-}
-
-func (ss *Application) Parameters() map[string]*deployer_pb.Parameter {
-	return ss.parameters
-}
-
-func (ss *Application) Refs() map[string]string {
-
-	out := map[string]string{}
-	for _, obj := range ss.resources {
-		switch obj.AWSCloudFormationType() {
-		case "AWS::SecretsManager::Secret":
-			secret, ok := obj.(*Resource[*secretsmanager.Secret])
-			if !ok {
-				panic("Not a secret")
-			}
-			out[secret.name] = *secret.Resource.Name
-		case "AWS::SQS::Queue":
-			queue, ok := obj.(*Resource[*sqs.Queue])
-			if !ok {
-				panic("Not a queue")
-			}
-			out[queue.name] = *queue.Resource.QueueName
-		}
-	}
-	return out
 }
 
 func (ss *Application) Build() *BuiltApplication {
@@ -212,17 +176,6 @@ func (ss *Application) AddParameter(param *deployer_pb.Parameter) {
 
 func (ss *Application) AddOutput(output *Output) {
 	ss.outputs[output.Name] = output
-}
-
-func (ss *Application) Parameter(name string) *string {
-	_, ok := ss.parameters[name]
-	if !ok {
-		ss.AddParameter(&deployer_pb.Parameter{
-			Name: name,
-			Type: "String",
-		})
-	}
-	return String(cloudformation.Ref(name))
 }
 
 type IResource interface {

@@ -14,28 +14,6 @@ type RefMatcher interface {
 	PushTargets(context.Context, *github_pb.PushMessage) ([]string, error)
 }
 
-type RefList []*github_pb.RefLink
-
-func (rl RefList) PushTargets(ctx context.Context, push *github_pb.PushMessage) ([]string, error) {
-	environments := []string{}
-	for _, r := range rl {
-		if r.Owner != push.Owner {
-			continue
-		}
-
-		if r.Repo != push.Repo {
-			continue
-		}
-
-		if r.RefMatch != push.Ref {
-			continue
-		}
-
-		environments = append(environments, r.Targets...)
-	}
-	return environments, nil
-}
-
 type RefStore struct {
 	db *sqrlx.Wrapper
 }
