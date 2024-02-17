@@ -51,10 +51,6 @@ func NewS3TemplateStore(s3Client awsinfra.S3API, cfTemplateBucket string) *S3Tem
 }
 
 type SpecBuilder struct {
-	RotateSecrets bool
-	CancelUpdates bool
-	QuickMode     bool
-
 	templateStore TemplateStore
 }
 
@@ -132,6 +128,12 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		snsTopics[idx] = fmt.Sprintf("%s-%s", environment.FullName, topic)
 	}
 
+	if trigger.Flags == nil {
+		trigger.Flags = &deployer_pb.DeploymentFlags{}
+	}
+	if app.QuickMode {
+		trigger.Flags.QuickMode = true
+	}
 	spec := &deployer_pb.DeploymentSpec{
 		AppName:         app.Name,
 		Version:         app.Version,
@@ -141,10 +143,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		Databases:       dbSpecs,
 		Parameters:      parameters,
 		SnsTopics:       snsTopics,
-
-		CancelUpdates:     dd.CancelUpdates,
-		RotateCredentials: dd.RotateSecrets,
-		QuickMode:         dd.QuickMode || app.QuickMode,
+		Flags:           trigger.Flags,
 
 		EcsCluster: awsEnv.EcsClusterName,
 	}

@@ -47,6 +47,9 @@ runtimes:
       - name: "o5-aws-command_request"
       - name: "o5-aws-command_reply"
       - name: "o5-aws-callback"
+        rawMessage: true
+      - name: "o5-cloudwatch-events"
+        rawMessage: true
 
     containers:
       - name: main

@@ -4,16 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
-	"github.com/pentops/o5-go/messaging/v1/messaging_tpb"
 	"github.com/pentops/outbox.pg.go/outbox"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -26,8 +23,7 @@ type DBLite interface {
 var RequestTokenNotFound = errors.New("request token not found")
 
 type InfraWorker struct {
-	*deployer_tpb.UnimplementedCloudFormationRequestTopicServer
-	*messaging_tpb.UnimplementedRawMessageTopicServer
+	deployer_tpb.UnimplementedCloudFormationRequestTopicServer
 
 	db DBLite
 	*CFClient
@@ -44,65 +40,49 @@ func NewInfraWorker(clients ClientBuilder, db DBLite) *InfraWorker {
 }
 
 func (cf *InfraWorker) eventOut(ctx context.Context, msg outbox.OutboxMessage) error {
-	fmt.Printf("eventOut: %s\n", protojson.Format(msg))
 	return cf.db.PublishEvent(ctx, msg)
 }
 
-func parseAWSRawMessage(raw []byte) (map[string]string, error) {
+func (cf *InfraWorker) HandleCloudFormationEvent(ctx context.Context, fields map[string]string) error {
 
-	lines := strings.Split(string(raw), "\n")
-	fields := map[string]string{}
-	for _, line := range lines {
-		if line == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid line: %s", line)
-		}
-		s := parts[1]
-		if strings.HasPrefix(s, "'") && strings.HasSuffix(s, "'") {
-			s = s[1 : len(s)-1]
-		}
-		fields[parts[0]] = s
+	eventID, ok := fields["EventId"]
+	if !ok {
+		return fmt.Errorf("missing EventId")
 	}
-	return fields, nil
-}
 
-func (cf *InfraWorker) Raw(ctx context.Context, msg *messaging_tpb.RawMessage) (*emptypb.Empty, error) {
-
-	fields, err := parseAWSRawMessage(msg.Payload)
-	if err != nil {
-		return nil, err
-	}
+	/*
+		timestamp, ok := fields["Timestamp"]
+		if !ok {
+			return fmt.Errorf("missing Timestamp")
+		}*/
 
 	resourceType, ok := fields["ResourceType"]
 	if !ok {
-		return nil, fmt.Errorf("missing ResourceType")
+		return fmt.Errorf("missing ResourceType")
 	}
 
 	if resourceType != "AWS::CloudFormation::Stack" {
-		return &emptypb.Empty{}, nil
+		return nil
 	}
 
 	stackName, ok := fields["StackName"]
 	if !ok {
-		return nil, fmt.Errorf("missing StackName")
+		return fmt.Errorf("missing StackName")
 	}
 
 	clientToken, ok := fields["ClientRequestToken"]
 	if !ok {
-		return nil, fmt.Errorf("missing ClientRequestToken")
+		return fmt.Errorf("missing ClientRequestToken")
 	}
 
 	resourceStatus, ok := fields["ResourceStatus"]
 	if !ok {
-		return nil, fmt.Errorf("missing ResourceStatus")
+		return fmt.Errorf("missing ResourceStatus")
 	}
 
 	lifecycle, err := stackLifecycle(types.StackStatus(resourceStatus))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	var outputs []*deployer_pb.KeyValue
@@ -111,11 +91,11 @@ func (cf *InfraWorker) Raw(ctx context.Context, msg *messaging_tpb.RawMessage) (
 
 		stack, err := cf.getOneStack(ctx, stackName)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		if stack == nil {
-			return nil, fmt.Errorf("missing stack %s", stackName)
+			return fmt.Errorf("missing stack %s", stackName)
 		}
 
 		outputs = mapOutputs(stack.Outputs)
@@ -123,24 +103,23 @@ func (cf *InfraWorker) Raw(ctx context.Context, msg *messaging_tpb.RawMessage) (
 
 	requestMetadata, err := cf.db.ClientTokenToRequest(ctx, clientToken)
 	if errors.Is(err, RequestTokenNotFound) {
-		return nil, nil
+		return nil
 	} else if err != nil {
-		return nil, err
+		return err
 	}
-	mm := &deployer_tpb.StackStatusChangedMessage{}
-	mm.MessagingHeaders()
 
 	if err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
 		Request:   requestMetadata,
+		EventId:   eventID,
 		StackName: stackName,
 		Status:    resourceStatus,
 		Outputs:   outputs,
 		Lifecycle: lifecycle,
 	}); err != nil {
-		return nil, err
+		return err
 	}
 
-	return &emptypb.Empty{}, nil
+	return nil
 }
 
 func (cf *InfraWorker) CreateNewStack(ctx context.Context, msg *deployer_tpb.CreateNewStackMessage) (*emptypb.Empty, error) {
@@ -170,7 +149,7 @@ func (cf *InfraWorker) UpdateStack(ctx context.Context, msg *deployer_tpb.Update
 			return nil, fmt.Errorf("UpdateStack: %w", err)
 		}
 
-		if err := cf.noUpdatesToBePerformed(ctx, msg.Spec.StackName, msg.Request); err != nil {
+		if err := cf.noUpdatesToBePerformed(ctx, msg.Spec.StackName, msg.Request, reqToken); err != nil {
 			return nil, err
 		}
 	}
@@ -215,7 +194,7 @@ func (cf *InfraWorker) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleSt
 			return nil, fmt.Errorf("ScaleStack: %w", err)
 		}
 
-		if err := cf.noUpdatesToBePerformed(ctx, msg.StackName, msg.Request); err != nil {
+		if err := cf.noUpdatesToBePerformed(ctx, msg.StackName, msg.Request, reqToken); err != nil {
 			return nil, err
 		}
 	}
@@ -225,6 +204,11 @@ func (cf *InfraWorker) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleSt
 
 func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.StabalizeStackMessage) (*emptypb.Empty, error) {
 
+	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
+	if err != nil {
+		return nil, err
+	}
+
 	remoteStack, err := cf.getOneStack(ctx, msg.StackName)
 	if err != nil {
 		return nil, fmt.Errorf("getOneStack: %w", err)
@@ -233,6 +217,7 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 	if remoteStack == nil {
 		err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
 			Request:   msg.Request,
+			EventId:   reqToken,
 			StackName: msg.StackName,
 			Status:    "MISSING",
 			Lifecycle: deployer_pb.CFLifecycle_MISSING,
@@ -281,9 +266,11 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 		lifecycle = deployer_pb.CFLifecycle_COMPLETE
 		err = cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
 			Request:   msg.Request,
+			EventId:   reqToken,
 			StackName: msg.StackName,
 			Status:    string(remoteStack.StackStatus),
 			Lifecycle: lifecycle,
+			Outputs:   mapOutputs(remoteStack.Outputs),
 		})
 		if err != nil {
 			return nil, err
@@ -302,13 +289,13 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 		"stackStatus": remoteStack.StackStatus,
 	}).Debug("StabalizeStack Result")
 
-	// This only runs if we aren't running the poller, as the poller will do
-	// the same thing
 	err = cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
 		Request:   msg.Request,
+		EventId:   reqToken,
 		StackName: msg.StackName,
 		Status:    string(remoteStack.StackStatus),
 		Lifecycle: lifecycle,
+		Outputs:   mapOutputs(remoteStack.Outputs),
 	})
 	if err != nil {
 		return nil, err
@@ -319,7 +306,7 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 
 // sends a fake status update message back to the deployer so that it thinks
 // something has happened and continues the event chain
-func (cf *InfraWorker) noUpdatesToBePerformed(ctx context.Context, stackName string, request *messaging_pb.RequestMetadata) error {
+func (cf *InfraWorker) noUpdatesToBePerformed(ctx context.Context, stackName string, request *messaging_pb.RequestMetadata, eventID string) error {
 
 	remoteStack, err := cf.getOneStack(ctx, stackName)
 	if err != nil {
@@ -333,6 +320,7 @@ func (cf *InfraWorker) noUpdatesToBePerformed(ctx context.Context, stackName str
 
 	if err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
 		Request:   request,
+		EventId:   eventID,
 		StackName: stackName,
 		Status:    "NO UPDATES TO BE PERFORMED",
 		Outputs:   summary.Outputs,

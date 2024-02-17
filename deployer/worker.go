@@ -218,12 +218,12 @@ func StackStatusToEvent(msg *deployer_tpb.StackStatusChangedMessage) (*deployer_
 			deployer_pb.CFLifecycle_ROLLED_BACK:
 
 			event.SetPSMEvent(&deployer_pb.DeploymentEventType_StackAvailable{
-				StackExists: true,
+				StackOutput: cfOutput,
 			})
 
 		case deployer_pb.CFLifecycle_MISSING:
 			event.SetPSMEvent(&deployer_pb.DeploymentEventType_StackAvailable{
-				StackExists: false,
+				StackOutput: nil,
 			})
 
 		default:

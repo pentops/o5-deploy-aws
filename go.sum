@@ -165,14 +165,12 @@ github.com/pentops/jsonapi v0.0.0-20240125182748-28bbbf8f7311 h1:JeqazO7kfp3xmgg
 github.com/pentops/jsonapi v0.0.0-20240125182748-28bbbf8f7311/go.mod h1:+G29pelqimEuvqxtzUS3or1tZKssK8Mc0+JBInSR5k0=
 github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4 h1:7kPDmBAQxMxcFIYt1rEco/AipZmm1CUoND3wSDmIOeI=
 github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4/go.mod h1:UXhrs+VZ6cWZ7b/v8AtuvBZc5nwS5WFHP94JoFrZQA8=
-github.com/pentops/o5-go v0.0.0-20240216211535-f9afa9cb7e3a h1:TUOV8Q4TQpcuDiZz4BL2uBdHru0M3qxUy5+6R3UjLlA=
-github.com/pentops/o5-go v0.0.0-20240216211535-f9afa9cb7e3a/go.mod h1:vAQfuodBCBwXfMOqFybMRelEJsbCFV/5lijk4IYlUVo=
+github.com/pentops/o5-go v0.0.0-20240217024327-4cd58a0d515e h1:1/hh7KwAQWnjo5nduVDXDw/U1cTSyNOSmRtXFJaFeic=
+github.com/pentops/o5-go v0.0.0-20240217024327-4cd58a0d515e/go.mod h1:vAQfuodBCBwXfMOqFybMRelEJsbCFV/5lijk4IYlUVo=
 github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7 h1:rBLoeUeI1acxd6GbJjJbK6CeVF/q/Xab+xqQYePvNSw=
 github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7/go.mod h1:yMefMPLP0eBAxdELkAgjTtnhWFfc0Wk2H2kePByDHRo=
 github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e h1:yvHE4gTqT6dvaPiOqvs/uiybF3NdK+4yEn4eKAEOXDg=
 github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e/go.mod h1:BgX0+UvohWaq7Vr3McsBWt8FpzerKaNRsmG2uH7L1FE=
-github.com/pentops/protostate v0.0.0-20240212192652-e95f65995fda h1:TL4u3nmPdiJiAE0jiCF53iKAiSdcEQ+qGuYFmdnkJjU=
-github.com/pentops/protostate v0.0.0-20240212192652-e95f65995fda/go.mod h1:OR/JNZv/KtAIgBDJ6e5tSeK7iAUMXhXlMZzj2tvvi4I=
 github.com/pentops/protostate v0.0.0-20240215002450-b4b3a3f85b8c h1:EEgTEqkkkGRrZ0Fq+8CI6/v4+oNpG3QKMATmGZ2RJlo=
 github.com/pentops/protostate v0.0.0-20240215002450-b4b3a3f85b8c/go.mod h1:OR/JNZv/KtAIgBDJ6e5tSeK7iAUMXhXlMZzj2tvvi4I=
 github.com/pentops/runner v0.0.0-20240119184422-1878cd4dc14d h1:tfghLtM96s+k51KqTPHi3AuvEiepIPkj7QvkhR/BWCI=

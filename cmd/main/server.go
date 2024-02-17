@@ -18,6 +18,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
@@ -90,6 +91,13 @@ func runServe(ctx context.Context, cfg struct {
 	awsInfraRunner := awsinfra.NewInfraWorker(clientSet, infraStore)
 	awsInfraRunner.CallbackARNs = []string{cfg.CallbackARN}
 
+	ecsWorker, err := awsinfra.NewECSWorker(infraStore, clientSet)
+	if err != nil {
+		return err
+	}
+
+	rawWorker := awsinfra.NewRawMessageWorker(awsInfraRunner, ecsWorker)
+
 	pgMigrateRunner := awsinfra.NewPostgresMigrateWorker(clientSet, infraStore)
 
 	specBuilder, err := deployer.NewSpecBuilder(templateStore)
@@ -145,13 +153,16 @@ func runServe(ctx context.Context, cfg struct {
 
 	deployer_tpb.RegisterDeployerTopicServer(grpcServer, deploymentWorker)
 
-	messaging_tpb.RegisterRawMessageTopicServer(grpcServer, awsInfraRunner)
+	messaging_tpb.RegisterRawMessageTopicServer(grpcServer, rawWorker)
 
 	deployer_tpb.RegisterCloudFormationRequestTopicServer(grpcServer, awsInfraRunner)
 	deployer_tpb.RegisterCloudFormationReplyTopicServer(grpcServer, deploymentWorker)
 
 	deployer_tpb.RegisterPostgresRequestTopicServer(grpcServer, pgMigrateRunner)
 	deployer_tpb.RegisterPostgresReplyTopicServer(grpcServer, deploymentWorker)
+
+	deployer_tpb.RegisterECSReplyTopicServer(grpcServer, pgMigrateRunner)
+	deployer_tpb.RegisterECSRequestTopicServer(grpcServer, ecsWorker)
 
 	reflection.Register(grpcServer)
 
@@ -177,6 +188,9 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 	CancelUpdate  bool   `flag:"cancel-update" description:"cancel update - cancel any ongoing update prior to deployment"`
 	ScratchBucket string `flag:"scratch-bucket" env:"O5_DEPLOYER_SCRATCH_BUCKET" description:"An S3 bucket name to upload templates"`
 	QuickMode     bool   `flag:"quick" description:"Skips scale down/up, calls stack update with all changes once, and skips DB migration"`
+	InfraOnly     bool   `flag:"infra-only" description:"Deploy with scale at 0"`
+	DBOnly        bool   `flag:"db-only" description:"Only migrate database"`
+	Auto          bool   `flag:"auto" description:"Automatically approve plan"`
 }) error {
 
 	if cfg.AppFilename == "" {
@@ -253,9 +267,17 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 	infra := localrun.NewInfraAdapter(clientSet)
 
 	return localrun.RunLocalDeploy(ctx, templateStore, infra, localrun.Spec{
-		Version:   cfg.Version,
-		AppConfig: appConfig,
-		EnvConfig: env,
+		Version:     cfg.Version,
+		AppConfig:   appConfig,
+		EnvConfig:   env,
+		ConfirmPlan: !cfg.Auto,
+		Flags: &deployer_pb.DeploymentFlags{
+			RotateCredentials: cfg.RotateSecrets,
+			CancelUpdates:     cfg.CancelUpdate,
+			QuickMode:         cfg.QuickMode,
+			InfraOnly:         cfg.InfraOnly,
+			DbOnly:            cfg.DBOnly,
+		},
 	})
 
 }

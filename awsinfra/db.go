@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
@@ -37,6 +38,12 @@ func (s *Storage) PublishEvent(ctx context.Context, msg outbox.OutboxMessage) er
 	})
 }
 
+type DuplicateRequestContextError string
+
+func (e DuplicateRequestContextError) Error() string {
+	return fmt.Sprintf("duplicate request context: %s", string(e))
+}
+
 func (s *Storage) RequestToClientToken(ctx context.Context, req *messaging_pb.RequestMetadata) (string, error) {
 	token := uuid.NewString()
 
@@ -45,6 +52,18 @@ func (s *Storage) RequestToClientToken(ctx context.Context, req *messaging_pb.Re
 		ReadOnly:  false,
 		Retryable: true,
 	}, func(ctx context.Context, tx sqrlx.Transaction) error {
+		var foundToken string
+		err := tx.SelectRow(ctx, sq.Select("token").From("infra_client_token").Where(
+			sq.Eq{
+				"request": req.Context,
+				"dest":    req.ReplyTo,
+			})).Scan(&foundToken)
+		if err == nil {
+			return DuplicateRequestContextError(foundToken)
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+
 		didInsert, err := tx.InsertRow(ctx, sq.Insert("infra_client_token").
 			SetMap(map[string]interface{}{
 				"token":   token,

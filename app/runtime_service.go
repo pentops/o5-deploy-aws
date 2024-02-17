@@ -10,6 +10,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/iam"
 	"github.com/awslabs/goformation/v7/cloudformation/sns"
 	"github.com/awslabs/goformation/v7/cloudformation/sqs"
+	"github.com/awslabs/goformation/v7/cloudformation/tags"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 )
@@ -84,6 +85,10 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		ExecutionRoleArn:        cloudformation.RefPtr(ECSTaskExecutionRoleParameter),
 		RequiresCompatibilities: []string{"EC2"},
 		//TaskRoleArn:  Set on Apply
+		Tags: sourceTags(tags.Tag{
+			Key:   "o5-deployment-version",
+			Value: cloudformation.Ref(VersionTagParameter),
+		}),
 	})
 
 	service := NewResource(CleanParameterName(runtime.Name), &ecs.Service{
@@ -96,6 +101,7 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 				Rollback: true,
 			},
 		},
+		PropagateTags: String("TASK_DEFINITION"),
 	})
 
 	policy := NewPolicyBuilder()
@@ -203,6 +209,7 @@ func (rs *RuntimeService) Apply(template *Application) error {
 				rs.Name,
 			}),
 			SqsManagedSseEnabled: Bool(true),
+			Tags:                 sourceTags(),
 		})
 		template.AddResource(queueResource)
 		rs.Policy.AddSQSSubscribe(queueResource.GetAtt("Arn"))
@@ -244,14 +251,23 @@ func (rs *RuntimeService) Apply(template *Application) error {
 				})
 			}
 			topicARNs = append(topicARNs, snsTopicARN)
-			subscription := NewResource(CleanParameterName(rs.Name, sub.Name), &sns.Subscription{
+			subscription := &sns.Subscription{
 				TopicArn:           snsTopicARN,
 				Protocol:           "sqs",
 				RawMessageDelivery: Bool(true),
 				Endpoint:           String(queueResource.GetAtt("Arn")),
-			})
+			}
+
+			if sub.RawMessage {
+				// 'RawMessage' in this context means the subscription is a
+				// o5.messaging.topic.RawMessage.
+				// The sidecar will use the SNS wrapper to pull out the
+				// original topic.
+				subscription.RawMessageDelivery = Bool(false)
+			}
+
 			template.AddSNSTopic(sub.Name)
-			template.AddResource(subscription)
+			template.AddResource(NewResource(CleanParameterName(rs.Name, sub.Name), subscription))
 		}
 
 		// Allow SNS to publish to SQS...

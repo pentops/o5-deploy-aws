@@ -142,7 +142,7 @@ func TestLocalRun(t *testing.T) {
 		}
 
 		infra.Send(&deployer_pb.DeploymentEventType_StackAvailable{
-			StackExists: false,
+			StackOutput: nil,
 		})
 	})
 
