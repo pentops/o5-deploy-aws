@@ -146,6 +146,7 @@ func (handler *ECSWorker) HandleECSTaskEvent(ctx context.Context, eventID string
 			reasonCodes := make([]string, 0, len(taskEvent.Containers))
 
 			for _, container := range taskEvent.Containers {
+				container := container
 				if container.ExitCode != nil {
 					if *container.ExitCode != 0 {
 						nonZeroExit = &container
