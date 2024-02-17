@@ -237,6 +237,9 @@ func TestStackLock(t *testing.T) {
 		},
 		Version:       "1",
 		EnvironmentId: environmentId,
+		Flags: &deployer_pb.DeploymentFlags{
+			QuickMode: true,
+		},
 	}
 
 	ss.StepC("setup", func(ctx context.Context, t UniverseAsserter) {
@@ -256,7 +259,6 @@ func TestStackLock(t *testing.T) {
 
 	firstTriggerMessage := &deployer_tpb.TriggerDeploymentMessage{}
 	ss.Step("Request First", func(t UniverseAsserter) {
-		t.SpecBuilder.QuickMode = true
 		// Stack:  [*] --> CREATING : Trigger
 		// Deployment: [*] --> QUEUED : Created
 		_, err := t.DeployerTopic.RequestDeployment(ctx, firstDeploymentRequest)

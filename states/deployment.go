@@ -151,7 +151,7 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 			tb.SideEffect(&deployer_tpb.StabalizeStackMessage{
 				Request:      requestMetadata,
 				StackName:    deployment.StackName,
-				CancelUpdate: deployment.Spec.CancelUpdates,
+				CancelUpdate: deployment.Spec.Flags.CancelUpdates,
 			})
 
 			return nil
@@ -180,10 +180,9 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		event *deployer_pb.DeploymentEventType_StackAvailable,
 	) error {
 		deployment.Status = deployer_pb.DeploymentStatus_AVAILABLE
-
 		plan, err := planDeploymentSteps(ctx, deployment, planInput{
-			stackExists: event.StackExists,
-			quickMode:   deployment.Spec.QuickMode,
+			stackStatus: event.StackOutput,
+			flags:       deployment.Spec.Flags,
 		})
 		if err != nil {
 			return err
@@ -262,6 +261,19 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		event *deployer_pb.DeploymentEventType_Terminated,
 	) error {
 		deployment.Status = deployer_pb.DeploymentStatus_TERMINATED
+		return nil
+	}))
+
+	// Discards
+	sm.From(
+		deployer_pb.DeploymentStatus_FAILED,
+		deployer_pb.DeploymentStatus_TERMINATED,
+	).Do(deployer_pb.DeploymentPSMFunc(func(
+		ctx context.Context,
+		tb deployer_pb.DeploymentPSMTransitionBaton,
+		deployment *deployer_pb.DeploymentState,
+		event *deployer_pb.DeploymentEventType_Triggered,
+	) error {
 		return nil
 	}))
 

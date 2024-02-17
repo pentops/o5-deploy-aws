@@ -71,11 +71,11 @@ func (dbDef DatabaseReference) SecretValueFrom() string {
 	})
 }
 
-func sourceTags() []tags.Tag {
-	return []tags.Tag{{
+func sourceTags(extra ...tags.Tag) []tags.Tag {
+	return append(extra, tags.Tag{
 		Key:   "o5-source",
 		Value: cloudformation.Ref(SourceTagParameter),
-	}}
+	})
 }
 
 func BuildApplication(app *application_pb.Application, versionTag string) (*BuiltApplication, error) {

@@ -1,9 +1,12 @@
 package localrun
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/bufbuild/protovalidate-go"
 	"github.com/google/uuid"
@@ -27,6 +30,7 @@ type EventLoop struct {
 	storage     *StateStore
 	awsRunner   IInfra
 	specBuilder *deployer.SpecBuilder
+	confirmPlan bool
 }
 
 type IInfra interface {
@@ -182,6 +186,15 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 				return fmt.Errorf("cannot have more than one chain event in local run mode")
 			}
 			evt := baton.ChainEvents[0]
+
+			if lel.confirmPlan {
+				if _, ok := evt.Event.Type.(*deployer_pb.DeploymentEventType_RunSteps_); ok {
+					if !confirmPlan(deployment) {
+						return nil
+					}
+
+				}
+			}
 			log.WithField(ctx, "chainEvent", protojson.Format(evt)).Debug("Chain Event")
 			eventQueue = append(eventQueue, evt)
 			continue
@@ -213,4 +226,39 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 	}
 
 	return nil
+}
+
+var inputReader *bufio.Reader
+
+func Ask(prompt string) string {
+	if inputReader == nil {
+		inputReader = bufio.NewReader(os.Stdin)
+	}
+	fmt.Printf("%s: \n", prompt)
+	answer, err := inputReader.ReadString('\n')
+	if err != nil {
+		panic(err)
+	}
+	return answer
+}
+
+func AskBool(prompt string) bool {
+	answer := Ask(prompt + " [y/n]")
+	return strings.HasPrefix(strings.ToLower(answer), "y")
+}
+
+func confirmPlan(deployment *deployer_pb.DeploymentState) bool {
+	fmt.Printf("CONFIRM STEPS\n")
+	stepMap := make(map[string]*deployer_pb.DeploymentStep)
+	for _, step := range deployment.Steps {
+		stepMap[step.Id] = step
+	}
+	for _, step := range deployment.Steps {
+		typeKey, _ := step.Request.TypeKey()
+		fmt.Printf("- %s (%s)\n", step.Name, typeKey)
+		for _, dep := range step.DependsOn {
+			fmt.Printf("   <- %s\n", stepMap[dep].Name)
+		}
+	}
+	return AskBool("Continue?")
 }

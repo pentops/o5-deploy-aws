@@ -116,6 +116,7 @@ func (ds *DeployerService) TriggerDeployment(ctx context.Context, req *deployer_
 		Application:   apps[0],
 		Version:       gh.Commit,
 		EnvironmentId: environmentID,
+		Flags:         req.Flags,
 	}
 	if err := ds.db.Transact(ctx, &sqrlx.TxOptions{
 		Isolation: sql.LevelReadCommitted,

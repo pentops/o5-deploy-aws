@@ -2,15 +2,59 @@ package awsinfra
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
+	ecs_types "github.com/aws/aws-sdk-go-v2/service/ecs/types"
+	"github.com/pentops/log.go/log"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type InfraEvent struct {
-	Source     string          `json:"source"`
-	DetailType string          `json:"detail-type"`
-	Detail     json.RawMessage `json:"detail"`
+type ECSWorker struct {
+	deployer_tpb.UnimplementedECSRequestTopicServer
+
+	db      DBLite
+	clients ClientBuilder
+}
+
+func NewECSWorker(db DBLite, clients ClientBuilder) (*ECSWorker, error) {
+	return &ECSWorker{
+		db:      db,
+		clients: clients,
+	}, nil
+}
+
+func (handler *ECSWorker) RunECSTask(ctx context.Context, msg *deployer_tpb.RunECSTaskMessage) (*emptypb.Empty, error) {
+	clients, err := handler.clients.Clients(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ecsClient := clients.ECS
+
+	clientToken, err := handler.db.RequestToClientToken(ctx, msg.Request)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = ecsClient.RunTask(ctx, &ecs.RunTaskInput{
+		TaskDefinition: aws.String(msg.TaskDefinition),
+		Cluster:        aws.String(msg.Cluster),
+		Count:          aws.Int32(1),
+		ClientToken:    aws.String(clientToken),
+		Tags: []ecs_types.Tag{{
+			Key:   aws.String("o5-run-task"),
+			Value: aws.String(clientToken),
+		}},
+		StartedBy: aws.String(fmt.Sprintf("o5-run-task/%s", clientToken)),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
 }
 
 type ECSTaskStateChangeEvent struct {
@@ -22,6 +66,7 @@ type ECSTaskStateChangeEvent struct {
 	StopCode      *string                             `json:"stopCode"`
 	Group         *string                             `json:"group"`
 	Containers    []ECSTaskStateChangeEvent_Container `json:"containers"`
+	StartedBy     string                              `json:"startedBy"`
 }
 
 type ECSTaskStateChangeEvent_Container struct {
@@ -32,18 +77,41 @@ type ECSTaskStateChangeEvent_Container struct {
 	ExitCode     *int    `json:"exitCode"`
 }
 
-func handleECSTaskEvent(taskEvent *ECSTaskStateChangeEvent) error {
+func (handler *ECSWorker) HandleECSTaskEvent(ctx context.Context, eventID string, taskEvent *ECSTaskStateChangeEvent) error {
 
-	if taskEvent.Group == nil || !strings.HasPrefix(*taskEvent.Group, "service:") {
+	serviceName := "<none>"
+	if taskEvent.Group != nil && strings.HasPrefix(*taskEvent.Group, "service:") {
+		serviceName = strings.TrimPrefix(*taskEvent.Group, "service:")
+	}
+	ctx = log.WithFields(ctx, map[string]interface{}{
+		"taskArn":    taskEvent.TaskArn,
+		"service":    serviceName,
+		"startedBy":  taskEvent.StartedBy,
+		"lastStatus": taskEvent.LastStatus,
+	})
+
+	if !strings.HasPrefix(taskEvent.StartedBy, "o5-run-task/") {
+		log.Debug(ctx, "ignoring task")
 		return nil
 	}
-	serviceName := strings.TrimPrefix(*taskEvent.Group, "service:")
+	taskID := strings.TrimPrefix(taskEvent.StartedBy, "o5-run-task/")
 
-	fmt.Printf("Task in %s %s: %s\n", serviceName, taskEvent.TaskArn, taskEvent.LastStatus)
+	taskContext, err := handler.db.ClientTokenToRequest(ctx, taskID)
+	if err != nil {
+		return err
+	}
+
+	statusMessage := &deployer_tpb.ECSTaskStatusMessage{
+		Request: taskContext,
+		EventId: eventID,
+		TaskArn: taskEvent.TaskArn,
+		Event:   &deployer_tpb.ECSTaskEventType{},
+	}
+
 	switch taskEvent.LastStatus {
 	case "RUNNING":
 		// Good.
-		return nil
+		statusMessage.Event.Set(&deployer_tpb.ECSTaskEventType_Running{})
 
 	case "PENDING",
 		"PROVISIONING",
@@ -54,37 +122,55 @@ func handleECSTaskEvent(taskEvent *ECSTaskStateChangeEvent) error {
 		// Transient
 
 		return nil
+
 	case "STOPPED":
+
 		if taskEvent.StopCode == nil {
 			return fmt.Errorf("task %s stopped with no code: %s", taskEvent.TaskArn, taskEvent.StoppedReason)
 		}
 
 		switch *taskEvent.StopCode {
 		case "TaskFailedToStart":
-			for _, container := range taskEvent.Containers {
-				if container.ExitCode != nil {
-					fmt.Printf("Container %s exited with code %d\n", container.Name, *container.ExitCode)
-				} else if container.Reason != nil {
-					fmt.Printf("Container %s exited: %s\n", container.Name, *container.Reason)
-				}
-			}
-			fmt.Printf("Task %s failed to start: %s\n", taskEvent.TaskArn, taskEvent.StoppedReason)
-
-			return nil
+			statusMessage.Event.Set(&deployer_tpb.ECSTaskEventType_Failed{
+				Reason: fmt.Sprintf("Task failed to start: %s", taskEvent.StoppedReason),
+			})
 		case "ServiceSchedulerInitiated":
-			fmt.Printf("Normal scaling activity: %s\n", taskEvent.StoppedReason)
-			return nil
+			statusMessage.Event.Set(&deployer_tpb.ECSTaskEventType_Failed{
+				Reason: "Scaled by service scheduller",
+			})
 
 		case "EssentialContainerExited":
+
+			var nonZeroExit *ECSTaskStateChangeEvent_Container
+			allOK := true
+			reasonCodes := make([]string, 0, len(taskEvent.Containers))
+
 			for _, container := range taskEvent.Containers {
 				if container.ExitCode != nil {
-					fmt.Printf("Container %s exited with code %d\n", container.Name, *container.ExitCode)
+					if *container.ExitCode != 0 {
+						nonZeroExit = &container
+						allOK = false
+					}
 				} else if container.Reason != nil {
-					fmt.Printf("Container %s exited: %s\n", container.Name, *container.Reason)
+					allOK = false
+					reasonCodes = append(reasonCodes, *container.Reason)
 				}
 			}
-			fmt.Printf("Task %s Exited: %s\n", taskEvent.TaskArn, taskEvent.StoppedReason)
-			return nil
+
+			if allOK {
+				statusMessage.Event.Set(&deployer_tpb.ECSTaskEventType_Exited{
+					ExitCode: 0,
+				})
+			} else if nonZeroExit != nil {
+				statusMessage.Event.Set(&deployer_tpb.ECSTaskEventType_Exited{
+					ExitCode:      int32(*nonZeroExit.ExitCode),
+					ContainerName: nonZeroExit.Name,
+				})
+			} else {
+				statusMessage.Event.Set(&deployer_tpb.ECSTaskEventType_Failed{
+					Reason: fmt.Sprintf("Containers exited with no exit codes: %v", reasonCodes),
+				})
+			}
 
 		default:
 			return fmt.Errorf("unexpected stop code: %s", *taskEvent.StopCode)
@@ -93,21 +179,9 @@ func handleECSTaskEvent(taskEvent *ECSTaskStateChangeEvent) error {
 		return fmt.Errorf("unexpected task status: %s", taskEvent.LastStatus)
 	}
 
-}
+	typeKey, _ := statusMessage.Event.TypeKey()
+	log.WithField(ctx, "eventType", typeKey).Info("Status Event")
 
-func HandleInfraEvent(ctx context.Context, infraEvent *InfraEvent) error {
+	return handler.db.PublishEvent(ctx, statusMessage)
 
-	if infraEvent.Source == "aws.ecs" && infraEvent.DetailType == "ECS Task State Change" {
-		taskEvent := &ECSTaskStateChangeEvent{}
-		if err := json.Unmarshal(infraEvent.Detail, taskEvent); err != nil {
-			return err
-		}
-
-		if err := handleECSTaskEvent(taskEvent); err != nil {
-			return fmt.Errorf("failed to handle ECS task event: %w", err)
-		}
-		return nil
-	} else {
-		return fmt.Errorf("unhandled infra event: %s %s", infraEvent.Source, infraEvent.DetailType)
-	}
 }

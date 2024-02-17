@@ -16,20 +16,24 @@ import (
 )
 
 type InfraAdapter struct {
-	cfClient *awsinfra.CFClient
-	dbClient *awsinfra.DBMigrator
+	cfClient  *awsinfra.CFClient
+	dbClient  *awsinfra.DBMigrator
+	ecsClient *ecsRunner
 }
 
 func NewInfraAdapter(clients awsinfra.ClientBuilder) *InfraAdapter {
 	cfClient := &awsinfra.CFClient{
 		Clients: clients,
 	}
-	dbMigrator := &awsinfra.DBMigrator{
-		Clients: clients,
+	dbMigrator := awsinfra.NewDBMigrator(clients)
+	ecsClient := &ecsRunner{
+		clients: clients,
 	}
+
 	return &InfraAdapter{
-		cfClient: cfClient,
-		dbClient: dbMigrator,
+		cfClient:  cfClient,
+		dbClient:  dbMigrator,
+		ecsClient: ecsClient,
 	}
 }
 
@@ -235,13 +239,9 @@ type pgRequest interface {
 	GetMigrationId() string
 }
 
-func (cf *InfraAdapter) runPostgresCallback(ctx context.Context, msg pgRequest, cb func(context.Context, *awsinfra.DBMigrator) error) (*deployer_tpb.PostgresDatabaseStatusMessage, error) {
+func (cf *InfraAdapter) runPostgresCallback(ctx context.Context, msg pgRequest, cb func(context.Context) error) (*deployer_tpb.PostgresDatabaseStatusMessage, error) {
 
-	migrator := &awsinfra.DBMigrator{
-		Clients: cf.dbClient.Clients,
-	}
-
-	migrateErr := cb(ctx, migrator)
+	migrateErr := cb(ctx)
 
 	if migrateErr != nil {
 		log.WithError(ctx, migrateErr).Error("RunDatabaseMigration")
@@ -263,20 +263,20 @@ func (cf *InfraAdapter) runPostgresCallback(ctx context.Context, msg pgRequest, 
 
 func (cf *InfraAdapter) MigratePostgresDatabase(ctx context.Context, msg *deployer_tpb.MigratePostgresDatabaseMessage) (*deployer_tpb.PostgresDatabaseStatusMessage, error) {
 
-	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context, migrator *awsinfra.DBMigrator) error {
-		return migrator.MigratePostgresDatabase(ctx, msg.MigrationId, msg.Spec)
+	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context) error {
+		return cf.ecsClient.runMigrationTask(ctx, msg.MigrationId, msg.Spec)
 	})
 }
 
 func (cf *InfraAdapter) UpsertPostgresDatabase(ctx context.Context, msg *deployer_tpb.UpsertPostgresDatabaseMessage) (*deployer_tpb.PostgresDatabaseStatusMessage, error) {
-	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context, migrator *awsinfra.DBMigrator) error {
-		return migrator.UpsertPostgresDatabase(ctx, msg.MigrationId, msg.Spec)
+	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context) error {
+		return cf.dbClient.UpsertPostgresDatabase(ctx, msg.MigrationId, msg.Spec)
 	})
 }
 
 func (cf *InfraAdapter) CleanupPostgresDatabase(ctx context.Context, msg *deployer_tpb.CleanupPostgresDatabaseMessage) (*deployer_tpb.PostgresDatabaseStatusMessage, error) {
-	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context, migrator *awsinfra.DBMigrator) error {
-		return migrator.CleanupPostgresDatabase(ctx, msg.MigrationId, msg.Spec)
+	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context) error {
+		return cf.dbClient.CleanupPostgresDatabase(ctx, msg.MigrationId, msg.Spec)
 	})
 }
 

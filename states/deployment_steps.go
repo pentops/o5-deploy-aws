@@ -12,8 +12,8 @@ import (
 )
 
 type planInput struct {
-	stackExists bool
-	quickMode   bool
+	stackStatus *deployer_pb.CFStackOutput
+	flags       *deployer_pb.DeploymentFlags
 }
 
 func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.DeploymentState, input planInput) ([]*deployer_pb.DeploymentStep, error) {
@@ -30,8 +30,12 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 		}
 	}
 
-	if input.quickMode {
-		if input.stackExists {
+	if input.flags.QuickMode || input.flags.InfraOnly {
+		scale := int32(1)
+		if input.flags.InfraOnly {
+			scale = 0
+		}
+		if input.stackStatus != nil {
 			infraMigrate := &deployer_pb.DeploymentStep{
 				Id:     uuid.NewString(),
 				Name:   "CFUpdate",
@@ -39,7 +43,7 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 				Request: &deployer_pb.StepRequestType{
 					Type: &deployer_pb.StepRequestType_CfUpdate{
 						CfUpdate: &deployer_pb.StepRequestType_CFUpdate{
-							Spec: stackInput(0),
+							Spec: stackInput(scale),
 						},
 					},
 				},
@@ -53,7 +57,7 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 				Request: &deployer_pb.StepRequestType{
 					Type: &deployer_pb.StepRequestType_CfCreate{
 						CfCreate: &deployer_pb.StepRequestType_CFCreate{
-							Spec: stackInput(0),
+							Spec: stackInput(scale),
 						},
 					},
 				},
@@ -65,69 +69,94 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 	}
 
 	var infraReadyStepID string
-	if input.stackExists {
-		scaleDown := &deployer_pb.DeploymentStep{
+
+	if input.flags.DbOnly && input.stackStatus == nil {
+		return nil, fmt.Errorf("cannot migrate databases without a stack")
+	}
+
+	var scaleUp *deployer_pb.DeploymentStep
+
+	if !input.flags.DbOnly {
+		if input.stackStatus != nil {
+			scaleDown := &deployer_pb.DeploymentStep{
+				Id:     uuid.NewString(),
+				Name:   "ScaleDown",
+				Status: deployer_pb.StepStatus_UNSPECIFIED,
+				Request: &deployer_pb.StepRequestType{
+					Type: &deployer_pb.StepRequestType_CfScale{
+						CfScale: &deployer_pb.StepRequestType_CFScale{
+							DesiredCount: 0,
+							StackName:    deployment.StackName,
+						},
+					},
+				},
+			}
+			plan = append(plan, scaleDown)
+
+			infraMigrate := &deployer_pb.DeploymentStep{
+				Id:     uuid.NewString(),
+				Name:   "InfraMigrate",
+				Status: deployer_pb.StepStatus_UNSPECIFIED,
+				Request: &deployer_pb.StepRequestType{
+					Type: &deployer_pb.StepRequestType_CfUpdate{
+						CfUpdate: &deployer_pb.StepRequestType_CFUpdate{
+							Spec: stackInput(0),
+						},
+					},
+				},
+				DependsOn: []string{scaleDown.Id},
+			}
+			plan = append(plan, infraMigrate)
+			infraReadyStepID = infraMigrate.Id
+		} else {
+			infraCreate := &deployer_pb.DeploymentStep{
+				Id:     uuid.NewString(),
+				Name:   "InfraCreate",
+				Status: deployer_pb.StepStatus_UNSPECIFIED,
+				Request: &deployer_pb.StepRequestType{
+					Type: &deployer_pb.StepRequestType_CfCreate{
+						CfCreate: &deployer_pb.StepRequestType_CFCreate{
+							Spec: stackInput(0),
+						},
+					},
+				},
+			}
+			plan = append(plan, infraCreate)
+			infraReadyStepID = infraCreate.Id
+		}
+
+		scaleUp = &deployer_pb.DeploymentStep{
 			Id:     uuid.NewString(),
-			Name:   "ScaleDown",
+			Name:   "ScaleUp",
 			Status: deployer_pb.StepStatus_UNSPECIFIED,
 			Request: &deployer_pb.StepRequestType{
 				Type: &deployer_pb.StepRequestType_CfScale{
 					CfScale: &deployer_pb.StepRequestType_CFScale{
-						DesiredCount: 0,
+						DesiredCount: 1,
 						StackName:    deployment.StackName,
 					},
 				},
 			},
+			DependsOn: []string{infraReadyStepID},
 		}
-		plan = append(plan, scaleDown)
-
-		infraMigrate := &deployer_pb.DeploymentStep{
-			Id:     uuid.NewString(),
-			Name:   "InfraMigrate",
-			Status: deployer_pb.StepStatus_UNSPECIFIED,
-			Request: &deployer_pb.StepRequestType{
-				Type: &deployer_pb.StepRequestType_CfUpdate{
-					CfUpdate: &deployer_pb.StepRequestType_CFUpdate{
-						Spec: stackInput(0),
-					},
-				},
-			},
-			DependsOn: []string{scaleDown.Id},
-		}
-		plan = append(plan, infraMigrate)
-		infraReadyStepID = infraMigrate.Id
+		plan = append(plan, scaleUp)
 	} else {
-		infraCreate := &deployer_pb.DeploymentStep{
+		// add a fake discovery step which is already completed.
+		discoveryStep := &deployer_pb.DeploymentStep{
 			Id:     uuid.NewString(),
-			Name:   "InfraCreate",
-			Status: deployer_pb.StepStatus_UNSPECIFIED,
-			Request: &deployer_pb.StepRequestType{
-				Type: &deployer_pb.StepRequestType_CfCreate{
-					CfCreate: &deployer_pb.StepRequestType_CFCreate{
-						Spec: stackInput(0),
+			Name:   "Discovery",
+			Status: deployer_pb.StepStatus_DONE,
+			Output: &deployer_pb.StepOutputType{
+				Type: &deployer_pb.StepOutputType_CfStatus{
+					CfStatus: &deployer_pb.StepOutputType_CFStatus{
+						Output: input.stackStatus,
 					},
 				},
 			},
 		}
-		plan = append(plan, infraCreate)
-		infraReadyStepID = infraCreate.Id
+		plan = append(plan, discoveryStep)
+		infraReadyStepID = discoveryStep.Id
 	}
-
-	scaleUp := &deployer_pb.DeploymentStep{
-		Id:     uuid.NewString(),
-		Name:   "ScaleUp",
-		Status: deployer_pb.StepStatus_UNSPECIFIED,
-		Request: &deployer_pb.StepRequestType{
-			Type: &deployer_pb.StepRequestType_CfScale{
-				CfScale: &deployer_pb.StepRequestType_CFScale{
-					DesiredCount: 1,
-					StackName:    deployment.StackName,
-				},
-			},
-		},
-		DependsOn: []string{infraReadyStepID},
-	}
-	plan = append(plan, scaleUp)
 
 	for _, db := range deployment.Spec.Databases {
 
@@ -184,7 +213,9 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 		}
 
 		plan = append(plan, upsertStep, migrateStep, cleanupStep)
-		scaleUp.DependsOn = append(scaleUp.DependsOn, cleanupStep.Id)
+		if scaleUp != nil {
+			scaleUp.DependsOn = append(scaleUp.DependsOn, cleanupStep.Id)
+		}
 	}
 
 	return plan, nil
@@ -307,7 +338,7 @@ func stepToSideEffect(step *deployer_pb.DeploymentStep, deployment *deployer_pb.
 			DbName:            src.DbName,
 			RootSecretName:    src.RootSecretName,
 			DbExtensions:      src.DbExtensions,
-			RotateCredentials: deployment.Spec.RotateCredentials,
+			RotateCredentials: deployment.Spec.Flags.RotateCredentials,
 		}
 		outputs, err := getStackOutputs(dependencies, st.PgUpsert.InfraOutputStepId)
 		if err != nil {

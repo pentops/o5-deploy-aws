@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	sq "github.com/elgris/sqrl"
 	_ "github.com/lib/pq"
@@ -21,7 +20,13 @@ import (
 )
 
 type DBMigrator struct {
-	Clients ClientBuilder
+	clients ClientBuilder
+}
+
+func NewDBMigrator(clients ClientBuilder) *DBMigrator {
+	return &DBMigrator{
+		clients: clients,
+	}
 }
 
 func (d *DBMigrator) UpsertPostgresDatabase(ctx context.Context, migrationID string, msg *deployer_pb.PostgresCreationSpec) error {
@@ -38,76 +43,8 @@ func (d *DBMigrator) UpsertPostgresDatabase(ctx context.Context, migrationID str
 	return nil
 }
 
-func (d *DBMigrator) MigratePostgresDatabase(ctx context.Context, migrationID string, msg *deployer_pb.PostgresMigrationSpec) error {
-	return d.runMigrationTask(ctx, migrationID, msg)
-}
-
 func (d *DBMigrator) CleanupPostgresDatabase(ctx context.Context, migrationID string, msg *deployer_pb.PostgresCleanupSpec) error {
 	return d.fixPostgresOwnership(ctx, msg)
-}
-
-func (d *DBMigrator) runMigrationTask(ctx context.Context, clientToken string, msg *deployer_pb.PostgresMigrationSpec) error {
-
-	clients, err := d.Clients.Clients(ctx)
-	if err != nil {
-		return err
-	}
-	ecsClient := clients.ECS
-
-	task, err := ecsClient.RunTask(ctx, &ecs.RunTaskInput{
-		TaskDefinition: aws.String(msg.MigrationTaskArn),
-		Cluster:        aws.String(msg.EcsClusterName),
-		Count:          aws.Int32(1),
-		ClientToken:    aws.String(clientToken),
-	})
-	if err != nil {
-		return err
-	}
-
-	for {
-		state, err := ecsClient.DescribeTasks(ctx, &ecs.DescribeTasksInput{
-			Tasks:   []string{*task.Tasks[0].TaskArn},
-			Cluster: aws.String(msg.EcsClusterName),
-		})
-		if err != nil {
-			return err
-		}
-
-		if len(state.Tasks) != 1 {
-			return fmt.Errorf("expected 1 task, got %d", len(state.Tasks))
-		}
-		task := state.Tasks[0]
-		log.WithFields(ctx, map[string]interface{}{
-			"status": *task.LastStatus,
-		}).Debug("waiting for task to stop")
-
-		if *task.LastStatus != "STOPPED" {
-			time.Sleep(time.Second)
-			continue
-		}
-
-		if len(state.Tasks[0].Containers) != 1 {
-			return fmt.Errorf("expected 1 container, got %d", len(state.Tasks[0].Containers))
-		}
-		container := state.Tasks[0].Containers[0]
-		if container.ExitCode == nil {
-			if task.StoppedReason != nil && *task.StoppedReason != "" {
-				return fmt.Errorf("task stopped with reason: %s", *task.StoppedReason)
-			}
-			return fmt.Errorf("task stopped with no exit code: %s", stringValue(container.Reason))
-		}
-		if *container.ExitCode != 0 {
-			return fmt.Errorf("exit code was %d", *container.ExitCode)
-		}
-		return nil
-	}
-}
-
-func stringValue(val *string) string {
-	if val == nil {
-		return ""
-	}
-	return *val
 }
 
 type DBSecret struct {
@@ -125,7 +62,7 @@ func (ss DBSecret) buildURLForDB(dbName string) string {
 func (d *DBMigrator) rootPostgresCredentials(ctx context.Context, rootSecretName string) (*DBSecret, error) {
 	// "/${var.env_name}/global/rds/${var.name}/root" from TF
 
-	clients, err := d.Clients.Clients(ctx)
+	clients, err := d.clients.Clients(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -388,7 +325,7 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *deployer_p
 		"secretARN":   msg.SecretArn,
 	}).Debug("Storing New User Credentials")
 
-	clients, err := d.Clients.Clients(ctx)
+	clients, err := d.clients.Clients(ctx)
 	if err != nil {
 		return err
 	}
