@@ -264,7 +264,7 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 	github_pb.RegisterWebhookTopicServer(topicPair.Server, githubWorker)
 	uu.GithubWebhookTopic = github_pb.NewWebhookTopicClient(topicPair.Client)
 
-	deployerService, err := service.NewDeployerService(conn, uu.Github, stateMachines)
+	deployerService, err := service.NewCommandService(conn, uu.Github, stateMachines)
 	if err != nil {
 		t.Fatal(err)
 	}

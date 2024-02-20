@@ -22,17 +22,16 @@ func TestCreateHappy(t *testing.T) {
 	ss := NewStepper(ctx, t)
 	defer ss.RunSteps(t)
 
-	envID := uuid.NewString()
-	stackID := uuid.NewString()
-
 	ss.Step("Configure Environment", func(t UniverseAsserter) {
 		_, err := t.DeployerCommand.UpsertEnvironment(ctx, &deployer_spb.UpsertEnvironmentRequest{
-			EnvironmentId: envID,
-			Config: &environment_pb.Environment{
-				FullName: "env",
-				Provider: &environment_pb.Environment_Aws{
-					Aws: &environment_pb.AWS{
-						ListenerArn: "arn:listener",
+			EnvironmentId: "env",
+			Src: &deployer_spb.UpsertEnvironmentRequest_Config{
+				Config: &environment_pb.Environment{
+					FullName: "env",
+					Provider: &environment_pb.Environment_Aws{
+						Aws: &environment_pb.AWS{
+							ListenerArn: "arn:listener",
+						},
 					},
 				},
 			},
@@ -40,16 +39,14 @@ func TestCreateHappy(t *testing.T) {
 		t.NoError(err)
 
 		_, err = t.DeployerCommand.UpsertStack(ctx, &deployer_spb.UpsertStackRequest{
-			StackId:         stackID,
-			ApplicationName: "app",
-			EnvironmentId:   envID,
+			StackId: "env-app",
 			Config: &deployer_pb.StackConfig{
 				CodeSource: &deployer_pb.CodeSourceType{
 					Type: &deployer_pb.CodeSourceType_Github_{
 						Github: &deployer_pb.CodeSourceType_Github{
-							Owner:      "owner",
-							Repo:       "repo",
-							RefPattern: "ref1",
+							Owner:  "owner",
+							Repo:   "repo",
+							Branch: "ref1",
 						},
 					},
 				},
@@ -70,7 +67,7 @@ func TestCreateHappy(t *testing.T) {
 		_, err := t.GithubWebhookTopic.Push(ctx, &github_pb.PushMessage{
 			Owner: "owner",
 			Repo:  "repo",
-			Ref:   "ref1",
+			Ref:   "refs/heads/ref1",
 			After: "after",
 		})
 		if err != nil {
@@ -228,39 +225,45 @@ func TestStackLock(t *testing.T) {
 	ss := NewStepper(ctx, t)
 	defer ss.RunSteps(t)
 
-	environmentId := uuid.NewString()
-
-	firstDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
-		DeploymentId: uuid.NewString(),
-		Application: &application_pb.Application{
-			Name: "app",
-		},
-		Version:       "1",
-		EnvironmentId: environmentId,
-		Flags: &deployer_pb.DeploymentFlags{
-			QuickMode: true,
-		},
+	var environmentID string
+	appDef := &application_pb.Application{
+		Name: "app",
 	}
 
+	firstDeploymentID := uuid.NewString()
+	secondDeploymentID := uuid.NewString()
+
 	ss.StepC("setup", func(ctx context.Context, t UniverseAsserter) {
-		_, err := t.DeployerCommand.UpsertEnvironment(ctx, &deployer_spb.UpsertEnvironmentRequest{
-			EnvironmentId: environmentId,
-			Config: &environment_pb.Environment{
-				FullName: "env",
-				Provider: &environment_pb.Environment_Aws{
-					Aws: &environment_pb.AWS{
-						ListenerArn: "arn:listener",
+		res, err := t.DeployerCommand.UpsertEnvironment(ctx, &deployer_spb.UpsertEnvironmentRequest{
+			EnvironmentId: "env",
+			Src: &deployer_spb.UpsertEnvironmentRequest_Config{
+				Config: &environment_pb.Environment{
+					FullName: "env",
+					Provider: &environment_pb.Environment_Aws{
+						Aws: &environment_pb.AWS{
+							ListenerArn: "arn:listener",
+						},
 					},
 				},
 			},
 		})
 		t.NoError(err)
+		environmentID = res.State.EnvironmentId
 	})
 
-	firstTriggerMessage := &deployer_tpb.TriggerDeploymentMessage{}
 	ss.Step("Request First", func(t UniverseAsserter) {
+		firstDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
+			DeploymentId:  firstDeploymentID,
+			Application:   appDef,
+			Version:       "1",
+			EnvironmentId: environmentID,
+			Flags: &deployer_pb.DeploymentFlags{
+				QuickMode: true,
+			},
+		}
 		// Stack:  [*] --> CREATING : Trigger
 		// Deployment: [*] --> QUEUED : Created
+		firstTriggerMessage := &deployer_tpb.TriggerDeploymentMessage{}
 		_, err := t.DeployerTopic.RequestDeployment(ctx, firstDeploymentRequest)
 		if err != nil {
 			t.Fatalf("TriggerDeployment error: %v", err)
@@ -274,19 +277,16 @@ func TestStackLock(t *testing.T) {
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventCreated, deployer_pb.DeploymentStatus_QUEUED)
 		*/
 
-	})
-
-	ss.Step("Trigger First", func(t UniverseAsserter) {
 		// Deployment: QUEUED --> TRIGGERED --> WAITING
 		// Stack: Stays CREATING
-		_, err := t.DeployerTopic.TriggerDeployment(ctx, firstTriggerMessage)
+		_, err = t.DeployerTopic.TriggerDeployment(ctx, firstTriggerMessage)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		t.AWSStack.ExpectStabalizeStack(t)
 
-		t.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_WAITING)
+		t.AssertDeploymentStatus(t, firstDeploymentID, deployer_pb.DeploymentStatus_WAITING)
 		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_CREATING,
 			[]string{})
@@ -304,7 +304,7 @@ func TestStackLock(t *testing.T) {
 		t.AWSStack.StackStatusMissing(t)
 		t.AWSStack.ExpectCreateStack(t)
 
-		t.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_RUNNING)
+		t.AssertDeploymentStatus(t, firstDeploymentID, deployer_pb.DeploymentStatus_RUNNING)
 		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_CREATING,
 			[]string{})
@@ -316,14 +316,13 @@ func TestStackLock(t *testing.T) {
 
 	})
 
-	secondDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
-		DeploymentId:  uuid.NewString(),
-		Application:   firstDeploymentRequest.Application,
-		Version:       "2",
-		EnvironmentId: environmentId,
-	}
-
 	ss.Step("Request a second deployment", func(t UniverseAsserter) {
+		secondDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
+			DeploymentId:  secondDeploymentID,
+			Application:   appDef,
+			Version:       "2",
+			EnvironmentId: environmentID,
+		}
 		// Stack:  CREATING --> CREATING : Trigger
 		// Deployment: [*] --> QUEUED : Created
 		_, err := t.DeployerTopic.RequestDeployment(ctx, secondDeploymentRequest)
@@ -349,7 +348,7 @@ func TestStackLock(t *testing.T) {
 		// Stack: CREATING --> STABLE --> MIGRATING
 		t.AWSStack.StackCreateComplete(t)
 
-		t.AssertDeploymentStatus(t, firstDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_DONE)
+		t.AssertDeploymentStatus(t, firstDeploymentID, deployer_pb.DeploymentStatus_DONE)
 
 		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_MIGRATING,
@@ -386,7 +385,7 @@ func TestStackLock(t *testing.T) {
 
 		t.AWSStack.ExpectCreateStack(t)
 
-		t.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_RUNNING)
+		t.AssertDeploymentStatus(t, secondDeploymentID, deployer_pb.DeploymentStatus_RUNNING)
 		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_MIGRATING,
 			[]string{})
@@ -401,12 +400,12 @@ func TestStackLock(t *testing.T) {
 	ss.Step("Terminate the second deployment", func(t UniverseAsserter) {
 		// Deployment: UPSERTING --> TERMIATED
 		_, err := t.DeployerCommand.TerminateDeployment(ctx, &deployer_spb.TerminateDeploymentRequest{
-			DeploymentId: secondDeploymentRequest.DeploymentId,
+			DeploymentId: secondDeploymentID,
 		})
 
 		t.NoError(err)
 
-		t.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, deployer_pb.DeploymentStatus_TERMINATED)
+		t.AssertDeploymentStatus(t, secondDeploymentID, deployer_pb.DeploymentStatus_TERMINATED)
 		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_AVAILABLE,
 			[]string{})
@@ -427,9 +426,9 @@ func TestStackLock(t *testing.T) {
 
 		thirdDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
 			DeploymentId:  uuid.NewString(),
-			Application:   firstDeploymentRequest.Application,
+			Application:   appDef,
 			Version:       "3",
-			EnvironmentId: environmentId,
+			EnvironmentId: environmentID,
 		}
 
 		// Stack: AVAILABLE --> MIGRATING : Trigger

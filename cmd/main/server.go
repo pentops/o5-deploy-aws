@@ -134,7 +134,7 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	commandService, err := service.NewDeployerService(db, githubClient, stateMachines)
+	commandService, err := service.NewCommandService(db, githubClient, stateMachines)
 	if err != nil {
 		return err
 	}
