@@ -52,7 +52,7 @@ func StackTableSpec() deployer_pb.StackPSMTableSpec {
 			if githubConfig != nil {
 				mm["github_owner"] = githubConfig.Owner
 				mm["github_repo"] = githubConfig.Repo
-				mm["github_ref"] = githubConfig.RefPattern
+				mm["github_ref"] = fmt.Sprintf("refs/heads/%s", githubConfig.Branch)
 			}
 		}
 
@@ -120,10 +120,10 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		state.Config = event.Config
 
 		if state.EnvironmentId != event.EnvironmentId {
-			return status.Errorf(codes.InvalidArgument, "environment id cannot be changed")
+			return status.Errorf(codes.InvalidArgument, "environment id cannot be changed (from %s to %s)", state.EnvironmentId, event.EnvironmentId)
 		}
 		if state.EnvironmentName != event.EnvironmentName {
-			return status.Errorf(codes.InvalidArgument, "environment name cannot be changed")
+			return status.Errorf(codes.InvalidArgument, "environment name cannot be changed (from %s to %s)", state.EnvironmentName, event.EnvironmentName)
 		}
 		return nil
 	}))

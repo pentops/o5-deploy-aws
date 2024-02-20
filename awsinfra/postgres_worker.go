@@ -14,9 +14,6 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type ECSTaskRunner interface {
-	RunTask(ctx context.Context, req *deployer_tpb.RunECSTaskMessage) error
-}
 type PostgresMigrateWorker struct {
 	deployer_tpb.UnimplementedPostgresRequestTopicServer
 	deployer_tpb.UnimplementedECSReplyTopicServer

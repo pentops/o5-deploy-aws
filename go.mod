@@ -24,7 +24,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/pentops/flowtest v0.0.0-20240208030635-1f298afe6f0f
 	github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4
-	github.com/pentops/o5-go v0.0.0-20240217024327-4cd58a0d515e
+	github.com/pentops/o5-go v0.0.0-20240220225421-a518886e6fb4
 	github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7
 	github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e
 	github.com/pentops/protostate v0.0.0-20240215002450-b4b3a3f85b8c

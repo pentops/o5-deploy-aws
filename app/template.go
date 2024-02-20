@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
-	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/tidwall/sjson"
 	"golang.org/x/text/cases"
@@ -57,13 +56,6 @@ func (ba *BuiltApplication) TemplateJSON() ([]byte, error) {
 
 type SNSTopic struct {
 	Name string
-}
-
-type PostgresDefinition struct {
-	Databse                 *application_pb.Database
-	Postgres                *application_pb.Database_Postgres
-	MigrationTaskOutputName *string
-	SecretOutputName        string
 }
 
 type Application struct {

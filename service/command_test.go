@@ -30,20 +30,19 @@ func TestTriggerDeployment(t *testing.T) {
 	)
 	outbox := outboxtest.NewOutboxAsserter(t, conn)
 
-	ds, err := NewDeployerService(conn, githubMock, stateMachines)
+	ds, err := NewCommandService(conn, githubMock, stateMachines)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	ctx := context.Background()
 
-	environmentID := uuid.NewString()
-
 	_, err = ds.UpsertEnvironment(ctx, &deployer_spb.UpsertEnvironmentRequest{
-		Config: &environment_pb.Environment{
-			FullName: "test",
+		Src: &deployer_spb.UpsertEnvironmentRequest_Config{
+			Config: &environment_pb.Environment{
+				FullName: "test",
+			},
 		},
-		EnvironmentId: environmentID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -53,9 +52,9 @@ func TestTriggerDeployment(t *testing.T) {
 		Name: "app",
 	}}
 
-	_, err = ds.TriggerDeployment(ctx, &deployer_spb.TriggerDeploymentRequest{
-		DeploymentId:    uuid.NewString(),
-		EnvironmentName: "test",
+	triggerRes, err := ds.TriggerDeployment(ctx, &deployer_spb.TriggerDeploymentRequest{
+		DeploymentId: uuid.NewString(),
+		Environment:  "test",
 		Source: &deployer_spb.TriggerDeploymentRequest_Github{
 			Github: &deployer_spb.TriggerDeploymentRequest_GithubSource{
 				Owner:  "owner",
@@ -72,8 +71,8 @@ func TestTriggerDeployment(t *testing.T) {
 	reqMsg := &deployer_tpb.RequestDeploymentMessage{}
 	outbox.PopMessage(t, reqMsg)
 
-	if reqMsg.EnvironmentId != environmentID {
-		t.Errorf("expected environment id %s, got %s", environmentID, reqMsg.EnvironmentId)
+	if reqMsg.EnvironmentId != triggerRes.EnvironmentId {
+		t.Errorf("expected environment id %s, got %s", triggerRes.EnvironmentId, reqMsg.EnvironmentId)
 	}
 	if reqMsg.Application.Name != "app" {
 		t.Errorf("expected application name app, got %s", reqMsg.Application.Name)
