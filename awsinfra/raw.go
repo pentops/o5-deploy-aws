@@ -1,7 +1,6 @@
 package awsinfra
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -94,13 +93,6 @@ type InfraEvent struct {
 
 func (worker *RawMessageWorker) handleCloudWatchEvent(ctx context.Context, payload []byte) error {
 	infraEvent := &InfraEvent{}
-
-	buf := &bytes.Buffer{}
-	json.Indent(buf, payload, "", "  ") // nolint: errcheck
-	fmt.Printf("CloudWatchEvent: %s\n", buf.String())
-	if err := json.Unmarshal(payload, infraEvent); err != nil {
-		return err
-	}
 
 	log.WithFields(ctx, map[string]interface{}{
 		"eventId":     infraEvent.ID,
