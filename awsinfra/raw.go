@@ -93,6 +93,9 @@ type InfraEvent struct {
 
 func (worker *RawMessageWorker) handleCloudWatchEvent(ctx context.Context, payload []byte) error {
 	infraEvent := &InfraEvent{}
+	if err := json.Unmarshal(payload, infraEvent); err != nil {
+		return fmt.Errorf("unhandled infra event: %w", err)
+	}
 
 	log.WithFields(ctx, map[string]interface{}{
 		"eventId":     infraEvent.ID,
@@ -111,6 +114,6 @@ func (worker *RawMessageWorker) handleCloudWatchEvent(ctx context.Context, paylo
 		}
 		return nil
 	} else {
-		return fmt.Errorf("unhandled infra event: %s %s", infraEvent.Source, infraEvent.DetailType)
+		return fmt.Errorf("unhandled ecs infra event: %s %s", infraEvent.Source, infraEvent.DetailType)
 	}
 }
