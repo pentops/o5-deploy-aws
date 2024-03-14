@@ -63,7 +63,9 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		}).
 		StoreExtraEventColumns(func(e *deployer_pb.DeploymentEvent) (map[string]interface{}, error) {
 			return map[string]interface{}{
+				"id":            e.Metadata.EventId,
 				"deployment_id": e.DeploymentId,
+				"timestamp":     e.Metadata.Timestamp,
 			}, nil
 		})
 

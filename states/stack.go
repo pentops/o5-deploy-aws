@@ -58,7 +58,9 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		}).
 		StoreExtraEventColumns(func(e *deployer_pb.StackEvent) (map[string]interface{}, error) {
 			return map[string]interface{}{
-				"stack_id": e.StackId,
+				"id":        e.Metadata.EventId,
+				"stack_id":  e.StackId,
+				"timestamp": e.Metadata.Timestamp,
 			}, nil
 		})
 
