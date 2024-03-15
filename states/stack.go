@@ -33,49 +33,38 @@ func chainStackEvent(tb deployer_pb.StackPSMTransitionBaton, event deployer_pb.I
 	return de
 }
 
-func StackTableSpec() deployer_pb.StackPSMTableSpec {
-
-	tableSpec := deployer_pb.DefaultStackPSMTableSpec
-	tableSpec.StateDataColumn = "state"
-	tableSpec.StateColumns = func(s *deployer_pb.StackState) (map[string]interface{}, error) {
-		mm := map[string]interface{}{
-			"env_name":       s.EnvironmentName,
-			"app_name":       s.ApplicationName,
-			"environment_id": s.EnvironmentId,
-			"github_owner":   "", // TODO: Support NIL in PSM conversion
-			"github_repo":    "",
-			"github_ref":     "",
-		}
-
-		if s.Config != nil && s.Config.CodeSource != nil {
-			githubConfig := s.Config.CodeSource.GetGithub()
-			if githubConfig != nil {
-				mm["github_owner"] = githubConfig.Owner
-				mm["github_repo"] = githubConfig.Repo
-				mm["github_ref"] = fmt.Sprintf("refs/heads/%s", githubConfig.Branch)
-			}
-		}
-
-		return mm, nil
-	}
-	tableSpec.EventDataColumn = "event"
-	tableSpec.EventColumns = func(e *deployer_pb.StackEvent) (map[string]interface{}, error) {
-		return map[string]interface{}{
-			"id":        e.Metadata.EventId,
-			"stack_id":  e.StackId,
-			"event":     e,
-			"timestamp": e.Metadata.Timestamp,
-		}, nil
-	}
-
-	return tableSpec
-
-}
-
 func NewStackEventer() (*deployer_pb.StackPSM, error) {
+	config := deployer_pb.DefaultStackPSMConfig().
+		StoreExtraStateColumns(func(s *deployer_pb.StackState) (map[string]interface{}, error) {
+			mm := map[string]interface{}{
+				"env_name":       s.EnvironmentName,
+				"app_name":       s.ApplicationName,
+				"environment_id": s.EnvironmentId,
+				"github_owner":   "", // TODO: Support NIL in PSM conversion
+				"github_repo":    "",
+				"github_ref":     "",
+			}
 
-	config := deployer_pb.DefaultStackPSMConfig().WithTableSpec(StackTableSpec())
-	sm, err := deployer_pb.NewStackPSM(config)
+			if s.Config != nil && s.Config.CodeSource != nil {
+				githubConfig := s.Config.CodeSource.GetGithub()
+				if githubConfig != nil {
+					mm["github_owner"] = githubConfig.Owner
+					mm["github_repo"] = githubConfig.Repo
+					mm["github_ref"] = fmt.Sprintf("refs/heads/%s", githubConfig.Branch)
+				}
+			}
+
+			return mm, nil
+		}).
+		StoreExtraEventColumns(func(e *deployer_pb.StackEvent) (map[string]interface{}, error) {
+			return map[string]interface{}{
+				"id":        e.Metadata.EventId,
+				"stack_id":  e.StackId,
+				"timestamp": e.Metadata.Timestamp,
+			}, nil
+		})
+
+	sm, err := config.NewStateMachine()
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +94,7 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		state *deployer_pb.StackState,
 		event *deployer_pb.StackEventType_Configured,
 	) error {
+		state.Status = deployer_pb.StackStatus_CREATING
 		state.Config = event.Config
 		state.EnvironmentId = event.EnvironmentId
 		state.EnvironmentName = event.EnvironmentName
@@ -117,6 +107,7 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		state *deployer_pb.StackState,
 		event *deployer_pb.StackEventType_Configured,
 	) error {
+		state.Status = deployer_pb.StackStatus_CREATING
 		state.Config = event.Config
 
 		if state.EnvironmentId != event.EnvironmentId {

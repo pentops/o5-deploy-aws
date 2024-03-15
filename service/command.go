@@ -345,7 +345,6 @@ func (ds *CommandService) UpsertEnvironment(ctx context.Context, req *deployer_s
 }
 
 func (ds *CommandService) UpsertStack(ctx context.Context, req *deployer_spb.UpsertStackRequest) (*deployer_spb.UpsertStackResponse, error) {
-
 	identifiers, err := ds.lookupStack(ctx, req.StackId)
 	if err != nil {
 		return nil, err

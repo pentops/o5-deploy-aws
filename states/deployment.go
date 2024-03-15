@@ -40,46 +40,22 @@ func chainDeploymentEvent(tb deployer_pb.DeploymentPSMTransitionBaton, event dep
 	return de
 }
 
-func DeploymentTableSpec() deployer_pb.DeploymentPSMTableSpec {
-	tableSpec := deployer_pb.DefaultDeploymentPSMTableSpec
-	tableSpec.EventDataColumn = "event"
-	tableSpec.StateDataColumn = "state"
-	tableSpec.StateColumns = func(s *deployer_pb.DeploymentState) (map[string]interface{}, error) {
-		return map[string]interface{}{
-			"stack_id": s.StackId,
-		}, nil
-	}
-
-	tableSpec.EventColumns = func(e *deployer_pb.DeploymentEvent) (map[string]interface{}, error) {
-		return map[string]interface{}{
-			"id":            e.Metadata.EventId,
-			"deployment_id": e.DeploymentId,
-			"event":         e,
-			"timestamp":     e.Metadata.Timestamp,
-		}, nil
-	}
-
-	return tableSpec
-}
-
-type deployerConversions struct {
-	deployer_pb.DeploymentPSMConverter
-}
-
-func (c deployerConversions) EventLabel(event deployer_pb.DeploymentPSMEvent) string {
-	typeKey := string(event.PSMEventKey())
-
-	// TODO: This by generation and annotation
-	if stackStatus, ok := event.(*deployer_pb.DeploymentEventType_StepResult); ok {
-		typeKey = fmt.Sprintf("%s.%s", typeKey, stackStatus.Status.ShortString())
-	}
-	return typeKey
-}
-
 func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
+	config := deployer_pb.DefaultDeploymentPSMConfig().
+		StoreExtraStateColumns(func(s *deployer_pb.DeploymentState) (map[string]interface{}, error) {
+			return map[string]interface{}{
+				"stack_id": s.StackId,
+			}, nil
+		}).
+		StoreExtraEventColumns(func(e *deployer_pb.DeploymentEvent) (map[string]interface{}, error) {
+			return map[string]interface{}{
+				"id":            e.Metadata.EventId,
+				"deployment_id": e.DeploymentId,
+				"timestamp":     e.Metadata.Timestamp,
+			}, nil
+		})
 
-	config := deployer_pb.DefaultDeploymentPSMConfig().WithTableSpec(DeploymentTableSpec()).WithEventTypeConverter(deployerConversions{})
-	sm, err := deployer_pb.NewDeploymentPSM(config)
+	sm, err := config.NewStateMachine()
 	if err != nil {
 		return nil, err
 	}

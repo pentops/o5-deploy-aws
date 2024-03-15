@@ -10,7 +10,7 @@ CREATE TABLE stack (
 CREATE TABLE stack_event (
 	id uuid PRIMARY KEY,
 	stack_id uuid NOT NULL,
-	event jsonb NOT NULL,
+	data jsonb NOT NULL,
 	timestamp timestamptz NOT NULL
 );
 
@@ -25,7 +25,7 @@ ALTER TABLE stack ADD COLUMN current_deployment UUID REFERENCES deployment(id);
 CREATE TABLE deployment_event (
 	id uuid PRIMARY KEY,
 	deployment_id uuid NOT NULL,
-	event jsonb NOT NULL,
+	data jsonb NOT NULL,
 	timestamp timestamptz NOT NULL
 );
 

@@ -7,15 +7,15 @@ import (
 )
 
 func NewEnvironmentEventer() (*deployer_pb.EnvironmentPSM, error) {
-
 	config := deployer_pb.DefaultEnvironmentPSMConfig().
-		WithEventColumns(func(e *deployer_pb.EnvironmentEvent) (map[string]interface{}, error) {
+		StoreExtraEventColumns(func(e *deployer_pb.EnvironmentEvent) (map[string]interface{}, error) {
 			return map[string]interface{}{
 				"id":             e.Metadata.EventId,
 				"environment_id": e.EnvironmentId,
 				"timestamp":      e.Metadata.Timestamp,
 			}, nil
 		})
+
 	sm, err := deployer_pb.NewEnvironmentPSM(config)
 	if err != nil {
 		return nil, err

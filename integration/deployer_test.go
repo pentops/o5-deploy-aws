@@ -53,7 +53,6 @@ func TestCreateHappy(t *testing.T) {
 			},
 		})
 		t.NoError(err)
-
 	})
 
 	initialTrigger := &deployer_tpb.RequestDeploymentMessage{}
