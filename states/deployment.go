@@ -84,6 +84,7 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 			deployment.Spec = event.Spec
 			deployment.StackName = fmt.Sprintf("%s-%s", event.Spec.EnvironmentName, event.Spec.AppName)
 			deployment.StackId = StackID(event.Spec.EnvironmentName, event.Spec.AppName)
+			deployment.CreatedAt = timestamppb.Now()
 
 			// No follow on, the stack state will trigger
 
