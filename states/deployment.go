@@ -40,20 +40,6 @@ func chainDeploymentEvent(tb deployer_pb.DeploymentPSMTransitionBaton, event dep
 	return de
 }
 
-type deployerConversions struct {
-	deployer_pb.DeploymentPSMConverter
-}
-
-func (c deployerConversions) EventLabel(event deployer_pb.DeploymentPSMEvent) string {
-	typeKey := string(event.PSMEventKey())
-
-	// TODO: This by generation and annotation
-	if stackStatus, ok := event.(*deployer_pb.DeploymentEventType_StepResult); ok {
-		typeKey = fmt.Sprintf("%s.%s", typeKey, stackStatus.Status.ShortString())
-	}
-	return typeKey
-}
-
 func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 	config := deployer_pb.DefaultDeploymentPSMConfig().
 		StoreExtraStateColumns(func(s *deployer_pb.DeploymentState) (map[string]interface{}, error) {
