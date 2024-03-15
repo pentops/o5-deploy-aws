@@ -94,6 +94,7 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		state *deployer_pb.StackState,
 		event *deployer_pb.StackEventType_Configured,
 	) error {
+		state.Status = deployer_pb.StackStatus_CREATING
 		state.Config = event.Config
 		state.EnvironmentId = event.EnvironmentId
 		state.EnvironmentName = event.EnvironmentName
@@ -106,6 +107,7 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		state *deployer_pb.StackState,
 		event *deployer_pb.StackEventType_Configured,
 	) error {
+		state.Status = deployer_pb.StackStatus_CREATING
 		state.Config = event.Config
 
 		if state.EnvironmentId != event.EnvironmentId {
