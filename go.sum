@@ -169,6 +169,8 @@ github.com/pentops/o5-go v0.0.0-20240220225421-a518886e6fb4 h1:8+h/2/3vNGdmsECDA
 github.com/pentops/o5-go v0.0.0-20240220225421-a518886e6fb4/go.mod h1:v6178B1FnYXj1QaIM79KbmAMPtVzq0SSudzAMZbQorY=
 github.com/pentops/o5-go v0.0.0-20240311180821-02aff9314f4c h1:or6B9rGI7fGkI1bznP2BDrNOJtOvZFBA8ByRhiCOpkc=
 github.com/pentops/o5-go v0.0.0-20240311180821-02aff9314f4c/go.mod h1:fq1TwocoFBsJn8VtxgKvvCEL6onI0cIqWxp8UgLG9VE=
+github.com/pentops/o5-go v0.0.0-20240314160845-2b96e3296a85 h1:DLiJlPLenVlyhIRpyyjFta5azJPdI+BzXBinZnrbNRw=
+github.com/pentops/o5-go v0.0.0-20240314160845-2b96e3296a85/go.mod h1:VpCdb0FteYtJ5A2Kmgfesunf7IskQC/IFajOX39wnqQ=
 github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7 h1:rBLoeUeI1acxd6GbJjJbK6CeVF/q/Xab+xqQYePvNSw=
 github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7/go.mod h1:yMefMPLP0eBAxdELkAgjTtnhWFfc0Wk2H2kePByDHRo=
 github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e h1:yvHE4gTqT6dvaPiOqvs/uiybF3NdK+4yEn4eKAEOXDg=
