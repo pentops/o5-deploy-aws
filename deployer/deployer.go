@@ -61,7 +61,6 @@ func NewSpecBuilder(templateStore TemplateStore) (*SpecBuilder, error) {
 }
 
 func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage, environment *environment_pb.Environment) (*deployer_pb.DeploymentSpec, error) {
-
 	app, err := app.BuildApplication(trigger.Application, trigger.Version)
 	if err != nil {
 		return nil, err
@@ -134,6 +133,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 	if app.QuickMode {
 		trigger.Flags.QuickMode = true
 	}
+
 	spec := &deployer_pb.DeploymentSpec{
 		AppName:         app.Name,
 		Version:         app.Version,
@@ -144,6 +144,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		Parameters:      parameters,
 		SnsTopics:       snsTopics,
 		Flags:           trigger.Flags,
+		Source:          trigger.Source,
 
 		EcsCluster: awsEnv.EcsClusterName,
 	}

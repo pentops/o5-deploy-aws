@@ -8,6 +8,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/integration/mocks"
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
@@ -55,11 +56,15 @@ func TestTriggerDeployment(t *testing.T) {
 	triggerRes, err := ds.TriggerDeployment(ctx, &deployer_spb.TriggerDeploymentRequest{
 		DeploymentId: uuid.NewString(),
 		Environment:  "test",
-		Source: &deployer_spb.TriggerDeploymentRequest_Github{
-			Github: &deployer_spb.TriggerDeploymentRequest_GithubSource{
-				Owner:  "owner",
-				Repo:   "repo",
-				Commit: "commit",
+		Source: &deployer_pb.CodeSourceType{
+			Type: &deployer_pb.CodeSourceType_GitHub_{
+				GitHub: &deployer_pb.CodeSourceType_GitHub{
+					Owner: "owner",
+					Repo:  "repo",
+					Ref: &deployer_pb.CodeSourceType_GitHub_Commit{
+						Commit: "commit",
+					},
+				},
 			},
 		},
 	})

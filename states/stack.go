@@ -46,11 +46,17 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 			}
 
 			if s.Config != nil && s.Config.CodeSource != nil {
-				githubConfig := s.Config.CodeSource.GetGithub()
+				githubConfig := s.Config.CodeSource.GetGitHub()
 				if githubConfig != nil {
 					mm["github_owner"] = githubConfig.Owner
 					mm["github_repo"] = githubConfig.Repo
-					mm["github_ref"] = fmt.Sprintf("refs/heads/%s", githubConfig.Branch)
+
+					switch githubConfig.Ref.(type) {
+					case *deployer_pb.CodeSourceType_GitHub_Branch:
+						mm["github_ref"] = fmt.Sprintf("refs/heads/%s", githubConfig.GetBranch())
+					case *deployer_pb.CodeSourceType_GitHub_Commit:
+						mm["github_ref"] = githubConfig.GetCommit()
+					}
 				}
 			}
 

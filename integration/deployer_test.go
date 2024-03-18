@@ -42,11 +42,13 @@ func TestCreateHappy(t *testing.T) {
 			StackId: "env-app",
 			Config: &deployer_pb.StackConfig{
 				CodeSource: &deployer_pb.CodeSourceType{
-					Type: &deployer_pb.CodeSourceType_Github_{
-						Github: &deployer_pb.CodeSourceType_Github{
-							Owner:  "owner",
-							Repo:   "repo",
-							Branch: "ref1",
+					Type: &deployer_pb.CodeSourceType_GitHub_{
+						GitHub: &deployer_pb.CodeSourceType_GitHub{
+							Owner: "owner",
+							Repo:  "repo",
+							Ref: &deployer_pb.CodeSourceType_GitHub_Branch{
+								Branch: "ref1",
+							},
 						},
 					},
 				},
