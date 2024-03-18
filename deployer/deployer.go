@@ -144,6 +144,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		Parameters:      parameters,
 		SnsTopics:       snsTopics,
 		Flags:           trigger.Flags,
+		Source:          trigger.Source,
 
 		EcsCluster: awsEnv.EcsClusterName,
 	}

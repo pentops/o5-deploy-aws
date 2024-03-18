@@ -222,13 +222,16 @@ func (ds *CommandService) lookupEnvironment(ctx context.Context, presented strin
 }
 
 func (ds *CommandService) TriggerDeployment(ctx context.Context, req *deployer_spb.TriggerDeploymentRequest) (*deployer_spb.TriggerDeploymentResponse, error) {
-
-	gh := req.GetGithub()
-	if gh == nil {
+	if req.Source == nil || req.Source.GetGitHub() == nil {
 		return nil, status.Error(codes.Unimplemented, "only github source is supported")
 	}
+	gh := req.Source.GetGitHub()
 
-	apps, err := ds.github.PullO5Configs(ctx, gh.Owner, gh.Repo, gh.Commit)
+	if gh.GetCommit() == "" {
+		return nil, status.Error(codes.InvalidArgument, "only commit is supported currently")
+	}
+
+	apps, err := ds.github.PullO5Configs(ctx, gh.Owner, gh.Repo, gh.GetCommit())
 	if err != nil {
 		return nil, err
 	}
@@ -249,9 +252,10 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *deployer_s
 	requestMessage := &deployer_tpb.RequestDeploymentMessage{
 		DeploymentId:  req.DeploymentId,
 		Application:   apps[0],
-		Version:       gh.Commit,
+		Version:       gh.GetCommit(),
 		EnvironmentId: environmentID.id,
 		Flags:         req.Flags,
+		Source:        req.Source,
 	}
 
 	if err := ds.db.Transact(ctx, &sqrlx.TxOptions{
