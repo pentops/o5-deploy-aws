@@ -122,7 +122,6 @@ func (dw *DeployerWorker) getEnvironment(ctx context.Context, environmentId stri
 }
 
 func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_tpb.RequestDeploymentMessage) (*emptypb.Empty, error) {
-
 	environment, err := dw.getEnvironment(ctx, msg.EnvironmentId)
 	if err != nil {
 		return nil, err
