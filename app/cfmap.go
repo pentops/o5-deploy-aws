@@ -51,6 +51,9 @@ type globalData struct {
 	databases map[string]DatabaseReference
 	secrets   map[string]*Resource[*secretsmanager.Secret]
 	buckets   map[string]*Resource[*s3.Bucket]
+
+	replayChance     int64
+	deadletterChance int64
 }
 
 // DatabaseReference is used to look up parameters ECS Task Definitions
@@ -135,10 +138,19 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 	}
 
 	global := globalData{
-		appName:   app.Name,
-		databases: map[string]DatabaseReference{},
-		secrets:   map[string]*Resource[*secretsmanager.Secret]{},
-		buckets:   map[string]*Resource[*s3.Bucket]{},
+		appName:          app.Name,
+		databases:        map[string]DatabaseReference{},
+		secrets:          map[string]*Resource[*secretsmanager.Secret]{},
+		buckets:          map[string]*Resource[*s3.Bucket]{},
+		replayChance:     0,
+		deadletterChance: 0,
+	}
+
+	if app.SidecarConfig != nil && app.SidecarConfig.DeadletterChance > 0 {
+		global.deadletterChance = app.SidecarConfig.DeadletterChance
+	}
+	if app.SidecarConfig != nil && app.SidecarConfig.ReplayChance > 0 {
+		global.replayChance = app.SidecarConfig.ReplayChance
 	}
 
 	for _, blobstoreDef := range app.Blobstores {

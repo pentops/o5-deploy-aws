@@ -12,7 +12,6 @@ import (
 )
 
 func TestBasicMap(t *testing.T) {
-
 	app := &application_pb.Application{
 		Name: "app1",
 		Runtimes: []*application_pb.Runtime{{
@@ -41,11 +40,9 @@ func TestBasicMap(t *testing.T) {
 	}
 
 	t.Log(string(yy))
-
 }
 
 func TestDirectPortAccess(t *testing.T) {
-
 	app := &application_pb.Application{
 		Name: "app1",
 		Runtimes: []*application_pb.Runtime{{
@@ -84,7 +81,6 @@ func TestDirectPortAccess(t *testing.T) {
 }
 
 func TestIndirectPortAccess(t *testing.T) {
-
 	app := &application_pb.Application{
 		Name: "app1",
 		Runtimes: []*application_pb.Runtime{{
@@ -139,7 +135,6 @@ func getResource(t testing.TB, template *BuiltApplication, name string, into clo
 }
 
 func TestRuntime(t *testing.T) {
-
 	global := globalData{
 		appName: "Test",
 	}
@@ -177,6 +172,46 @@ func TestRuntime(t *testing.T) {
 		assert.Equal(t, "ECSRepo", ref.Ref)
 	}
 
+}
+
+func TestSidecarConfigRuntime(t *testing.T) {
+	global := globalData{
+		appName:          "Test",
+		replayChance:     1,
+		deadletterChance: 2,
+	}
+
+	rs, err := NewRuntimeService(global, &application_pb.Runtime{
+		Name: "main",
+		Containers: []*application_pb.Container{{
+			Name: "main",
+			Source: &application_pb.Container_Image_{
+				Image: &application_pb.Container_Image{
+					Tag:  String("latest"),
+					Name: "foobar",
+				},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	if len(rs.Containers) != 1 {
+		t.Fatalf("expected 1 container definition, got %d", len(rs.Containers))
+	}
+	sidecarConfigBits := 0
+	for i := range rs.AdapterContainer.Environment {
+		if *rs.AdapterContainer.Environment[i].Name == "RESEND_CHANCE" && *rs.AdapterContainer.Environment[i].Value == "1" {
+			sidecarConfigBits += 1
+		}
+		if *rs.AdapterContainer.Environment[i].Name == "DEADLETTER_CHANCE" && *rs.AdapterContainer.Environment[i].Value == "2" {
+			sidecarConfigBits += 1
+		}
+	}
+	if sidecarConfigBits != 2 {
+		t.Fatalf("Expected sidecar chance configs in task def, did not find them or values were incorrect")
+	}
 }
 
 func decode(t *testing.T, s string, into interface{}) {
