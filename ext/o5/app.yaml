@@ -8,6 +8,9 @@ blobstores:
 secrets:
   - name: github
 
+sidecarConfig:
+  - deadletterChance: 50
+
 databases:
   - name: main
     postgres:
