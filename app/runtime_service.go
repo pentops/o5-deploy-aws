@@ -121,7 +121,7 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 	}
 
 	if runtime.GrantMetaDeployPermissions {
-		policy.AddMetaDeployPermissions()
+		policy.AddAssumeRolePermissions(cloudformation.Split(",", cloudformation.Ref(MetaDeployAssumeRoleParameter)))
 	}
 
 	outboxDatabases := []DatabaseReference{}

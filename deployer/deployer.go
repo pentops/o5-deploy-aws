@@ -24,6 +24,7 @@ type TemplateStore interface {
 type S3TemplateStore struct {
 	s3Client         awsinfra.S3API
 	cfTemplateBucket string
+	cfTemplateURL    string
 }
 
 func (s3ts *S3TemplateStore) PutTemplate(ctx context.Context, envName string, appName string, deploymentID string, templateJSON []byte) (string, error) {
@@ -35,18 +36,19 @@ func (s3ts *S3TemplateStore) PutTemplate(ctx context.Context, envName string, ap
 		Body:   bytes.NewReader(templateJSON),
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("Put s3://%s/%s: %w", s3ts.cfTemplateBucket, templateKey, err)
 	}
 
-	templateURL := fmt.Sprintf("https://s3.us-east-1.amazonaws.com/%s/%s", s3ts.cfTemplateBucket, templateKey)
+	templateURL := fmt.Sprintf("%s/%s", s3ts.cfTemplateURL, templateKey)
 	return templateURL, nil
 }
 
-func NewS3TemplateStore(s3Client awsinfra.S3API, cfTemplateBucket string) *S3TemplateStore {
+func NewS3TemplateStore(s3Client awsinfra.S3API, cfTemplateBucket, cfTemplateURL string) *S3TemplateStore {
 	cfTemplateBucket = strings.TrimPrefix(cfTemplateBucket, "s3://")
 	return &S3TemplateStore{
 		s3Client:         s3Client,
 		cfTemplateBucket: cfTemplateBucket,
+		cfTemplateURL:    cfTemplateURL,
 	}
 }
 

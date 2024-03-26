@@ -61,6 +61,7 @@ func runServe(ctx context.Context, cfg struct {
 	DeployerAssumeRole string `env:"DEPLOYER_ASSUME_ROLE"`
 	CFTemplates        string `env:"CF_TEMPLATES"`
 	CallbackARN        string `env:"CALLBACK_ARN"`
+	AWSRegion          string `env:"AWS_REGION"`
 }) error {
 
 	log.WithField(ctx, "PORT", cfg.GRPCPort).Info("Boot")
@@ -77,7 +78,8 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	templateStore := deployer.NewS3TemplateStore(s3Client, cfg.CFTemplates)
+	bucketURL := fmt.Sprintf("https://s3.%s.amazonaws.com/%s", cfg.AWSRegion, cfg.CFTemplates)
+	templateStore := deployer.NewS3TemplateStore(s3Client, cfg.CFTemplates, bucketURL)
 
 	clientSet := &awsinfra.ClientSet{
 		AssumeRoleARN: cfg.DeployerAssumeRole,
@@ -216,10 +218,10 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	s3Client := s3.NewFromConfig(awsConfig)
+	s3ConfigsClient := s3.NewFromConfig(awsConfig)
 
 	appConfig := &application_pb.Application{}
-	if err := protoread.PullAndParse(ctx, s3Client, cfg.AppFilename, appConfig); err != nil {
+	if err := protoread.PullAndParse(ctx, s3ConfigsClient, cfg.AppFilename, appConfig); err != nil {
 		return err
 	}
 
@@ -248,7 +250,7 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 	}
 
 	env := &environment_pb.Environment{}
-	if err := protoread.PullAndParse(ctx, s3Client, cfg.EnvFilename, env); err != nil {
+	if err := protoread.PullAndParse(ctx, s3ConfigsClient, cfg.EnvFilename, env); err != nil {
 		return err
 	}
 
@@ -257,12 +259,19 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		return fmt.Errorf("AWS Deployer requires the type of environment provider to be AWS")
 	}
 
+	csAWSConfig, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+	csAWSConfig.Region = awsTarget.Region
+
 	clientSet := &awsinfra.ClientSet{
 		AssumeRoleARN: awsTarget.O5DeployerAssumeRole,
-		AWSConfig:     awsConfig,
+		AWSConfig:     csAWSConfig,
 	}
 
-	templateStore := deployer.NewS3TemplateStore(s3Client, cfg.ScratchBucket)
+	bucketURL := fmt.Sprintf("https://s3.%s.amazonaws.com/%s", csAWSConfig.Region, cfg.ScratchBucket)
+	templateStore := deployer.NewS3TemplateStore(s3.NewFromConfig(csAWSConfig), cfg.ScratchBucket, bucketURL)
 
 	infra := localrun.NewInfraAdapter(clientSet)
 

@@ -16,7 +16,7 @@ type PolicyBuilder struct {
 	ses            *application_pb.AWSConfig_SES
 	ecrPull        bool
 
-	metaDeployPermissions bool
+	assumeRoles []string
 }
 
 func NewPolicyBuilder() *PolicyBuilder {
@@ -51,8 +51,8 @@ func (pb *PolicyBuilder) AddSES(policy *application_pb.AWSConfig_SES) {
 	pb.ses = policy
 }
 
-func (pb *PolicyBuilder) AddMetaDeployPermissions() {
-	pb.metaDeployPermissions = true
+func (pb *PolicyBuilder) AddAssumeRolePermissions(role string) {
+	pb.assumeRoles = append(pb.assumeRoles, role)
 }
 
 func (pb *PolicyBuilder) AddECRPull() {
@@ -304,7 +304,7 @@ func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Po
 		rolePolicies = append(rolePolicies, policy)
 	}
 
-	if pb.metaDeployPermissions {
+	if len(pb.assumeRoles) > 0 {
 		policy := iam.Role_Policy{
 			PolicyName: uniqueName("meta-deploy-permissions"),
 			PolicyDocument: map[string]interface{}{
@@ -315,7 +315,7 @@ func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Po
 						"Action": []interface{}{
 							"sts:AssumeRole",
 						},
-						"Resource": cloudformation.Split(",", cloudformation.Ref(MetaDeployAssumeRoleParameter)),
+						"Resource": pb.assumeRoles,
 					},
 				},
 			},
