@@ -78,6 +78,19 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		}},
 	}
 
+	if globals.deadletterChance > 0 {
+		runtimeSidecar.Environment = append(runtimeSidecar.Environment, ecs.TaskDefinition_KeyValuePair{
+			Name:  String("DEADLETTER_CHANCE"),
+			Value: String(fmt.Sprintf("%v", globals.deadletterChance)),
+		})
+	}
+	if globals.replayChance > 0 {
+		runtimeSidecar.Environment = append(runtimeSidecar.Environment, ecs.TaskDefinition_KeyValuePair{
+			Name:  String("RESEND_CHANCE"),
+			Value: String(fmt.Sprintf("%v", globals.replayChance)),
+		})
+	}
+
 	addLogs(runtimeSidecar, globals.appName)
 
 	taskDefinition := NewResource(runtime.Name, &ecs.TaskDefinition{
