@@ -214,6 +214,44 @@ func TestSidecarConfigRuntime(t *testing.T) {
 	}
 }
 
+func TestSidecarConfigNotPresentRuntime(t *testing.T) {
+	global := globalData{
+		appName: "Test",
+	}
+
+	rs, err := NewRuntimeService(global, &application_pb.Runtime{
+		Name: "main",
+		Containers: []*application_pb.Container{{
+			Name: "main",
+			Source: &application_pb.Container_Image_{
+				Image: &application_pb.Container_Image{
+					Tag:  String("latest"),
+					Name: "foobar",
+				},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	if len(rs.Containers) != 1 {
+		t.Fatalf("expected 1 container definition, got %d", len(rs.Containers))
+	}
+	sidecarConfigBits := 0
+	for i := range rs.AdapterContainer.Environment {
+		if *rs.AdapterContainer.Environment[i].Name == "RESEND_CHANCE" && *rs.AdapterContainer.Environment[i].Value == "1" {
+			sidecarConfigBits += 1
+		}
+		if *rs.AdapterContainer.Environment[i].Name == "DEADLETTER_CHANCE" && *rs.AdapterContainer.Environment[i].Value == "2" {
+			sidecarConfigBits += 1
+		}
+	}
+	if sidecarConfigBits != 0 {
+		t.Fatalf("Did not expect sidecar chance configs in task def, but found some")
+	}
+}
+
 func decode(t *testing.T, s string, into interface{}) {
 	t.Helper()
 	val, err := base64.StdEncoding.DecodeString(s)
