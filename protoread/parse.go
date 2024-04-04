@@ -61,39 +61,39 @@ func Parse(filename string, data []byte, into proto.Message) error {
 		return fmt.Errorf("unknown file type: %s", fileSuffix)
 	}
 
-	unmarshalError := protojson.Unmarshal(data, into)
-	if unmarshalError == nil { // If IS nil
-		return nil
+	err := protojson.Unmarshal(data, into)
+	if err != nil {
+		return findTokenError(data, err)
 	}
-	// If we get here, we have an error
 
-	// Attempt to display the error
+	return nil
+}
 
-	msg := unmarshalError.Error()
+var reLocation = regexp.MustCompile(`\(line (\d+):(\d+)\)`)
+
+func findTokenError(data []byte, tknErr error) error {
+	msg := tknErr.Error()
+
 	match := reLocation.FindStringSubmatch(msg)
 	if len(match) != 3 {
-		fmt.Printf("no match: %s %v\n", msg, match)
-		return unmarshalError
+		return fmt.Errorf("no line match found for: %w", tknErr)
 	}
 
-	lineNum, err := strconv.Atoi(match[1])
+	matchedLine, err := strconv.Atoi(match[1])
 	if err != nil {
-		return unmarshalError
+		return fmt.Errorf("%w: line number match: %w", tknErr, err)
 	}
 
 	lines := strings.Split(string(data), "\n")
 	for idx, line := range lines {
-		fmt.Printf("% 3d: %s\n", idx+1, line)
-		if idx+1 == lineNum {
-			fmt.Printf("%s\n", strings.Repeat("^", len(line)+6))
+		if idx+1 == matchedLine {
+			token := strings.Trim(line, ":{} \t")
+			return fmt.Errorf("matched token %s: %w", token, tknErr)
 		}
 	}
 
-	return unmarshalError
-
+	return fmt.Errorf("no token error found")
 }
-
-var reLocation = regexp.MustCompile(`\(line (\d+):(\d+)\)`)
 
 func getFileBytes(ctx context.Context, s3Client S3Client, filename string) ([]byte, error) {
 	if strings.HasPrefix(filename, "s3://") {
