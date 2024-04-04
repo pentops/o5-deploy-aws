@@ -233,7 +233,7 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *deployer_s
 
 	apps, err := ds.github.PullO5Configs(ctx, gh.Owner, gh.Repo, gh.GetCommit())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("github: pull o5 config: %w", err)
 	}
 
 	if len(apps) == 0 {
