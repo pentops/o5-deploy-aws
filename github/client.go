@@ -103,7 +103,8 @@ func (cl Client) PullO5Configs(ctx context.Context, org string, repo string, ref
 		if ok && errResp.Response.StatusCode == 404 {
 			return nil, nil
 		}
-		return nil, err
+
+		return nil, fmt.Errorf("repositories: get contents: %w", err)
 	}
 
 	if len(dirContent) == 0 {
@@ -113,7 +114,7 @@ func (cl Client) PullO5Configs(ctx context.Context, org string, repo string, ref
 	for _, content := range dirContent {
 		file, _, err := cl.repositories.DownloadContents(ctx, org, repo, *content.Path, opts)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("repositories: download contents: %w", err)
 		}
 
 		data, err := io.ReadAll(file)
@@ -123,8 +124,9 @@ func (cl Client) PullO5Configs(ctx context.Context, org string, repo string, ref
 		}
 
 		app := &application_pb.Application{}
-		if err := protoread.Parse(path.Base(*content.Path), data, app); err != nil {
-			return nil, err
+		err = protoread.Parse(path.Base(*content.Path), data, app)
+		if err != nil {
+			return nil, fmt.Errorf("parse app: %w", err)
 		}
 
 		apps = append(apps, app)
