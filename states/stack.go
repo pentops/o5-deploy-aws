@@ -87,11 +87,8 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		})
 	*/
 
-	// The 'Triggered' event arrives when a Deployment is *created*.
-	// The deployment starts in a 'QUEUED' status
-	// Then we send a Trigger back to the deployer to kick off the
-	// deployment, `QUEUED --> TRIGGERED : Trigger`
-
+	// Creating the stack through configuration as the first step.
+	// The stack is immediately 'AVAILABLE' and ready for the first deployment.
 	sm.From(
 		deployer_pb.StackStatus_UNSPECIFIED,
 	).Do(deployer_pb.StackPSMFunc(func(
@@ -100,20 +97,22 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		state *deployer_pb.StackState,
 		event *deployer_pb.StackEventType_Configured,
 	) error {
-		state.Status = deployer_pb.StackStatus_CREATING
+		state.Status = deployer_pb.StackStatus_AVAILABLE
 		state.Config = event.Config
 		state.EnvironmentId = event.EnvironmentId
 		state.EnvironmentName = event.EnvironmentName
 		return nil
 	}))
 
+	// Updating the configuration to an existing stack, regardless of how it was
+	// created (via configuration or deployment), leaves the status as it is and
+	// just updates the config.
 	sm.From().Do(deployer_pb.StackPSMFunc(func(
 		ctx context.Context,
 		tb deployer_pb.StackPSMTransitionBaton,
 		state *deployer_pb.StackState,
 		event *deployer_pb.StackEventType_Configured,
 	) error {
-		state.Status = deployer_pb.StackStatus_CREATING
 		state.Config = event.Config
 
 		if state.EnvironmentId != event.EnvironmentId {
@@ -124,6 +123,11 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		}
 		return nil
 	}))
+
+	// The 'Triggered' event arrives when a Deployment is *created*.
+	// The deployment starts in a 'QUEUED' status
+	// Then we send a Trigger back to the deployer to kick off the
+	// deployment, `QUEUED --> TRIGGERED : Trigger`
 
 	// [*] --> CREATING : Triggered
 	// As this is the first deployment for the stack, we can trigger the deployment immediately.

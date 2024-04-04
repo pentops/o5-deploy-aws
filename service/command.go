@@ -149,8 +149,7 @@ func (ds *CommandService) lookupStack(ctx context.Context, presented string) (st
 			Scan(&res.environment.id)
 
 		if errors.Is(err, sql.ErrNoRows) {
-			// Will fill in a generated ID later
-			return nil
+			return status.Errorf(codes.NotFound, "environment %s not found", fallbackEnvName)
 		} else if err != nil {
 			return err
 		}
@@ -161,14 +160,6 @@ func (ds *CommandService) lookupStack(ctx context.Context, presented string) (st
 		return res, err
 	}
 
-	// Build up any missing information from the fallbacks.
-	if res.environment.id == "" {
-		res.environment.id = uuid.NewSHA1(environmentIDNamespace, []byte(fallbackEnvName)).String()
-		log.WithFields(ctx, map[string]interface{}{
-			"environment_id": res.environment.id,
-			"environment":    fallbackEnvName,
-		}).Debug("derived environment id")
-	}
 	if res.stackID == "" {
 		res.stackID = uuid.NewSHA1(stackIDNamespace, []byte(fallbackAppName+"-"+fallbackEnvName)).String()
 		log.WithFields(ctx, map[string]interface{}{
@@ -369,10 +360,12 @@ func (ds *CommandService) UpsertStack(ctx context.Context, req *deployer_spb.Ups
 		EnvironmentName: identifiers.environment.fullName,
 	})
 
-	_, err = ds.stackStateMachine.Transition(ctx, ds.db, event)
+	newState, err := ds.stackStateMachine.Transition(ctx, ds.db, event)
 	if err != nil {
 		return nil, err
 	}
 
-	return &deployer_spb.UpsertStackResponse{}, nil
+	return &deployer_spb.UpsertStackResponse{
+		State: newState,
+	}, nil
 }
