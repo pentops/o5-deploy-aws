@@ -46,10 +46,10 @@ func NewEnvClient(ctx context.Context) (*Client, error) {
 	var client *Client
 
 	if config.GithubPrivateKey != "" {
-
 		if config.GithubAppID == 0 || config.GithubInstallationID == 0 {
 			return nil, fmt.Errorf("no github app id or installation id")
 		}
+
 		tr := http.DefaultTransport
 		privateKey, err := base64.StdEncoding.DecodeString(config.GithubPrivateKey)
 		if err != nil {
@@ -67,7 +67,6 @@ func NewEnvClient(ctx context.Context) (*Client, error) {
 		}
 
 	} else if config.GithubToken != "" {
-
 		ts := oauth2.StaticTokenSource(
 			&oauth2.Token{AccessToken: config.GithubToken},
 		)
@@ -88,6 +87,7 @@ func NewClient(tc *http.Client) (*Client, error) {
 	cl := &Client{
 		repositories: ghcl.Repositories,
 	}
+
 	return cl, nil
 }
 
@@ -96,6 +96,7 @@ func (cl Client) PullO5Configs(ctx context.Context, org string, repo string, ref
 	opts := &github.RepositoryContentGetOptions{
 		Ref: ref,
 	}
+
 	_, dirContent, _, err := cl.repositories.GetContents(ctx, org, repo, "ext/o5", opts)
 	if err != nil {
 		errResp, ok := err.(*github.ErrorResponse)
@@ -104,6 +105,7 @@ func (cl Client) PullO5Configs(ctx context.Context, org string, repo string, ref
 		}
 		return nil, err
 	}
+
 	if len(dirContent) == 0 {
 		return nil, nil
 	}
@@ -119,11 +121,14 @@ func (cl Client) PullO5Configs(ctx context.Context, org string, repo string, ref
 		if err != nil {
 			return nil, fmt.Errorf("reading bytes: %s", err)
 		}
+
 		app := &application_pb.Application{}
 		if err := protoread.Parse(path.Base(*content.Path), data, app); err != nil {
 			return nil, err
 		}
+
 		apps = append(apps, app)
 	}
+
 	return apps, nil
 }
