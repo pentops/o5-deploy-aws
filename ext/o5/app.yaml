@@ -2,7 +2,6 @@
 name: "o5deploy"
 
 blobstores:
-  - name: env-configs
   - name: cf-templates
 
 secrets:
@@ -69,11 +68,6 @@ runtimes:
             fromEnv:
               name: "o5-deployer-callback-arn"
 
-          - name: CONFIG_FILE
-            blobstore:
-              name: env-configs
-              s3_direct: true
-              subPath: "config.yaml"
           - name: CF_TEMPLATES
             blobstore:
               name: cf-templates
