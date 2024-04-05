@@ -52,8 +52,9 @@ func (ww *WebhookWorker) Push(ctx context.Context, event *github_pb.PushMessage)
 
 	targetEnvs, err := ww.refs.PushTargets(ctx, event)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("target envs: %w", err)
 	}
+
 	if len(targetEnvs) < 1 {
 		log.Info(ctx, "No refs match, nothing to do")
 		return &emptypb.Empty{}, nil
@@ -61,7 +62,7 @@ func (ww *WebhookWorker) Push(ctx context.Context, event *github_pb.PushMessage)
 
 	apps, err := ww.github.PullO5Configs(ctx, event.Owner, event.Repo, event.After)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("github push: pull o5 config: %w", err)
 	}
 
 	if len(apps) == 0 {
@@ -91,7 +92,7 @@ func (ww *WebhookWorker) Push(ctx context.Context, event *github_pb.PushMessage)
 	}, func(ctx context.Context, tx sqrlx.Transaction) error {
 		for _, trigger := range triggers {
 			if err := outbox.Send(ctx, tx, trigger); err != nil {
-				return err
+				return fmt.Errorf("request deployment: outbox: %w", err)
 			}
 		}
 		return nil
