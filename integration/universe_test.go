@@ -159,8 +159,8 @@ func (cf *cfMock) StackStatusMissing(t flowtest.TB) {
 	}
 }
 
-func (cf *cfMock) StackCreateComplete(t flowtest.TB) {
-	_, err := cf.uu.CFReplyTopic.StackStatusChanged(context.Background(), &deployer_tpb.StackStatusChangedMessage{
+func (cf *cfMock) StackCreateCompleteMessage() *deployer_tpb.StackStatusChangedMessage {
+	return &deployer_tpb.StackStatusChangedMessage{
 		Request:   cf.lastRequest,
 		StackName: cf.lastStack,
 		Lifecycle: deployer_pb.CFLifecycle_COMPLETE,
@@ -169,7 +169,11 @@ func (cf *cfMock) StackCreateComplete(t flowtest.TB) {
 			Name:  "foo",
 			Value: "bar",
 		}},
-	})
+	}
+}
+
+func (cf *cfMock) StackCreateComplete(t flowtest.TB) {
+	_, err := cf.uu.CFReplyTopic.StackStatusChanged(context.Background(), cf.StackCreateCompleteMessage())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -284,7 +288,7 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 	ss.stepper.RunSteps(t)
 }
 
-func (uu *Universe) AssertDeploymentStatus(t flowtest.Asserter, deploymentID string, status deployer_pb.DeploymentStatus) {
+func (uu *Universe) AssertDeploymentStatus(t flowtest.Asserter, deploymentID string, status deployer_pb.DeploymentStatus) *deployer_pb.DeploymentState {
 	t.Helper()
 	ctx := context.Background()
 
@@ -301,6 +305,7 @@ func (uu *Universe) AssertDeploymentStatus(t flowtest.Asserter, deploymentID str
 		}
 		t.Fatalf("unexpected status: %v, want %s", deployment.State.Status.ShortString(), status.ShortString())
 	}
+	return deployment.State
 }
 
 func (uu *Universe) AssertStackStatus(t flowtest.Asserter, stackID string, status deployer_pb.StackStatus, pendingDeployments []string) {
