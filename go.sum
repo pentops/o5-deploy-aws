@@ -165,10 +165,8 @@ github.com/pentops/jsonapi v0.0.0-20240125182748-28bbbf8f7311 h1:JeqazO7kfp3xmgg
 github.com/pentops/jsonapi v0.0.0-20240125182748-28bbbf8f7311/go.mod h1:+G29pelqimEuvqxtzUS3or1tZKssK8Mc0+JBInSR5k0=
 github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4 h1:7kPDmBAQxMxcFIYt1rEco/AipZmm1CUoND3wSDmIOeI=
 github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4/go.mod h1:UXhrs+VZ6cWZ7b/v8AtuvBZc5nwS5WFHP94JoFrZQA8=
-github.com/pentops/o5-go v0.0.0-20240406002206-ab9fd62f50e8 h1:ZioiWipmR0Hka+7jIP+nx0jdPZD3rtMQFSyWIA7AMjA=
-github.com/pentops/o5-go v0.0.0-20240406002206-ab9fd62f50e8/go.mod h1:VpCdb0FteYtJ5A2Kmgfesunf7IskQC/IFajOX39wnqQ=
-github.com/pentops/o5-go v0.0.0-20240408195910-4e6f2ab09e0a h1:Br+DkAl2YHvE6/82Tu9A2FM4jwwgb7FJHTmhJUE35OY=
-github.com/pentops/o5-go v0.0.0-20240408195910-4e6f2ab09e0a/go.mod h1:R+v6HzNON0Y48iF58M3uVTe9B6hOyGGkUb9NsRr+/GI=
+github.com/pentops/o5-go v0.0.0-20240408201400-17d1c115517f h1:hVm780CZQ73s9Cls9JCdRvyXXUjg7I+wlLBTAbVgCjw=
+github.com/pentops/o5-go v0.0.0-20240408201400-17d1c115517f/go.mod h1:R+v6HzNON0Y48iF58M3uVTe9B6hOyGGkUb9NsRr+/GI=
 github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7 h1:rBLoeUeI1acxd6GbJjJbK6CeVF/q/Xab+xqQYePvNSw=
 github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7/go.mod h1:yMefMPLP0eBAxdELkAgjTtnhWFfc0Wk2H2kePByDHRo=
 github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e h1:yvHE4gTqT6dvaPiOqvs/uiybF3NdK+4yEn4eKAEOXDg=
