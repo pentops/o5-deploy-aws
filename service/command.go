@@ -40,6 +40,10 @@ func OpenDatabase(ctx context.Context) (*sql.DB, error) {
 		return nil, err
 	}
 
+	// Default is unlimited connections, use a cap to prevent hammering the database if it's the bottleneck.
+	// 10 was selected as a conservative number and will likely be revised later.
+	db.SetMaxOpenConns(10)
+
 	for {
 		if err := db.Ping(); err != nil {
 			log.WithError(ctx, err).Error("pinging PG")
