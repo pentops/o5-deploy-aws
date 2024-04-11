@@ -58,7 +58,7 @@ ADD COLUMN tsv_stack_name tsvector GENERATED ALWAYS AS (
 
 ALTER TABLE stack
 ADD COLUMN tsv_app_name tsvector GENERATED ALWAYS AS (
-	to_tsvector('english', state->>'appName')
+	to_tsvector('english', state->>'applicationName')
 ) STORED;
 
 ALTER TABLE stack
