@@ -194,14 +194,7 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		event *deployer_pb.DeploymentEventType_StepResult,
 	) error {
 
-		for _, step := range deployment.Steps {
-			if step.Id == event.StepId {
-				step.Status = event.Status
-				step.Output = event.Output
-				step.Error = event.Error
-				break
-			}
-		}
+		updateDeploymentStep(deployment, event)
 
 		return stepNext(ctx, tb, deployment)
 	}))
@@ -241,7 +234,7 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		return nil
 	}))
 
-	// Discards
+	// Discard Triggered
 	sm.From(
 		deployer_pb.DeploymentStatus_FAILED,
 		deployer_pb.DeploymentStatus_TERMINATED,
@@ -254,5 +247,29 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		return nil
 	}))
 
+	// Discard Step Results
+	sm.From(
+		deployer_pb.DeploymentStatus_TERMINATED,
+	).Do(deployer_pb.DeploymentPSMFunc(func(
+		ctx context.Context,
+		tb deployer_pb.DeploymentPSMTransitionBaton,
+		deployment *deployer_pb.DeploymentState,
+		event *deployer_pb.DeploymentEventType_StepResult,
+	) error {
+		updateDeploymentStep(deployment, event)
+		return nil
+	}))
+
 	return sm, nil
+}
+
+func updateDeploymentStep(deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEventType_StepResult) {
+	for _, step := range deployment.Steps {
+		if step.Id == event.StepId {
+			step.Status = event.Status
+			step.Output = event.Output
+			step.Error = event.Error
+			return
+		}
+	}
 }

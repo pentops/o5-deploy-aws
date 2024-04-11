@@ -380,6 +380,8 @@ func TestStackLock(t *testing.T) {
 
 	})
 
+	var secondStepCompleteMessage *deployer_tpb.StackStatusChangedMessage
+
 	ss.Step("Second -> Running", func(t UniverseAsserter) {
 		// Deployment WAITING --> AVAILABLE --> UPSERTING
 		t.AWSStack.StackStatusMissing(t)
@@ -390,6 +392,9 @@ func TestStackLock(t *testing.T) {
 		t.AssertStackStatus(t, states.StackID("env", "app"),
 			deployer_pb.StackStatus_MIGRATING,
 			[]string{})
+
+		// capture the StackCompleteMessage, but don't send it in yet.
+		secondStepCompleteMessage = t.AWSStack.StackCreateCompleteMessage()
 
 		/*
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventStackStatus, deployer_pb.DeploymentStatus_AVAILABLE)
@@ -450,6 +455,22 @@ func TestStackLock(t *testing.T) {
 			t.PopStackEvent(t, deployer_pb.StackPSMEventTriggered, deployer_pb.StackStatus_MIGRATING)
 			t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEventCreated, deployer_pb.DeploymentStatus_QUEUED)
 		*/
+
+	})
+
+	ss.Step("A step in the second deployment completes", func(t UniverseAsserter) {
+		// Complete the StackComplete message from the second, now terminated,
+		// deployment
+		_, err := t.CFReplyTopic.StackStatusChanged(ctx, secondStepCompleteMessage)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		fullState := t.AssertDeploymentStatus(t, secondDeploymentID, deployer_pb.DeploymentStatus_TERMINATED)
+		upsertStep := fullState.Steps[0]
+		if upsertStep.Status != deployer_pb.StepStatus_DONE {
+			t.Fatalf("expected step status DONE, got %s", upsertStep.Status)
+		}
 
 	})
 
