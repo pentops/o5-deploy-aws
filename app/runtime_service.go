@@ -130,7 +130,16 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 	}
 
 	for _, bucket := range globals.buckets {
-		policy.AddBucketReadWrite(bucket.GetAtt("Arn"))
+		if !bucket.write && !bucket.read {
+			bucket.read = true
+		}
+		if bucket.read && bucket.write {
+			policy.AddBucketReadWrite(bucket.arn)
+		} else if bucket.read {
+			policy.AddBucketReadOnly(bucket.arn)
+		} else if bucket.write {
+			policy.AddBucketWriteOnly(bucket.arn)
+		}
 	}
 
 	if runtime.GrantMetaDeployPermissions {

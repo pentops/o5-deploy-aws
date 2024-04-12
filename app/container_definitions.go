@@ -98,12 +98,12 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 			if varType.Blobstore.SubPath == nil {
 				value = cloudformation.JoinPtr("", []string{
 					"s3://",
-					*bucketResource.Resource.BucketName, // This is NOT a real string
+					*bucketResource.name, // This is NOT a real string
 				})
 			} else {
 				value = cloudformation.JoinPtr("", []string{
 					"s3://",
-					*bucketResource.Resource.BucketName, // This is NOT a real string
+					*bucketResource.name, // This is NOT a real string
 					"/",
 					*varType.Blobstore.SubPath,
 				})

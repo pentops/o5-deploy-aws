@@ -50,10 +50,17 @@ type globalData struct {
 
 	databases map[string]DatabaseReference
 	secrets   map[string]*Resource[*secretsmanager.Secret]
-	buckets   map[string]*Resource[*s3.Bucket]
+	buckets   map[string]*bucketInfo
 
 	replayChance     int64
 	deadletterChance int64
+}
+
+type bucketInfo struct {
+	name  *string
+	arn   string
+	read  bool
+	write bool
 }
 
 // DatabaseReference is used to look up parameters ECS Task Definitions
@@ -141,7 +148,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 		appName:          app.Name,
 		databases:        map[string]DatabaseReference{},
 		secrets:          map[string]*Resource[*secretsmanager.Secret]{},
-		buckets:          map[string]*Resource[*s3.Bucket]{},
+		buckets:          map[string]*bucketInfo{},
 		replayChance:     0,
 		deadletterChance: 0,
 	}
@@ -154,17 +161,69 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 	}
 
 	for _, blobstoreDef := range app.Blobstores {
-		bucket := NewResource(blobstoreDef.Name, &s3.Bucket{
-			BucketName: cloudformation.JoinPtr(".", []string{
+		if blobstoreDef.Ref != nil {
+			readPermission := blobstoreDef.Ref.ReadPermission
+			writePermission := blobstoreDef.Ref.WritePermission
+			if !readPermission && !writePermission {
+				// sand default is read-only
+				readPermission = true
+			}
+
+			switch st := blobstoreDef.Ref.Source.(type) {
+			case *application_pb.BlobstoreRef_Application:
+				bucketName := cloudformation.JoinPtr(".", []string{
+					blobstoreDef.Name,
+					st.Application,
+					cloudformation.Ref(EnvNameParameter),
+					cloudformation.Ref(AWSRegionParameter),
+					cloudformation.Ref(S3BucketNamespaceParameter),
+				})
+
+				global.buckets[blobstoreDef.Name] = &bucketInfo{
+					name: bucketName,
+					arn: cloudformation.Join(":", []string{
+						"arn:aws:s3",
+						cloudformation.Ref(AWSRegionParameter),
+						cloudformation.Ref(AWSAccountIDParameter),
+						*bucketName}),
+					read:  readPermission,
+					write: writePermission,
+				}
+
+			case *application_pb.BlobstoreRef_BucketName:
+				bucketName := st.BucketName
+				global.buckets[blobstoreDef.Name] = &bucketInfo{
+					name:  &bucketName,
+					arn:   cloudformation.Join(":", []string{"arn:aws:s3", cloudformation.Ref(AWSRegionParameter), cloudformation.Ref(AWSAccountIDParameter), bucketName}),
+					read:  readPermission,
+					write: writePermission,
+				}
+
+			default:
+				return nil, fmt.Errorf("unknown blobstore source type %T", st)
+			}
+
+		} else {
+
+			bucketName := cloudformation.JoinPtr(".", []string{
 				blobstoreDef.Name,
 				app.Name,
 				cloudformation.Ref(EnvNameParameter),
 				cloudformation.Ref(AWSRegionParameter),
 				cloudformation.Ref(S3BucketNamespaceParameter),
-			}),
-		})
-		global.buckets[blobstoreDef.Name] = bucket
-		stackTemplate.AddResource(bucket)
+			})
+			bucket := NewResource(blobstoreDef.Name, &s3.Bucket{
+				BucketName: bucketName,
+			})
+			global.buckets[blobstoreDef.Name] = &bucketInfo{
+				name:  bucketName,
+				arn:   bucket.GetAtt("Arn"),
+				read:  true,
+				write: true,
+			}
+
+			stackTemplate.AddResource(bucket)
+		}
 	}
 
 	for _, secretDef := range app.Secrets {

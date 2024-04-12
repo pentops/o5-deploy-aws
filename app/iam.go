@@ -10,11 +10,13 @@ type PolicyBuilder struct {
 	s3ReadWrite    []string
 	s3ReadWriteAcl []string
 	s3ReadOnly     []string
-	sqsSubscribe   []string
-	sqsPublish     []string
-	snsPublish     []string
-	ses            *application_pb.AWSConfig_SES
-	ecrPull        bool
+	s3WriteOnly    []string
+
+	sqsSubscribe []string
+	sqsPublish   []string
+	snsPublish   []string
+	ses          *application_pb.AWSConfig_SES
+	ecrPull      bool
 
 	metaDeployPermissions bool
 }
@@ -25,6 +27,10 @@ func NewPolicyBuilder() *PolicyBuilder {
 
 func (pb *PolicyBuilder) AddBucketReadOnly(arn string) {
 	pb.s3ReadOnly = append(pb.s3ReadOnly, arn)
+}
+
+func (pb *PolicyBuilder) AddBucketWriteOnly(arn string) {
+	pb.s3WriteOnly = append(pb.s3WriteOnly, arn)
 }
 
 func (pb *PolicyBuilder) AddBucketReadWrite(arn string) {
@@ -59,6 +65,22 @@ func (pb *PolicyBuilder) AddECRPull() {
 	pb.ecrPull = true
 }
 
+type PolicyDocument struct {
+	// Version of the policy document
+	Version string `json:"Version"`
+	// Statement is the list of statements in the policy document
+	Statement []StatementEntry `json:"Statement"`
+}
+
+type StatementEntry struct {
+	// Effect is the effect of the statement
+	Effect string `json:"Effect"`
+	// Action is the list of actions allowed or denied by the statement
+	Action []string `json:"Action"`
+	// Resource is the list of resources the statement applies to
+	Resource []string `json:"Resource"`
+}
+
 func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Policy {
 
 	accountIDRef := cloudformation.Ref("AWS::AccountId")
@@ -76,26 +98,23 @@ func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Po
 
 	rolePolicies = append(rolePolicies, iam.Role_Policy{
 		PolicyName: uniqueName("secrets"),
-		PolicyDocument: map[string]interface{}{
-			"Version": "2012-10-17",
-			"Statement": []interface{}{
-				map[string]interface{}{
-					"Effect": "Allow",
-					"Action": []interface{}{
-						"secretsmanager:GetSecretValue",
-					},
-					"Resource": cloudformation.Join("", []string{
-						"arn:aws:secretsmanager:us-east-1:",
-						accountIDRef,
-						":secret:/",
-						envNameRef,
-						"/",
-						appName,
-						"/*",
-					},
-					),
+		PolicyDocument: PolicyDocument{
+			Version: "2012-10-17",
+			Statement: []StatementEntry{{
+				Effect: "Allow",
+				Action: []string{
+					"secretsmanager:GetSecretValue",
 				},
-			},
+				Resource: []string{cloudformation.Join("", []string{
+					"arn:aws:secretsmanager:us-east-1:",
+					accountIDRef,
+					":secret:/",
+					envNameRef,
+					"/",
+					appName,
+					"/*",
+				})},
+			}},
 		},
 	})
 
@@ -229,24 +248,23 @@ func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Po
 	if len(pb.s3ReadWriteAcl) > 0 {
 		policy := iam.Role_Policy{
 			PolicyName: uniqueName("s3-readwrite-acl"),
-			PolicyDocument: map[string]interface{}{
-				"Version": "2012-10-17",
-				"Statement": []interface{}{
-					map[string]interface{}{
-						"Effect":   "Allow",
-						"Action":   "s3:ListBucket",
-						"Resource": pb.s3ReadWriteAcl,
+			PolicyDocument: PolicyDocument{
+				Version: "2012-10-17",
+				Statement: []StatementEntry{{
+					Effect: "Allow",
+					Action: []string{
+						"s3:ListBucket",
 					},
-					map[string]interface{}{
-						"Effect": "Allow",
-						"Action": []interface{}{
-							"s3:GetObject",
-							"s3:PutObject",
-							"s3:PutObjectAcl",
-						},
-						"Resource": addS3TrailingSlash(pb.s3ReadWriteAcl),
+					Resource: pb.s3ReadWriteAcl,
+				}, {
+					Effect: "Allow",
+					Action: []string{
+						"s3:GetObject",
+						"s3:PutObject",
+						"s3:PutObjectAcl",
 					},
-				},
+					Resource: addS3TrailingSlash(pb.s3ReadWriteAcl),
+				}},
 			},
 		}
 
@@ -256,23 +274,22 @@ func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Po
 	if len(pb.s3ReadWrite) > 0 {
 		policy := iam.Role_Policy{
 			PolicyName: uniqueName("s3-readwrite"),
-			PolicyDocument: map[string]interface{}{
-				"Version": "2012-10-17",
-				"Statement": []interface{}{
-					map[string]interface{}{
-						"Effect":   "Allow",
-						"Action":   "s3:ListBucket",
-						"Resource": pb.s3ReadWrite,
+			PolicyDocument: PolicyDocument{
+				Version: "2012-10-17",
+				Statement: []StatementEntry{{
+					Effect: "Allow",
+					Action: []string{
+						"s3:ListBucket",
 					},
-					map[string]interface{}{
-						"Effect": "Allow",
-						"Action": []interface{}{
-							"s3:GetObject",
-							"s3:PutObject",
-						},
-						"Resource": addS3TrailingSlash(pb.s3ReadWrite),
+					Resource: pb.s3ReadWrite,
+				}, {
+					Effect: "Allow",
+					Action: []string{
+						"s3:GetObject",
+						"s3:PutObject",
 					},
-				},
+					Resource: addS3TrailingSlash(pb.s3ReadWrite),
+				}},
 			},
 		}
 
@@ -282,22 +299,45 @@ func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Po
 	if len(pb.s3ReadOnly) > 0 {
 		policy := iam.Role_Policy{
 			PolicyName: uniqueName("s3-readonly"),
-			PolicyDocument: map[string]interface{}{
-				"Version": "2012-10-17",
-				"Statement": []interface{}{
-					map[string]interface{}{
-						"Effect":   "Allow",
-						"Action":   "s3:ListBucket",
-						"Resource": pb.s3ReadOnly,
+			PolicyDocument: PolicyDocument{
+				Version: "2012-10-17",
+				Statement: []StatementEntry{{
+					Effect: "Allow",
+					Action: []string{
+						"s3:ListBucket",
 					},
-					map[string]interface{}{
-						"Effect": "Allow",
-						"Action": []interface{}{
-							"s3:GetObject",
-						},
-						"Resource": addS3TrailingSlash(pb.s3ReadOnly),
+					Resource: pb.s3ReadOnly,
+				}, {
+					Effect: "Allow",
+					Action: []string{
+						"s3:GetObject",
 					},
-				},
+					Resource: addS3TrailingSlash(pb.s3ReadOnly),
+				}},
+			},
+		}
+
+		rolePolicies = append(rolePolicies, policy)
+	}
+
+	if len(pb.s3WriteOnly) > 0 {
+		policy := iam.Role_Policy{
+			PolicyName: uniqueName("s3-writeonly"),
+			PolicyDocument: PolicyDocument{
+				Version: "2012-10-17",
+				Statement: []StatementEntry{{
+					Effect: "Allow",
+					Action: []string{
+						"s3:ListBucket",
+					},
+					Resource: pb.s3WriteOnly,
+				}, {
+					Effect: "Allow",
+					Action: []string{
+						"s3:PutObject",
+					},
+					Resource: addS3TrailingSlash(pb.s3WriteOnly),
+				}},
 			},
 		}
 
@@ -329,9 +369,9 @@ func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Po
 
 }
 
-func addS3TrailingSlash(in []string) []interface{} {
+func addS3TrailingSlash(in []string) []string {
 
-	subResources := make([]interface{}, 0, len(in)*2)
+	subResources := make([]string, 0, len(in)*2)
 
 	for i := range in {
 		//This represents all of the objects inside of the s3 buckets. Receiver of Get and Put permissions.
