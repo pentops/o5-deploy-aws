@@ -8,7 +8,6 @@ import (
 
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
-	"github.com/awslabs/goformation/v7/cloudformation/s3"
 	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
 	"github.com/awslabs/goformation/v7/cloudformation/tags"
 	"github.com/pentops/o5-go/application/v1/application_pb"
@@ -144,101 +143,9 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 		stackTemplate.AddParameter(parameter)
 	}
 
-	global := globalData{
-		appName:          app.Name,
-		databases:        map[string]DatabaseReference{},
-		secrets:          map[string]*Resource[*secretsmanager.Secret]{},
-		buckets:          map[string]*bucketInfo{},
-		replayChance:     0,
-		deadletterChance: 0,
-	}
-
-	if app.SidecarConfig != nil && app.SidecarConfig.DeadletterChance > 0 {
-		global.deadletterChance = app.SidecarConfig.DeadletterChance
-	}
-	if app.SidecarConfig != nil && app.SidecarConfig.ReplayChance > 0 {
-		global.replayChance = app.SidecarConfig.ReplayChance
-	}
-
-	for _, blobstoreDef := range app.Blobstores {
-		if blobstoreDef.Ref != nil {
-			readPermission := blobstoreDef.Ref.ReadPermission
-			writePermission := blobstoreDef.Ref.WritePermission
-			if !readPermission && !writePermission {
-				// sand default is read-only
-				readPermission = true
-			}
-
-			switch st := blobstoreDef.Ref.Source.(type) {
-			case *application_pb.BlobstoreRef_Application:
-				bucketName := cloudformation.JoinPtr(".", []string{
-					blobstoreDef.Name,
-					st.Application,
-					cloudformation.Ref(EnvNameParameter),
-					cloudformation.Ref(AWSRegionParameter),
-					cloudformation.Ref(S3BucketNamespaceParameter),
-				})
-
-				global.buckets[blobstoreDef.Name] = &bucketInfo{
-					name: bucketName,
-					arn: cloudformation.Join(":", []string{
-						"arn:aws:s3",
-						cloudformation.Ref(AWSRegionParameter),
-						cloudformation.Ref(AWSAccountIDParameter),
-						*bucketName}),
-					read:  readPermission,
-					write: writePermission,
-				}
-
-			case *application_pb.BlobstoreRef_BucketName:
-				bucketName := st.BucketName
-				global.buckets[blobstoreDef.Name] = &bucketInfo{
-					name:  &bucketName,
-					arn:   cloudformation.Join(":", []string{"arn:aws:s3", cloudformation.Ref(AWSRegionParameter), cloudformation.Ref(AWSAccountIDParameter), bucketName}),
-					read:  readPermission,
-					write: writePermission,
-				}
-
-			default:
-				return nil, fmt.Errorf("unknown blobstore source type %T", st)
-			}
-
-		} else {
-
-			bucketName := cloudformation.JoinPtr(".", []string{
-				blobstoreDef.Name,
-				app.Name,
-				cloudformation.Ref(EnvNameParameter),
-				cloudformation.Ref(AWSRegionParameter),
-				cloudformation.Ref(S3BucketNamespaceParameter),
-			})
-			bucket := NewResource(blobstoreDef.Name, &s3.Bucket{
-				BucketName: bucketName,
-			})
-			global.buckets[blobstoreDef.Name] = &bucketInfo{
-				name:  bucketName,
-				arn:   bucket.GetAtt("Arn"),
-				read:  true,
-				write: true,
-			}
-
-			stackTemplate.AddResource(bucket)
-		}
-	}
-
-	for _, secretDef := range app.Secrets {
-		parameterName := fmt.Sprintf("AppSecret%s", cases.Title(language.English).String(secretDef.Name))
-		secret := NewResource(parameterName, &secretsmanager.Secret{
-			Name: cloudformation.JoinPtr("/", []string{
-				"", // Leading /
-				cloudformation.Ref(EnvNameParameter),
-				app.Name,
-				secretDef.Name,
-			}),
-			Description: Stringf("Application Level Secret for %s:%s - value must be set manually", app.Name, secretDef.Name),
-		})
-		global.secrets[secretDef.Name] = secret
-		stackTemplate.AddResource(secret)
+	global, err := mapResources(app, stackTemplate)
+	if err != nil {
+		return nil, err
 	}
 
 	runtimes := map[string]*RuntimeService{}
@@ -294,7 +201,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 				// other databases (and likely other resources) are created.
 				// Not likely to be a problem any time soon so long as THIS
 				// database is added early which it is.
-				migrationContainer, err := buildContainer(global, dbType.Postgres.MigrateContainer)
+				migrationContainer, err := buildContainer(*global, dbType.Postgres.MigrateContainer)
 				if err != nil {
 					return nil, fmt.Errorf("building migration container for %s: %w", database.Name, err)
 				}
@@ -353,7 +260,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 	listener := NewListenerRuleSet()
 
 	for _, runtime := range app.Runtimes {
-		runtimeStack, err := NewRuntimeService(global, runtime)
+		runtimeStack, err := NewRuntimeService(*global, runtime)
 		if err != nil {
 			return nil, err
 		}
