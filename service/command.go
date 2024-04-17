@@ -94,8 +94,6 @@ type stackIdentifiers struct {
 	stackID     string
 }
 
-var stackIDNamespace = uuid.MustParse("87742CC6-9D66-4547-A744-647B1C0D7F59")
-
 func (ds *CommandService) lookupStack(ctx context.Context, presented string) (stackIdentifiers, error) {
 
 	query := sq.
@@ -111,8 +109,8 @@ func (ds *CommandService) lookupStack(ctx context.Context, presented string) (st
 
 	parts := strings.Split(presented, "-")
 	if len(parts) == 2 {
-		query.Where("state->>'environmentName' = ?", parts[0])
-		query.Where("state->>'applicationName' = ?", parts[1])
+		query.Where("env_name = ?", parts[0])
+		query.Where("app_name = ?", parts[1])
 		fallbackEnvName = parts[0]
 		fallbackAppName = parts[1]
 	} else if _, err := uuid.Parse(presented); err == nil {
@@ -165,7 +163,7 @@ func (ds *CommandService) lookupStack(ctx context.Context, presented string) (st
 	}
 
 	if res.stackID == "" {
-		res.stackID = uuid.NewSHA1(stackIDNamespace, []byte(fallbackAppName+"-"+fallbackEnvName)).String()
+		res.stackID = states.StackID(fallbackEnvName, fallbackAppName)
 		log.WithFields(ctx, map[string]interface{}{
 			"stack_id":    res.stackID,
 			"environment": fallbackEnvName,
