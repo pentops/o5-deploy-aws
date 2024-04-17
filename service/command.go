@@ -217,16 +217,18 @@ func (ds *CommandService) lookupEnvironment(ctx context.Context, presented strin
 }
 
 func (ds *CommandService) TriggerDeployment(ctx context.Context, req *deployer_spb.TriggerDeploymentRequest) (*deployer_spb.TriggerDeploymentResponse, error) {
-	if req.Source == nil || req.Source.GetGitHub() == nil {
+	if req.Source == nil || req.Source.GetGithub() == nil {
 		return nil, status.Error(codes.Unimplemented, "only github source is supported")
 	}
-	gh := req.Source.GetGitHub()
+	gh := req.Source.GetGithub()
 
 	if gh.GetCommit() == "" {
 		return nil, status.Error(codes.InvalidArgument, "only commit is supported currently")
 	}
 
-	apps, err := ds.github.PullO5Configs(ctx, gh.Owner, gh.Repo, gh.GetCommit())
+	commitHash := gh.GetCommit()
+
+	apps, err := ds.github.PullO5Configs(ctx, gh.Owner, gh.Repo, commitHash)
 	if err != nil {
 		return nil, fmt.Errorf("github: pull o5 config: %w", err)
 	}
@@ -250,7 +252,15 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *deployer_s
 		Version:       gh.GetCommit(),
 		EnvironmentId: environmentID.id,
 		Flags:         req.Flags,
-		Source:        req.Source,
+		Source: &deployer_pb.CodeSourceType{
+			Type: &deployer_pb.CodeSourceType_Github_{
+				Github: &deployer_pb.CodeSourceType_Github{
+					Owner:  gh.Owner,
+					Repo:   gh.Repo,
+					Commit: commitHash,
+				},
+			},
+		},
 	}
 
 	if err := ds.db.Transact(ctx, &sqrlx.TxOptions{

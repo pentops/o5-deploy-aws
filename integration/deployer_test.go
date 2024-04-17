@@ -41,14 +41,12 @@ func TestCreateHappy(t *testing.T) {
 		_, err = t.DeployerCommand.UpsertStack(ctx, &deployer_spb.UpsertStackRequest{
 			StackId: "env-app",
 			Config: &deployer_pb.StackConfig{
-				CodeSource: &deployer_pb.CodeSourceType{
-					Type: &deployer_pb.CodeSourceType_GitHub_{
-						GitHub: &deployer_pb.CodeSourceType_GitHub{
-							Owner: "owner",
-							Repo:  "repo",
-							Ref: &deployer_pb.CodeSourceType_GitHub_Branch{
-								Branch: "ref1",
-							},
+				CodeSource: &deployer_pb.SourceTriggerType{
+					Type: &deployer_pb.SourceTriggerType_Github_{
+						Github: &deployer_pb.SourceTriggerType_Github{
+							Owner:  "owner",
+							Repo:   "repo",
+							Branch: "ref1",
 						},
 					},
 				},

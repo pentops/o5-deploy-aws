@@ -46,17 +46,11 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 			}
 
 			if s.Config != nil && s.Config.CodeSource != nil {
-				githubConfig := s.Config.CodeSource.GetGitHub()
+				githubConfig := s.Config.CodeSource.GetGithub()
 				if githubConfig != nil {
 					mm["github_owner"] = githubConfig.Owner
 					mm["github_repo"] = githubConfig.Repo
-
-					switch githubConfig.Ref.(type) {
-					case *deployer_pb.CodeSourceType_GitHub_Branch:
-						mm["github_ref"] = fmt.Sprintf("refs/heads/%s", githubConfig.GetBranch())
-					case *deployer_pb.CodeSourceType_GitHub_Commit:
-						mm["github_ref"] = githubConfig.GetCommit()
-					}
+					mm["github_ref"] = fmt.Sprintf("refs/heads/%s", githubConfig.Branch)
 				}
 			}
 
@@ -101,6 +95,8 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		state.Config = event.Config
 		state.EnvironmentId = event.EnvironmentId
 		state.EnvironmentName = event.EnvironmentName
+		state.ApplicationName = event.ApplicationName
+		state.StackName = fmt.Sprintf("%s-%s", event.EnvironmentName, event.ApplicationName)
 		return nil
 	}))
 
@@ -121,6 +117,10 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		if state.EnvironmentName != event.EnvironmentName {
 			return status.Errorf(codes.InvalidArgument, "environment name cannot be changed (from %s to %s)", state.EnvironmentName, event.EnvironmentName)
 		}
+		if state.ApplicationName != event.ApplicationName {
+			return status.Errorf(codes.InvalidArgument, "application name cannot be changed (from %s to %s)", state.ApplicationName, event.ApplicationName)
+		}
+
 		return nil
 	}))
 
@@ -145,6 +145,7 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		state.EnvironmentName = event.EnvironmentName
 		state.EnvironmentId = event.EnvironmentId
 		state.QueuedDeployments = []*deployer_pb.StackDeployment{}
+		state.StackName = fmt.Sprintf("%s-%s", event.EnvironmentName, event.ApplicationName)
 
 		tb.SideEffect(&deployer_tpb.TriggerDeploymentMessage{
 			DeploymentId:    state.CurrentDeployment.DeploymentId,
