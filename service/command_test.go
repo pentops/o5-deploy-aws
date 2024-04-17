@@ -126,12 +126,12 @@ func TestTriggerDeployment(t *testing.T) {
 	triggerRes, err := ds.TriggerDeployment(ctx, &deployer_spb.TriggerDeploymentRequest{
 		DeploymentId: uuid.NewString(),
 		Environment:  "test",
-		Source: &deployer_pb.CodeSourceType{
-			Type: &deployer_pb.CodeSourceType_GitHub_{
-				GitHub: &deployer_pb.CodeSourceType_GitHub{
+		Source: &deployer_spb.TriggerSource{
+			Type: &deployer_spb.TriggerSource_Github{
+				Github: &deployer_spb.TriggerSource_GithubSource{
 					Owner: "owner",
 					Repo:  "repo",
-					Ref: &deployer_pb.CodeSourceType_GitHub_Commit{
+					Ref: &deployer_spb.TriggerSource_GithubSource_Commit{
 						Commit: "commit",
 					},
 				},
