@@ -46,12 +46,12 @@ func (ss *Application) Build() *BuiltApplication {
 		snsToipcs = append(snsToipcs, topic.Name)
 	}
 
-	template, parameterSlice := ss.TemplateBuilder.Build()
+	template := ss.TemplateBuilder.Build()
 
 	return &BuiltApplication{
-		Template: template,
+		Template: template.Template,
 		BuiltApplication: &deployer_pb.BuiltApplication{
-			Parameters:        parameterSlice,
+			Parameters:        template.Parameters,
 			PostgresDatabases: ss.postgresDatabases,
 			SnsTopics:         snsToipcs,
 			Name:              ss.appName,
