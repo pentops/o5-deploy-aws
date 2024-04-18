@@ -74,17 +74,8 @@ runtimes:
               s3_direct: true
           - name: GRPC_PORT
             value: "8080"
-          - name: GH_PRIVATE_KEY
+          - name: GITHUB_APPS
             secret:
               secretName: github
-              jsonKey: privateKey
-          - name: GH_APP_ID
-            secret:
-              secretName: github
-              jsonKey: appId
-          - name: GH_INSTALLATION_ID
-            secret:
-              secretName: github
-              jsonKey: installationId
 
 

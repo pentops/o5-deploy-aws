@@ -20,10 +20,18 @@ import (
 type Client struct {
 	repositories RepositoriesService
 }
+
 type RepositoriesService interface {
 	DownloadContents(ctx context.Context, owner, repo, filepath string, opts *github.RepositoryContentGetOptions) (io.ReadCloser, *github.Response, error)
 	ListByOrg(context.Context, string, *github.RepositoryListByOrgOptions) ([]*github.Repository, *github.Response, error)
 	GetContents(ctx context.Context, owner, repo, path string, opts *github.RepositoryContentGetOptions) (fileContent *github.RepositoryContent, directoryContent []*github.RepositoryContent, resp *github.Response, err error)
+}
+
+type AppConfig struct {
+	OrgName        string `json:"orgName"`
+	PrivateKey     string `json:"privateKey"`
+	AppID          int64  `json:"appId"`
+	InstallationID int64  `json:"installationId"`
 }
 
 func NewEnvClient(ctx context.Context) (*Client, error) {
@@ -42,44 +50,40 @@ func NewEnvClient(ctx context.Context) (*Client, error) {
 		return nil, err
 	}
 
-	var err error
-	var client *Client
-
 	if config.GithubPrivateKey != "" {
 		if config.GithubAppID == 0 || config.GithubInstallationID == 0 {
 			return nil, fmt.Errorf("no github app id or installation id")
 		}
 
-		tr := http.DefaultTransport
-		privateKey, err := base64.StdEncoding.DecodeString(config.GithubPrivateKey)
-		if err != nil {
-			return nil, err
-		}
-
-		itr, err := ghinstallation.New(tr, config.GithubAppID, int64(config.GithubInstallationID), privateKey)
-		if err != nil {
-			return nil, err
-		}
-
-		client, err = NewClient(&http.Client{Transport: itr})
-		if err != nil {
-			return nil, err
-		}
+		return NewAppClient(AppConfig{
+			AppID:          config.GithubAppID,
+			InstallationID: config.GithubInstallationID,
+			PrivateKey:     config.GithubPrivateKey,
+		})
 
 	} else if config.GithubToken != "" {
 		ts := oauth2.StaticTokenSource(
 			&oauth2.Token{AccessToken: config.GithubToken},
 		)
 		tc := oauth2.NewClient(ctx, ts)
-		client, err = NewClient(tc)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		return nil, fmt.Errorf("no valid github config in environment")
+		return NewClient(tc)
+	}
+	return nil, fmt.Errorf("no valid github config in environment")
+}
+
+func NewAppClient(config AppConfig) (*Client, error) {
+	tr := http.DefaultTransport
+	privateKey, err := base64.StdEncoding.DecodeString(config.PrivateKey)
+	if err != nil {
+		return nil, err
 	}
 
-	return client, nil
+	itr, err := ghinstallation.New(tr, config.AppID, config.InstallationID, privateKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewClient(&http.Client{Transport: itr})
 }
 
 func NewClient(tc *http.Client) (*Client, error) {
@@ -133,4 +137,39 @@ func (cl Client) PullO5Configs(ctx context.Context, org string, repo string, ref
 	}
 
 	return apps, nil
+}
+
+type MultiOrgClient struct {
+	clients map[string]*Client
+}
+
+func NewMultiOrgClient(clients map[string]*Client) (*MultiOrgClient, error) {
+	return &MultiOrgClient{
+		clients: clients,
+	}, nil
+}
+
+func NewMultiOrgClientFromConfigs(configs ...AppConfig) (*MultiOrgClient, error) {
+	clients := make(map[string]*Client, len(configs))
+	for _, config := range configs {
+		client, err := NewAppClient(config)
+		if err != nil {
+			return nil, err
+		}
+
+		clients[config.OrgName] = client
+	}
+
+	return &MultiOrgClient{
+		clients: clients,
+	}, nil
+}
+
+func (mc MultiOrgClient) PullO5Configs(ctx context.Context, org string, repo string, ref string) ([]*application_pb.Application, error) {
+	client, ok := mc.clients[org]
+	if !ok {
+		return nil, fmt.Errorf("no github client for org %s", org)
+	}
+
+	return client.PullO5Configs(ctx, org, repo, ref)
 }
