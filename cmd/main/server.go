@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	sq "github.com/elgris/sqrl"
 	"github.com/pentops/log.go/grpc_log"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/app"
@@ -24,10 +26,14 @@ import (
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/github/v1/github_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_tpb"
+	"github.com/pentops/protostate/gen/list/v1/psml_pb"
+	"github.com/pentops/protostate/psm"
 	"github.com/pentops/runner/commander"
+	"github.com/pentops/sqrlx.go/sqrlx"
 	"github.com/pressly/goose"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 var Version string
@@ -38,6 +44,7 @@ func main() {
 
 	cmdGroup.Add("serve", commander.NewCommand(runServe))
 	cmdGroup.Add("migrate", commander.NewCommand(runMigrate))
+	cmdGroup.Add("data-pass", commander.NewCommand(runDataPass))
 	cmdGroup.Add("local-deploy", commander.NewCommand(runLocalDeploy))
 
 	cmdGroup.RunMain("o5-deploy-aws", Version)
@@ -55,12 +62,123 @@ func runMigrate(ctx context.Context, config struct {
 	return goose.Up(db, "/migrations")
 }
 
+func runDataPass(ctx context.Context, config struct{}) error {
+	conn, err := service.OpenDatabase(ctx)
+	if err != nil {
+		return err
+	}
+
+	db, err := sqrlx.New(conn, sq.Dollar)
+	if err != nil {
+		return err
+	}
+
+	stateMachines, err := states.NewStateMachines()
+	if err != nil {
+		return err
+	}
+
+	{
+		stackQuery, err := deployer_spb.NewStackPSMQuerySet(
+			deployer_spb.DefaultStackPSMQuerySpec(stateMachines.Stack.StateTableSpec()),
+			psm.StateQueryOptions{},
+		)
+		if err != nil {
+			return fmt.Errorf("failed to build stack query: %w", err)
+		}
+
+		page := &psml_pb.PageRequest{}
+		for {
+			res := &deployer_spb.ListStacksResponse{}
+			if err := stackQuery.List(ctx, db, &deployer_spb.ListStacksRequest{
+				Page: page,
+			}, res); err != nil {
+				return err
+			}
+			if res.Page != nil && res.Page.NextToken != nil {
+				page.Token = res.Page.NextToken
+			} else {
+				break
+			}
+
+			for _, stack := range res.Stacks {
+				fmt.Printf("stack %s\n", protojson.Format(stack))
+				eventPage := &psml_pb.PageRequest{}
+				for {
+					res := &deployer_spb.ListStackEventsResponse{}
+					if err := stackQuery.ListEvents(ctx, db, &deployer_spb.ListStackEventsRequest{
+						StackId: stack.StackId,
+						Page:    eventPage,
+					}, res); err != nil {
+						return err
+					}
+
+					if res.Page != nil && res.Page.NextToken != nil {
+						eventPage.Token = res.Page.NextToken
+					} else {
+						break
+					}
+				}
+
+			}
+		}
+	}
+
+	{
+		deploymentQuery, err := deployer_spb.NewDeploymentPSMQuerySet(
+			deployer_spb.DefaultDeploymentPSMQuerySpec(stateMachines.Deployment.StateTableSpec()),
+			psm.StateQueryOptions{},
+		)
+		if err != nil {
+			return fmt.Errorf("failed to build deployment query: %w", err)
+		}
+		page := &psml_pb.PageRequest{}
+		for {
+			res := &deployer_spb.ListDeploymentsResponse{}
+			if err := deploymentQuery.List(ctx, db, &deployer_spb.ListDeploymentsRequest{
+				Page: page,
+			}, res); err != nil {
+				return err
+			}
+			if res.Page != nil && res.Page.NextToken != nil {
+				page.Token = res.Page.NextToken
+			} else {
+				break
+			}
+
+			for _, deployment := range res.Deployments {
+				fmt.Printf("deployment %s\n", protojson.Format(deployment))
+				eventPage := &psml_pb.PageRequest{}
+				for {
+					res := &deployer_spb.ListDeploymentEventsResponse{}
+					if err := deploymentQuery.ListEvents(ctx, db, &deployer_spb.ListDeploymentEventsRequest{
+						DeploymentId: deployment.DeploymentId,
+						Page:         eventPage,
+					}, res); err != nil {
+						return err
+					}
+
+					if res.Page != nil && res.Page.NextToken != nil {
+						eventPage.Token = res.Page.NextToken
+					} else {
+						break
+					}
+				}
+
+			}
+		}
+
+	}
+	return nil
+}
+
 func runServe(ctx context.Context, cfg struct {
 	GRPCPort int `env:"GRPC_PORT" default:"8081"`
 
 	DeployerAssumeRole string `env:"DEPLOYER_ASSUME_ROLE"`
 	CFTemplates        string `env:"CF_TEMPLATES"`
 	CallbackARN        string `env:"CALLBACK_ARN"`
+	GithubAppsJSON     []byte `env:"GITHUB_APPS"`
 }) error {
 
 	log.WithField(ctx, "PORT", cfg.GRPCPort).Info("Boot")
@@ -115,7 +233,11 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	githubClient, err := github.NewEnvClient(ctx)
+	githubApps := []github.AppConfig{}
+	if err := json.Unmarshal(cfg.GithubAppsJSON, &githubApps); err != nil {
+		return fmt.Errorf("GITHUB_APPS env var: %w", err)
+	}
+	githubClient, err := github.NewMultiOrgClientFromConfigs(githubApps...)
 	if err != nil {
 		return err
 	}
