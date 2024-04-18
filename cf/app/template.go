@@ -20,7 +20,7 @@ type SNSTopic struct {
 }
 
 type Application struct {
-	*cf.Template
+	*cf.TemplateBuilder
 	appName           string
 	version           string
 	quickMode         bool
@@ -32,11 +32,11 @@ type Application struct {
 
 func NewApplication(name, version string) *Application {
 	return &Application{
-		Template:  cf.NewTemplate(),
-		appName:   name,
-		version:   version,
-		snsTopics: map[string]*SNSTopic{},
-		runtimes:  map[string]*RuntimeService{},
+		TemplateBuilder: cf.NewTemplateBuilder(),
+		appName:         name,
+		version:         version,
+		snsTopics:       map[string]*SNSTopic{},
+		runtimes:        map[string]*RuntimeService{},
 	}
 }
 
@@ -46,7 +46,7 @@ func (ss *Application) Build() *BuiltApplication {
 		snsToipcs = append(snsToipcs, topic.Name)
 	}
 
-	template, parameterSlice := ss.Template.Build()
+	template, parameterSlice := ss.TemplateBuilder.Build()
 
 	return &BuiltApplication{
 		Template: template,
