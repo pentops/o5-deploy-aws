@@ -10,6 +10,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
 	"github.com/awslabs/goformation/v7/cloudformation/tags"
+	"github.com/pentops/o5-deploy-aws/cf"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"golang.org/x/text/cases"
@@ -48,7 +49,7 @@ type globalData struct {
 	appName string
 
 	databases map[string]DatabaseReference
-	secrets   map[string]*Resource[*secretsmanager.Secret]
+	secrets   map[string]*cf.Resource[*secretsmanager.Secret]
 	buckets   map[string]*bucketInfo
 
 	replayChance     int64
@@ -65,7 +66,7 @@ type bucketInfo struct {
 // DatabaseReference is used to look up parameters ECS Task Definitions
 type DatabaseReference struct {
 	Definition     *application_pb.Database
-	SecretResource *Resource[*secretsmanager.Secret]
+	SecretResource *cf.Resource[*secretsmanager.Secret]
 }
 
 func (dbDef DatabaseReference) SecretValueFrom() string {
@@ -156,7 +157,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 
 			parameterName := fmt.Sprintf("DatabaseSecret%s", cases.Title(language.English).String(database.Name))
 
-			secret := NewResource(parameterName, &secretsmanager.Secret{
+			secret := cf.NewResource(parameterName, &secretsmanager.Secret{
 				Name: cloudformation.JoinPtr("/", []string{
 					"", // Leading /
 					cloudformation.Ref(EnvNameParameter),
@@ -164,7 +165,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 					"postgres",
 					database.Name,
 				}),
-				Description: Stringf("Secret for Postgres database %s in app %s", database.Name, app.Name),
+				Description: cf.Stringf("Secret for Postgres database %s in app %s", database.Name, app.Name),
 			})
 
 			stackTemplate.AddResource(secret)
@@ -175,7 +176,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 			}
 			global.databases[database.Name] = ref
 
-			secretName := fmt.Sprintf("DatabaseSecret%s", CleanParameterName(database.Name))
+			secretName := fmt.Sprintf("DatabaseSecret%s", cf.CleanParameterName(database.Name))
 			def := &deployer_pb.PostgresDatabaseResource{
 				DbName:           database.Name,
 				ServerGroup:      dbType.Postgres.ServerGroup,
@@ -186,7 +187,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 				def.DbName = dbType.Postgres.DbName
 			}
 
-			stackTemplate.AddOutput(&Output{
+			stackTemplate.AddOutput(&cf.Output{
 				Name:  secretName,
 				Value: secret.Ref(),
 			})
@@ -206,19 +207,19 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 					return nil, fmt.Errorf("building migration container for %s: %w", database.Name, err)
 				}
 				addLogs(migrationContainer.Container, fmt.Sprintf("%s/migrate", global.appName))
-				name := fmt.Sprintf("MigrationTaskDefinition%s", CleanParameterName(database.Name))
+				name := fmt.Sprintf("MigrationTaskDefinition%s", cf.CleanParameterName(database.Name))
 
-				migrationTaskDefinition := NewResource(name, &ecs.TaskDefinition{
+				migrationTaskDefinition := cf.NewResource(name, &ecs.TaskDefinition{
 					ContainerDefinitions: []ecs.TaskDefinition_ContainerDefinition{
 						*migrationContainer.Container,
 					},
-					Family:                  String(fmt.Sprintf("%s_migrate_%s", global.appName, database.Name)),
+					Family:                  cf.String(fmt.Sprintf("%s_migrate_%s", global.appName, database.Name)),
 					ExecutionRoleArn:        cloudformation.RefPtr(ECSTaskExecutionRoleParameter),
 					RequiresCompatibilities: []string{"EC2"},
 				})
 				stackTemplate.AddResource(migrationTaskDefinition)
-				def.MigrationTaskOutputName = String(name)
-				stackTemplate.AddOutput(&Output{
+				def.MigrationTaskOutputName = cf.String(name)
+				stackTemplate.AddOutput(&cf.Output{
 					Name:  name,
 					Value: migrationTaskDefinition.Ref(),
 				})

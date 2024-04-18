@@ -6,21 +6,22 @@ import (
 
 	"github.com/awslabs/goformation/v7/cloudformation"
 	elbv2 "github.com/awslabs/goformation/v7/cloudformation/elasticloadbalancingv2"
+	"github.com/pentops/o5-deploy-aws/cf"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 )
 
 type ListenerRuleSet struct {
-	Rules []*Resource[*elbv2.ListenerRule]
+	Rules []*cf.Resource[*elbv2.ListenerRule]
 }
 
 func NewListenerRuleSet() *ListenerRuleSet {
 	return &ListenerRuleSet{
-		Rules: []*Resource[*elbv2.ListenerRule]{},
+		Rules: []*cf.Resource[*elbv2.ListenerRule]{},
 	}
 }
 
-func (ll *ListenerRuleSet) AddRoute(targetGroup *Resource[*elbv2.TargetGroup], route *application_pb.Route) (*Resource[*elbv2.ListenerRule], error) {
+func (ll *ListenerRuleSet) AddRoute(targetGroup *cf.Resource[*elbv2.TargetGroup], route *application_pb.Route) (*cf.Resource[*elbv2.ListenerRule], error) {
 	hash := sha1.New()
 	hash.Write([]byte(route.Prefix))
 	pathClean := fmt.Sprintf("%x", hash.Sum(nil))
@@ -47,12 +48,12 @@ func (ll *ListenerRuleSet) AddRoute(targetGroup *Resource[*elbv2.TargetGroup], r
 			Type: "forward",
 			ForwardConfig: &elbv2.ListenerRule_ForwardConfig{
 				TargetGroups: []elbv2.ListenerRule_TargetGroupTuple{{
-					TargetGroupArn: String(targetGroup.Ref()),
+					TargetGroupArn: cf.String(targetGroup.Ref()),
 				}},
 			},
 		}},
 		Conditions: []elbv2.ListenerRule_RuleCondition{{
-			Field:  String("path-pattern"),
+			Field:  cf.String("path-pattern"),
 			Values: []string{fmt.Sprintf("%s*", route.Prefix)},
 		}},
 	}
@@ -64,7 +65,7 @@ func (ll *ListenerRuleSet) AddRoute(targetGroup *Resource[*elbv2.TargetGroup], r
 			return nil, fmt.Errorf("too many subdomains for route %s, max 3", route.Prefix)
 		}
 		condition := elbv2.ListenerRule_RuleCondition{
-			Field:  String("host-header"),
+			Field:  cf.String("host-header"),
 			Values: []string{},
 		}
 		for _, subdomain := range route.Subdomains {
@@ -74,31 +75,25 @@ func (ll *ListenerRuleSet) AddRoute(targetGroup *Resource[*elbv2.TargetGroup], r
 
 	} else {
 		rule.Conditions = append(rule.Conditions, elbv2.ListenerRule_RuleCondition{
-			Field:  String("host-header"),
+			Field:  cf.String("host-header"),
 			Values: []string{cloudformation.Ref(HostHeaderParameter)},
 		})
 	}
 
-	resource := &Resource[*elbv2.ListenerRule]{
-		// TODO: This should use the constructor
-		name:     name,
-		Resource: rule,
-		Overrides: map[string]string{
-			"Priority": cloudformation.Ref(priority),
-		},
-		parameters: []*deployer_pb.Parameter{{
-			Name:        priority,
-			Type:        "Number",
-			Description: fmt.Sprintf(":o5:priority:%s", route.Prefix),
-			Source: &deployer_pb.ParameterSourceType{
-				Type: &deployer_pb.ParameterSourceType_RulePriority_{
-					RulePriority: &deployer_pb.ParameterSourceType_RulePriority{
-						RouteGroup: route.RouteGroup,
-					},
+	resource := cf.NewResource(name, rule)
+	resource.Override("Priority", cloudformation.Ref(priority))
+	resource.AddParameter(&deployer_pb.Parameter{
+		Name:        priority,
+		Type:        "Number",
+		Description: fmt.Sprintf(":o5:priority:%s", route.Prefix),
+		Source: &deployer_pb.ParameterSourceType{
+			Type: &deployer_pb.ParameterSourceType_RulePriority_{
+				RulePriority: &deployer_pb.ParameterSourceType_RulePriority{
+					RouteGroup: route.RouteGroup,
 				},
 			},
-		}},
-	}
+		},
+	})
 
 	ll.Rules = append(ll.Rules, resource)
 	return resource, nil

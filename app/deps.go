@@ -6,6 +6,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/s3"
 	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
+	"github.com/pentops/o5-deploy-aws/cf"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -17,7 +18,7 @@ func mapResources(app *application_pb.Application, stackTemplate *Application) (
 
 		appName:          app.Name,
 		databases:        map[string]DatabaseReference{},
-		secrets:          map[string]*Resource[*secretsmanager.Secret]{},
+		secrets:          map[string]*cf.Resource[*secretsmanager.Secret]{},
 		buckets:          map[string]*bucketInfo{},
 		replayChance:     0,
 		deadletterChance: 0,
@@ -46,14 +47,14 @@ func mapResources(app *application_pb.Application, stackTemplate *Application) (
 
 	for _, secretDef := range app.Secrets {
 		parameterName := fmt.Sprintf("AppSecret%s", cases.Title(language.English).String(secretDef.Name))
-		secret := NewResource(parameterName, &secretsmanager.Secret{
+		secret := cf.NewResource(parameterName, &secretsmanager.Secret{
 			Name: cloudformation.JoinPtr("/", []string{
 				"", // Leading /
 				cloudformation.Ref(EnvNameParameter),
 				app.Name,
 				secretDef.Name,
 			}),
-			Description: Stringf("Application Level Secret for %s:%s - value must be set manually", app.Name, secretDef.Name),
+			Description: cf.Stringf("Application Level Secret for %s:%s - value must be set manually", app.Name, secretDef.Name),
 		})
 		global.secrets[secretDef.Name] = secret
 		stackTemplate.AddResource(secret)
@@ -63,7 +64,7 @@ func mapResources(app *application_pb.Application, stackTemplate *Application) (
 
 }
 
-func mapBlobstore(blobstoreDef *application_pb.Blobstore, appName string) (*bucketInfo, *Resource[*s3.Bucket], error) {
+func mapBlobstore(blobstoreDef *application_pb.Blobstore, appName string) (*bucketInfo, *cf.Resource[*s3.Bucket], error) {
 	if blobstoreDef.Ref == nil {
 		bucketName := cloudformation.JoinPtr(".", []string{
 			blobstoreDef.Name,
@@ -72,7 +73,7 @@ func mapBlobstore(blobstoreDef *application_pb.Blobstore, appName string) (*buck
 			cloudformation.Ref(AWSRegionParameter),
 			cloudformation.Ref(S3BucketNamespaceParameter),
 		})
-		bucket := NewResource(blobstoreDef.Name, &s3.Bucket{
+		bucket := cf.NewResource(blobstoreDef.Name, &s3.Bucket{
 			BucketName: bucketName,
 		})
 		return &bucketInfo{

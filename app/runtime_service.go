@@ -11,6 +11,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/sns"
 	"github.com/awslabs/goformation/v7/cloudformation/sqs"
 	"github.com/awslabs/goformation/v7/cloudformation/tags"
+	"github.com/pentops/o5-deploy-aws/cf"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 )
@@ -19,11 +20,11 @@ type RuntimeService struct {
 	Prefix string
 	Name   string
 
-	TaskDefinition *Resource[*ecs.TaskDefinition]
+	TaskDefinition *cf.Resource[*ecs.TaskDefinition]
 	Containers     []*ContainerDefinition
-	Service        *Resource[*ecs.Service]
+	Service        *cf.Resource[*ecs.Service]
 
-	TargetGroups map[string]*Resource[*elbv2.TargetGroup]
+	TargetGroups map[string]*cf.Resource[*elbv2.TargetGroup]
 
 	Policy *PolicyBuilder
 
@@ -58,43 +59,43 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 
 	runtimeSidecar := &ecs.TaskDefinition_ContainerDefinition{
 		Name:      O5SidecarContainerName,
-		Essential: Bool(true),
+		Essential: cf.Bool(true),
 		Image:     cloudformation.Ref(O5SidecarImageParameter),
-		Cpu:       Int(128),
-		Memory:    Int(128),
+		Cpu:       cf.Int(128),
+		Memory:    cf.Int(128),
 		PortMappings: []ecs.TaskDefinition_PortMapping{{
-			ContainerPort: Int(8080),
+			ContainerPort: cf.Int(8080),
 		}},
 		Links: serviceLinks,
 		Environment: []ecs.TaskDefinition_KeyValuePair{{
-			Name:  String("SNS_PREFIX"),
-			Value: String(cloudformation.Ref(SNSPrefixParameter)),
+			Name:  cf.String("SNS_PREFIX"),
+			Value: cf.String(cloudformation.Ref(SNSPrefixParameter)),
 		}, {
-			Name:  String("AWS_REGION"),
-			Value: String(cloudformation.Ref(AWSRegionParameter)),
+			Name:  cf.String("AWS_REGION"),
+			Value: cf.String(cloudformation.Ref(AWSRegionParameter)),
 		}, {
-			Name:  String("CORS_ORIGINS"),
-			Value: String(cloudformation.Ref(CORSOriginParameter)),
+			Name:  cf.String("CORS_ORIGINS"),
+			Value: cf.String(cloudformation.Ref(CORSOriginParameter)),
 		}},
 	}
 
 	if globals.deadletterChance > 0 {
 		runtimeSidecar.Environment = append(runtimeSidecar.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  String("DEADLETTER_CHANCE"),
-			Value: String(fmt.Sprintf("%v", globals.deadletterChance)),
+			Name:  cf.String("DEADLETTER_CHANCE"),
+			Value: cf.String(fmt.Sprintf("%v", globals.deadletterChance)),
 		})
 	}
 	if globals.replayChance > 0 {
 		runtimeSidecar.Environment = append(runtimeSidecar.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  String("RESEND_CHANCE"),
-			Value: String(fmt.Sprintf("%v", globals.replayChance)),
+			Name:  cf.String("RESEND_CHANCE"),
+			Value: cf.String(fmt.Sprintf("%v", globals.replayChance)),
 		})
 	}
 
 	addLogs(runtimeSidecar, globals.appName)
 
-	taskDefinition := NewResource(runtime.Name, &ecs.TaskDefinition{
-		Family:                  String(fmt.Sprintf("%s_%s", globals.appName, runtime.Name)),
+	taskDefinition := cf.NewResource(runtime.Name, &ecs.TaskDefinition{
+		Family:                  cf.String(fmt.Sprintf("%s_%s", globals.appName, runtime.Name)),
 		ExecutionRoleArn:        cloudformation.RefPtr(ECSTaskExecutionRoleParameter),
 		RequiresCompatibilities: []string{"EC2"},
 		//TaskRoleArn:  Set on Apply
@@ -104,9 +105,9 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		}),
 	})
 
-	service := NewResource(CleanParameterName(runtime.Name), &ecs.Service{
-		Cluster:        String(cloudformation.Ref(ECSClusterParameter)),
-		TaskDefinition: String(taskDefinition.Ref()),
+	service := cf.NewResource(cf.CleanParameterName(runtime.Name), &ecs.Service{
+		Cluster:        cf.String(cloudformation.Ref(ECSClusterParameter)),
+		TaskDefinition: cf.String(taskDefinition.Ref()),
 		//	DesiredCount:  Set on Apply
 		DeploymentConfiguration: &ecs.Service_DeploymentConfiguration{
 			DeploymentCircuitBreaker: &ecs.Service_DeploymentCircuitBreaker{
@@ -114,16 +115,16 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 				Rollback: true,
 			},
 		},
-		PropagateTags: String("TASK_DEFINITION"),
+		PropagateTags: cf.String("TASK_DEFINITION"),
 	})
 
 	policy := NewPolicyBuilder()
 
 	if needsDockerVolume {
 		taskDefinition.Resource.Volumes = []ecs.TaskDefinition_Volume{{
-			Name: String("docker-socket"),
+			Name: cf.String("docker-socket"),
 			Host: &ecs.TaskDefinition_HostVolumeProperties{
-				SourcePath: String("/var/run/docker.sock"),
+				SourcePath: cf.String("/var/run/docker.sock"),
 			},
 		}}
 		policy.AddECRPull()
@@ -163,7 +164,7 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		TaskDefinition:   taskDefinition,
 		Service:          service,
 		Policy:           policy,
-		TargetGroups:     map[string]*Resource[*elbv2.TargetGroup]{},
+		TargetGroups:     map[string]*cf.Resource[*elbv2.TargetGroup]{},
 		ingressEndpoints: map[string]struct{}{},
 		AdapterContainer: runtimeSidecar,
 		outboxDatabases:  outboxDatabases,
@@ -200,11 +201,7 @@ func (rs *RuntimeService) Apply(template *Application) error {
 		},
 	})
 
-	if rs.Service.Overrides == nil {
-		rs.Service.Overrides = map[string]string{}
-	}
-
-	rs.Service.Overrides["DesiredCount"] = cloudformation.Ref(desiredCountParameter)
+	rs.Service.Override("DesiredCount", cloudformation.Ref(desiredCountParameter))
 
 	// capture beofre running subscriptions as that adds to this set
 	ingressNeedsPublicPort := len(rs.ingressEndpoints) > 0
@@ -225,20 +222,20 @@ func (rs *RuntimeService) Apply(template *Application) error {
 			rs.ingressEndpoints[fmt.Sprintf("%s:%d", rs.spec.Containers[0].Name, sub.Port)] = struct{}{}
 		}
 
-		queueResource := NewResource(rs.Name, &sqs.Queue{
+		queueResource := cf.NewResource(rs.Name, &sqs.Queue{
 			QueueName: cloudformation.JoinPtr("-", []string{
 				cloudformation.Ref("AWS::StackName"),
 				rs.Name,
 			}),
-			SqsManagedSseEnabled: Bool(true),
+			SqsManagedSseEnabled: cf.Bool(true),
 			Tags:                 sourceTags(),
 		})
 		template.AddResource(queueResource)
 		rs.Policy.AddSQSSubscribe(queueResource.GetAtt("Arn"))
 
 		rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  String("SQS_URL"),
-			Value: String(queueResource.Ref()),
+			Name:  cf.String("SQS_URL"),
+			Value: cf.String(queueResource.Ref()),
 		})
 
 		topicARNs := []string{}
@@ -255,7 +252,7 @@ func (rs *RuntimeService) Apply(template *Application) error {
 				sub.Name,
 			})
 			if sub.EnvName != nil {
-				envSNSParamName := CleanParameterName(*sub.EnvName, "SNSPrefix")
+				envSNSParamName := cf.CleanParameterName(*sub.EnvName, "SNSPrefix")
 				template.AddParameter(&deployer_pb.Parameter{
 					Name: envSNSParamName,
 					Type: "String",
@@ -276,8 +273,8 @@ func (rs *RuntimeService) Apply(template *Application) error {
 			subscription := &sns.Subscription{
 				TopicArn:           snsTopicARN,
 				Protocol:           "sqs",
-				RawMessageDelivery: Bool(true),
-				Endpoint:           String(queueResource.GetAtt("Arn")),
+				RawMessageDelivery: cf.Bool(true),
+				Endpoint:           cf.String(queueResource.GetAtt("Arn")),
 			}
 
 			if sub.RawMessage {
@@ -285,15 +282,15 @@ func (rs *RuntimeService) Apply(template *Application) error {
 				// o5.messaging.topic.RawMessage.
 				// The sidecar will use the SNS wrapper to pull out the
 				// original topic.
-				subscription.RawMessageDelivery = Bool(false)
+				subscription.RawMessageDelivery = cf.Bool(false)
 			}
 
 			template.AddSNSTopic(sub.Name)
-			template.AddResource(NewResource(CleanParameterName(rs.Name, sub.Name), subscription))
+			template.AddResource(cf.NewResource(cf.CleanParameterName(rs.Name, sub.Name), subscription))
 		}
 
 		// Allow SNS to publish to SQS...
-		template.AddResource(NewResource(CleanParameterName(rs.Name), &sqs.QueuePolicy{
+		template.AddResource(cf.NewResource(cf.CleanParameterName(rs.Name), &sqs.QueuePolicy{
 			Queues: []string{queueResource.Ref()},
 			PolicyDocument: map[string]interface{}{
 				"Version": "2012-10-17",
@@ -322,16 +319,16 @@ func (rs *RuntimeService) Apply(template *Application) error {
 			ingressEndpoints = append(ingressEndpoints, endpoint)
 		}
 		rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  String("SERVICE_ENDPOINT"),
-			Value: String(strings.Join(ingressEndpoints, ",")),
+			Name:  cf.String("SERVICE_ENDPOINT"),
+			Value: cf.String(strings.Join(ingressEndpoints, ",")),
 		}, ecs.TaskDefinition_KeyValuePair{
-			Name:  String("JWKS"),
-			Value: String(cloudformation.Ref(JWKSParameter)),
+			Name:  cf.String("JWKS"),
+			Value: cf.String(cloudformation.Ref(JWKSParameter)),
 		})
 		if ingressNeedsPublicPort {
 			rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  String("PUBLIC_ADDR"),
-				Value: String(":8080"),
+				Name:  cf.String("PUBLIC_ADDR"),
+				Value: cf.String(":8080"),
 			})
 		}
 	}
@@ -367,8 +364,8 @@ func (rs *RuntimeService) Apply(template *Application) error {
 	if needsAdapterPort {
 		needsAdapterSidecar = true
 		rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  String("ADAPTER_ADDR"),
-			Value: String(fmt.Sprintf(":%d", O5SidecarInternalPort)),
+			Name:  cf.String("ADAPTER_ADDR"),
+			Value: cf.String(fmt.Sprintf(":%d", O5SidecarInternalPort)),
 		})
 	}
 
@@ -381,7 +378,7 @@ func (rs *RuntimeService) Apply(template *Application) error {
 	for i, def := range rs.Containers {
 		defs[i] = *def.Container
 		for _, param := range def.Parameters {
-			template.parameters[param.Name] = param
+			rs.Service.AddParameter(param)
 		}
 	}
 
@@ -395,7 +392,7 @@ func (rs *RuntimeService) Apply(template *Application) error {
 	template.AddResource(rs.Service)
 
 	rolePolicies := rs.Policy.Build(rs.Prefix, rs.Name)
-	role := NewResource(fmt.Sprintf("%sAssume", rs.Name), &iam.Role{
+	role := cf.NewResource(fmt.Sprintf("%sAssume", rs.Name), &iam.Role{
 		AssumeRolePolicyDocument: map[string]interface{}{
 			"Version": "2012-10-17",
 			"Statement": []interface{}{
@@ -408,7 +405,7 @@ func (rs *RuntimeService) Apply(template *Application) error {
 				},
 			},
 		},
-		Description:       Stringf("Execution role for ecs in %s - %s", rs.Prefix, rs.Name),
+		Description:       cf.Stringf("Execution role for ecs in %s - %s", rs.Prefix, rs.Name),
 		ManagedPolicyArns: []string{},
 		Policies:          rolePolicies,
 		RoleName: cloudformation.JoinPtr("-", []string{
@@ -418,7 +415,7 @@ func (rs *RuntimeService) Apply(template *Application) error {
 		}),
 	})
 
-	rs.TaskDefinition.Resource.TaskRoleArn = String(role.GetAtt("Arn"))
+	rs.TaskDefinition.Resource.TaskRoleArn = cf.String(role.GetAtt("Arn"))
 
 	template.AddResource(role)
 
@@ -461,7 +458,7 @@ func (rs *RuntimeService) AddRoutes(ingress *ListenerRuleSet) error {
 	return nil
 }
 
-func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol, targetContainer string, port int) (*Resource[*elbv2.TargetGroup], error) {
+func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol, targetContainer string, port int) (*cf.Resource[*elbv2.TargetGroup], error) {
 	lookupKey := fmt.Sprintf("%s%s", protocol, targetContainer)
 	existing, ok := rs.TargetGroups[lookupKey]
 	if ok {
@@ -491,33 +488,33 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 	switch protocol {
 	case application_pb.RouteProtocol_ROUTE_PROTOCOL_HTTP:
 		targetGroupDefinition = &elbv2.TargetGroup{
-			VpcId:                      String(cloudformation.Ref(VPCParameter)),
-			Port:                       Int(8080),
-			Protocol:                   String("HTTP"),
-			HealthCheckEnabled:         Bool(true),
-			HealthCheckPort:            String("traffic-port"),
-			HealthCheckPath:            String("/healthz"),
-			HealthyThresholdCount:      Int(2),
-			HealthCheckIntervalSeconds: Int(15),
+			VpcId:                      cf.String(cloudformation.Ref(VPCParameter)),
+			Port:                       cf.Int(8080),
+			Protocol:                   cf.String("HTTP"),
+			HealthCheckEnabled:         cf.Bool(true),
+			HealthCheckPort:            cf.String("traffic-port"),
+			HealthCheckPath:            cf.String("/healthz"),
+			HealthyThresholdCount:      cf.Int(2),
+			HealthCheckIntervalSeconds: cf.Int(15),
 			Matcher: &elbv2.TargetGroup_Matcher{
-				HttpCode: String("200,401,404"),
+				HttpCode: cf.String("200,401,404"),
 			},
 			Tags: sourceTags(),
 		}
 
 	case application_pb.RouteProtocol_ROUTE_PROTOCOL_GRPC:
 		targetGroupDefinition = &elbv2.TargetGroup{
-			VpcId:                      String(cloudformation.Ref(VPCParameter)),
-			Port:                       Int(8080),
-			Protocol:                   String("HTTP"),
-			ProtocolVersion:            String("GRPC"),
-			HealthCheckEnabled:         Bool(true),
-			HealthCheckPort:            String("traffic-port"),
-			HealthCheckPath:            String("/AWS.ALB/healthcheck"),
-			HealthyThresholdCount:      Int(2),
-			HealthCheckIntervalSeconds: Int(15),
+			VpcId:                      cf.String(cloudformation.Ref(VPCParameter)),
+			Port:                       cf.Int(8080),
+			Protocol:                   cf.String("HTTP"),
+			ProtocolVersion:            cf.String("GRPC"),
+			HealthCheckEnabled:         cf.Bool(true),
+			HealthCheckPort:            cf.String("traffic-port"),
+			HealthCheckPath:            cf.String("/AWS.ALB/healthcheck"),
+			HealthyThresholdCount:      cf.Int(2),
+			HealthCheckIntervalSeconds: cf.Int(15),
 			Matcher: &elbv2.TargetGroup_Matcher{
-				GrpcCode: String("0-99"),
+				GrpcCode: cf.String("0-99"),
 			},
 			Tags: sourceTags(),
 		}
@@ -526,18 +523,18 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 	}
 	// faster deregistration
 	a := elbv2.TargetGroup_TargetGroupAttribute{
-		Key:   String("deregistration_delay.timeout_seconds"),
-		Value: String("30"),
+		Key:   cf.String("deregistration_delay.timeout_seconds"),
+		Value: cf.String("30"),
 	}
 	targetGroupDefinition.TargetGroupAttributes = []elbv2.TargetGroup_TargetGroupAttribute{a}
 
-	targetGroupResource := NewResource(lookupKey, targetGroupDefinition)
+	targetGroupResource := cf.NewResource(lookupKey, targetGroupDefinition)
 	rs.TargetGroups[lookupKey] = targetGroupResource
 
 	rs.Service.Resource.LoadBalancers = append(rs.Service.Resource.LoadBalancers, ecs.Service_LoadBalancer{
-		ContainerName:  String(targetContainer),
-		ContainerPort:  Int(port),
-		TargetGroupArn: String(targetGroupResource.Ref()),
+		ContainerName:  cf.String(targetContainer),
+		ContainerPort:  cf.Int(port),
+		TargetGroupArn: cf.String(targetGroupResource.Ref()),
 	})
 
 	found := false
@@ -549,7 +546,7 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 	}
 	if !found {
 		container.PortMappings = append(container.PortMappings, ecs.TaskDefinition_PortMapping{
-			ContainerPort: Int(port),
+			ContainerPort: cf.Int(port),
 		})
 	}
 

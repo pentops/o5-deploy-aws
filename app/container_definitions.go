@@ -5,6 +5,7 @@ import (
 
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
+	"github.com/pentops/o5-deploy-aws/cf"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 )
@@ -29,12 +30,12 @@ func ensureEnvVar(envVars *[]ecs.TaskDefinition_KeyValuePair, name string, value
 func buildContainer(globals globalData, def *application_pb.Container) (*ContainerDefinition, error) {
 	container := &ecs.TaskDefinition_ContainerDefinition{
 		Name:      def.Name,
-		Essential: Bool(true),
+		Essential: cf.Bool(true),
 
 		// TODO: Make these a Parameter for each size, for the environment to
 		// set
-		Cpu:               Int(128),
-		MemoryReservation: Int(256),
+		Cpu:               cf.Int(128),
+		MemoryReservation: cf.Int(256),
 	}
 	ensureEnvVar(&container.Environment, "AWS_REGION", cloudformation.RefPtr("AWS::Region"))
 
@@ -79,8 +80,8 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 		switch varType := envVar.Spec.(type) {
 		case *application_pb.EnvironmentVariable_Value:
 			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  String(envVar.Name),
-				Value: String(varType.Value),
+				Name:  cf.String(envVar.Name),
+				Value: cf.String(varType.Value),
 			})
 
 		case *application_pb.EnvironmentVariable_Blobstore:
@@ -110,7 +111,7 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 			}
 
 			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  String(envVar.Name),
+				Name:  cf.String(envVar.Name),
 				Value: value,
 			})
 
@@ -152,7 +153,7 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 
 		case *application_pb.EnvironmentVariable_FromEnv:
 			varName := varType.FromEnv.Name
-			paramName := fmt.Sprintf("EnvVar%s", CleanParameterName(varName))
+			paramName := fmt.Sprintf("EnvVar%s", cf.CleanParameterName(varName))
 			containerDef.Parameters[paramName] = &deployer_pb.Parameter{
 				Name: paramName,
 				Type: "String",
@@ -166,7 +167,7 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 			}
 
 			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  String(envVar.Name),
+				Name:  cf.String(envVar.Name),
 				Value: cloudformation.RefPtr(paramName),
 			})
 
@@ -176,13 +177,13 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 			var value *string
 			switch varType.O5 {
 			case application_pb.O5Var_ADAPTER_ENDPOINT:
-				value = String(fmt.Sprintf("http://%s:%d", O5SidecarContainerName, O5SidecarInternalPort))
+				value = cf.String(fmt.Sprintf("http://%s:%d", O5SidecarContainerName, O5SidecarInternalPort))
 			default:
 				return nil, fmt.Errorf("unknown O5 var: %s", varType.O5)
 			}
 
 			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  String(envVar.Name),
+				Name:  cf.String(envVar.Name),
 				Value: value,
 			})
 
@@ -194,8 +195,8 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 
 	if def.MountDockerSocket {
 		containerDef.Container.MountPoints = append(containerDef.Container.MountPoints, ecs.TaskDefinition_MountPoint{
-			ContainerPath: String("/var/run/docker.sock"),
-			SourceVolume:  String("docker-socket"),
+			ContainerPath: cf.String("/var/run/docker.sock"),
+			SourceVolume:  cf.String("docker-socket"),
 		})
 	}
 	return containerDef, nil
