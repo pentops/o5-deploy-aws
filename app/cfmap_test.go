@@ -9,6 +9,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	"github.com/awslabs/goformation/v7/cloudformation/iam"
 	"github.com/awslabs/goformation/v7/cloudformation/s3"
+	"github.com/pentops/o5-deploy-aws/cf"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/stretchr/testify/assert"
 )
@@ -22,7 +23,7 @@ func TestBasicMap(t *testing.T) {
 				Name: "main",
 				Source: &application_pb.Container_Image_{
 					Image: &application_pb.Container_Image{
-						Tag:  String("latest"),
+						Tag:  cf.String("latest"),
 						Name: "foobar",
 					},
 				},
@@ -60,7 +61,7 @@ func TestDirectPortAccess(t *testing.T) {
 				Name: "main",
 				Source: &application_pb.Container_Image_{
 					Image: &application_pb.Container_Image{
-						Tag:  String("latest"),
+						Tag:  cf.String("latest"),
 						Name: "foobar",
 					},
 				},
@@ -98,7 +99,7 @@ func TestIndirectPortAccess(t *testing.T) {
 				Name: "main",
 				Source: &application_pb.Container_Image_{
 					Image: &application_pb.Container_Image{
-						Tag:  String("latest"),
+						Tag:  cf.String("latest"),
 						Name: "foobar",
 					},
 				},
@@ -119,7 +120,7 @@ func TestIndirectPortAccess(t *testing.T) {
 func getResource(t testing.TB, template *BuiltApplication, name string, into cloudformation.Resource) {
 	t.Helper()
 
-	fullName := resourceName(name, into)
+	fullName := cf.ResourceName(name, into)
 	raw, ok := template.Template.Resources[fullName]
 	if !ok {
 		t.Fatalf("resource %s not found", fullName)
@@ -147,7 +148,7 @@ func TestRuntime(t *testing.T) {
 			Name: "main",
 			Source: &application_pb.Container_Image_{
 				Image: &application_pb.Container_Image{
-					Tag:  String("latest"),
+					Tag:  cf.String("latest"),
 					Name: "foobar",
 				},
 			},
@@ -189,7 +190,7 @@ func TestSidecarConfigRuntime(t *testing.T) {
 			Name: "main",
 			Source: &application_pb.Container_Image_{
 				Image: &application_pb.Container_Image{
-					Tag:  String("latest"),
+					Tag:  cf.String("latest"),
 					Name: "foobar",
 				},
 			},
@@ -227,7 +228,7 @@ func TestSidecarConfigNotPresentRuntime(t *testing.T) {
 			Name: "main",
 			Source: &application_pb.Container_Image_{
 				Image: &application_pb.Container_Image{
-					Tag:  String("latest"),
+					Tag:  cf.String("latest"),
 					Name: "foobar",
 				},
 			},
@@ -257,8 +258,8 @@ func TestSidecarConfigNotPresentRuntime(t *testing.T) {
 func TestBlobstore(t *testing.T) {
 
 	type result struct {
-		bucket *Resource[*s3.Bucket]
-		role   *Resource[*iam.Role]
+		bucket *cf.Resource[*s3.Bucket]
+		role   *cf.Resource[*iam.Role]
 		envVar *ecs.TaskDefinition_KeyValuePair
 	}
 
@@ -272,7 +273,7 @@ func TestBlobstore(t *testing.T) {
 					Name: "main",
 					Source: &application_pb.Container_Image_{
 						Image: &application_pb.Container_Image{
-							Tag:  String("latest"),
+							Tag:  cf.String("latest"),
 							Name: "foobar",
 						},
 					},
@@ -281,7 +282,7 @@ func TestBlobstore(t *testing.T) {
 						Spec: &application_pb.EnvironmentVariable_Blobstore{
 							Blobstore: &application_pb.BlobstoreEnvVar{
 								Name:    "bucket",
-								SubPath: String("subpath"),
+								SubPath: cf.String("subpath"),
 								Format: &application_pb.BlobstoreEnvVar_S3Direct{
 									S3Direct: true,
 								},
@@ -299,19 +300,19 @@ func TestBlobstore(t *testing.T) {
 
 		rr := result{}
 
-		bucketResource, ok := out.Template.Resources["AWSS3Bucketbucket"].(*Resource[*s3.Bucket])
+		bucketResource, ok := out.Template.Resources["AWSS3Bucketbucket"].(*cf.Resource[*s3.Bucket])
 		if ok {
 			rr.bucket = bucketResource
 		}
 
-		roleResource, ok := out.Template.Resources["AWSIAMRolemainAssume"].(*Resource[*iam.Role])
+		roleResource, ok := out.Template.Resources["AWSIAMRolemainAssume"].(*cf.Resource[*iam.Role])
 		if !ok || roleResource == nil {
 			t.Fatalf("role resource not found")
 		}
 
 		rr.role = roleResource
 
-		taskDef, ok := out.Template.Resources["AWSECSTaskDefinitionmain"].(*Resource[*ecs.TaskDefinition])
+		taskDef, ok := out.Template.Resources["AWSECSTaskDefinitionmain"].(*cf.Resource[*ecs.TaskDefinition])
 		if !ok || taskDef == nil {
 			t.Fatalf("task definition not found")
 		}
