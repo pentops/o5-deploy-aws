@@ -10,6 +10,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/iam"
 	"github.com/awslabs/goformation/v7/cloudformation/s3"
 	"github.com/pentops/o5-deploy-aws/cf"
+	"github.com/pentops/o5-deploy-aws/cf/cftest"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/stretchr/testify/assert"
 )
@@ -69,18 +70,26 @@ func TestDirectPortAccess(t *testing.T) {
 		}},
 	}
 
-	out, err := BuildApplication(app, "version1")
-	if err != nil {
-		t.Fatal(err.Error())
-	}
+	aa := testbuild(t, app)
 
 	taskDef := &ecs.TaskDefinition{}
-	getResource(t, out, "main", taskDef)
+	aa.GetResource(t, "main", taskDef)
 	if len(taskDef.ContainerDefinitions[0].PortMappings) != 1 {
 		t.Fatalf("expected one port mapping, got %d", len(taskDef.ContainerDefinitions[0].PortMappings))
 	}
 
 	t.Logf("ports: %v", taskDef.ContainerDefinitions[0].PortMappings)
+}
+
+func testbuild(t *testing.T, app *application_pb.Application) *cftest.TemplateAsserter {
+	out, err := BuildApplication(app, "version1")
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	return cftest.NewTemplateAsserter(&cf.BuiltTemplate{
+		Template:   out.Template,
+		Parameters: out.Parameters,
+	})
 }
 
 func TestIndirectPortAccess(t *testing.T) {
@@ -107,36 +116,12 @@ func TestIndirectPortAccess(t *testing.T) {
 		}},
 	}
 
-	out, err := BuildApplication(app, "version1")
-	if err != nil {
-		t.Fatal(err.Error())
-	}
+	aa := testbuild(t, app)
 
 	taskDef := &ecs.TaskDefinition{}
-	getResource(t, out, "main", taskDef)
+	aa.GetResource(t, "main", taskDef)
 	t.Logf("ports: %v", taskDef.ContainerDefinitions[1].PortMappings)
 }
-
-func getResource(t testing.TB, template *BuiltApplication, name string, into cloudformation.Resource) {
-	t.Helper()
-
-	fullName := cf.ResourceName(name, into)
-	raw, ok := template.Template.Resources[fullName]
-	if !ok {
-		t.Fatalf("resource %s not found", fullName)
-	}
-
-	// Strange method, but it should work...
-	asJSON, err := json.Marshal(raw)
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-
-	if err := json.Unmarshal(asJSON, into); err != nil {
-		t.Fatal(err.Error())
-	}
-}
-
 func TestRuntime(t *testing.T) {
 	global := globalData{
 		appName: "Test",

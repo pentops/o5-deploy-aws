@@ -37,7 +37,12 @@ func (ss *TemplateBuilder) AddOutput(output *Output) {
 	ss.outputs[output.Name] = output
 }
 
-func (ss *TemplateBuilder) Build() (*cloudformation.Template, []*deployer_pb.Parameter) {
+type BuiltTemplate struct {
+	Template   *cloudformation.Template
+	Parameters []*deployer_pb.Parameter
+}
+
+func (ss *TemplateBuilder) Build() *BuiltTemplate {
 	template := cloudformation.NewTemplate()
 	parameters := map[string]*deployer_pb.Parameter{}
 
@@ -78,5 +83,8 @@ func (ss *TemplateBuilder) Build() (*cloudformation.Template, []*deployer_pb.Par
 		parameterSlice = append(parameterSlice, param)
 	}
 
-	return template, parameterSlice
+	return &BuiltTemplate{
+		Template:   template,
+		Parameters: parameterSlice,
+	}
 }
