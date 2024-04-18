@@ -5,25 +5,25 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 )
 
-type Template struct {
+type TemplateBuilder struct {
 	parameters map[string]*deployer_pb.Parameter
 	resources  map[string]IResource
 	outputs    map[string]*Output
 }
 
-func NewTemplate() *Template {
-	return &Template{
+func NewTemplateBuilder() *TemplateBuilder {
+	return &TemplateBuilder{
 		parameters: make(map[string]*deployer_pb.Parameter),
 		resources:  make(map[string]IResource),
 		outputs:    make(map[string]*Output),
 	}
 }
 
-func (ss *Template) AddResource(resource IResource) {
+func (ss *TemplateBuilder) AddResource(resource IResource) {
 	ss.resources[resource.Name()] = resource
 }
 
-func (ss *Template) AddParameter(param *deployer_pb.Parameter) {
+func (ss *TemplateBuilder) AddParameter(param *deployer_pb.Parameter) {
 	if param.Name == "" {
 		panic("No Name")
 	}
@@ -33,11 +33,11 @@ func (ss *Template) AddParameter(param *deployer_pb.Parameter) {
 	ss.parameters[param.Name] = param
 }
 
-func (ss *Template) AddOutput(output *Output) {
+func (ss *TemplateBuilder) AddOutput(output *Output) {
 	ss.outputs[output.Name] = output
 }
 
-func (ss *Template) Build() (*cloudformation.Template, []*deployer_pb.Parameter) {
+func (ss *TemplateBuilder) Build() (*cloudformation.Template, []*deployer_pb.Parameter) {
 	template := cloudformation.NewTemplate()
 	parameters := map[string]*deployer_pb.Parameter{}
 

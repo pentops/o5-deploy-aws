@@ -13,7 +13,7 @@ import (
 	snstypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 	"github.com/aws/smithy-go"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/app"
+	"github.com/pentops/o5-deploy-aws/cf/app"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 )
