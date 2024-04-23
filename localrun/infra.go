@@ -45,6 +45,9 @@ func stackEvent(msg *deployer_tpb.StackStatusChangedMessage, err error) (deploye
 	if err != nil {
 		return nil, err
 	}
+	if msg == nil {
+		return nil, fmt.Errorf("missing message")
+	}
 	if msg.Request == nil {
 		return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
 	}

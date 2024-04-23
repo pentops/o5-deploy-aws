@@ -80,7 +80,7 @@ func (ll *ListenerRuleSet) AddRoute(targetGroup *cf.Resource[*elbv2.TargetGroup]
 		})
 	}
 
-	resource := cf.NewResource(name, rule)
+	resource := cf.NewResource(cf.QualifiedName(name), rule)
 	resource.Override("Priority", cloudformation.Ref(priority))
 	resource.AddParameter(&deployer_pb.Parameter{
 		Name:        priority,

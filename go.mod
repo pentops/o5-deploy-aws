@@ -21,8 +21,10 @@ require (
 	github.com/goccy/go-yaml v1.11.2
 	github.com/google/go-github/v47 v47.1.0
 	github.com/google/uuid v1.6.0
+	github.com/iancoleman/strcase v0.3.0
 	github.com/lib/pq v1.10.9
 	github.com/pentops/flowtest v0.0.0-20240222224419-c36885c5b6f6
+	github.com/pentops/jsonapi v0.0.0-20240409180110-344be49fb0b7
 	github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4
 	github.com/pentops/o5-go v0.0.0-20240417154803-887869874156
 	github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7
@@ -67,7 +69,6 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/pentops/jsonapi v0.0.0-20240409180110-344be49fb0b7 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect

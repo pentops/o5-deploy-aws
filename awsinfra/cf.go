@@ -282,7 +282,12 @@ func upsertExtraResources(ctx context.Context, clients *DeployerClients, evt *de
 				}},
 		})
 		if err != nil {
-			return fmt.Errorf("creating sns topic %s: %w", topic, err)
+			errString := err.Error()
+			// InvalidParameter: Invalid parameter: Tags Reason: Topic already exists with different tags
+
+			if !strings.Contains(errString, "already exists") {
+				return fmt.Errorf("creating sns topic %s: %w", topic, err)
+			}
 		}
 	}
 	return nil
