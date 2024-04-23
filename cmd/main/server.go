@@ -178,7 +178,7 @@ func runServe(ctx context.Context, cfg struct {
 	DeployerAssumeRole string `env:"DEPLOYER_ASSUME_ROLE"`
 	CFTemplates        string `env:"CF_TEMPLATES"`
 	CallbackARN        string `env:"CALLBACK_ARN"`
-	GithubAppsJSON     []byte `env:"GITHUB_APPS"`
+	GithubAppsJSON     string `env:"GITHUB_APPS"`
 }) error {
 
 	log.WithField(ctx, "PORT", cfg.GRPCPort).Info("Boot")
@@ -234,7 +234,7 @@ func runServe(ctx context.Context, cfg struct {
 	}
 
 	githubApps := []github.AppConfig{}
-	if err := json.Unmarshal(cfg.GithubAppsJSON, &githubApps); err != nil {
+	if err := json.Unmarshal([]byte(cfg.GithubAppsJSON), &githubApps); err != nil {
 		return fmt.Errorf("GITHUB_APPS env var: %w", err)
 	}
 	githubClient, err := github.NewMultiOrgClientFromConfigs(githubApps...)

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
+	"github.com/iancoleman/strcase"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -29,9 +30,18 @@ func Bool(b bool) *bool {
 
 var reUnsafe = regexp.MustCompile(`[^a-zA-Z0-9]`)
 
+func QualifiedName(name string) string {
+	return fmt.Sprintf("!!%s", name)
+}
+
 func ResourceName(name string, rr cloudformation.Resource) string {
-	resourceType := strings.ReplaceAll(rr.AWSCloudFormationType(), "::", "")
-	resourceType = strings.TrimPrefix(resourceType, "AWS_")
+	if strings.HasPrefix(name, "!!") {
+		return name[2:]
+	}
+	resourceType := rr.AWSCloudFormationType()
+	resourceType = strings.TrimPrefix(resourceType, "AWS::")
+	resourceType = strings.ReplaceAll(resourceType, "::", "")
+	name = strcase.ToCamel(name)
 	name = reResourceUnsafe.ReplaceAllString(name, "")
 	return fmt.Sprintf("%s%s", resourceType, name)
 }
