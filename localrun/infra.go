@@ -299,6 +299,13 @@ func (cf *InfraAdapter) noUpdatesToBePerformed(ctx context.Context, stackName st
 	}, nil
 }
 
+func (cf *InfraAdapter) PollStack(
+	ctx context.Context,
+	stackName string,
+) (*deployer_tpb.StackStatusChangedMessage, error) {
+	return cf.pollStack(ctx, stackName, "", nil)
+}
+
 func (cf *InfraAdapter) pollStack(
 	ctx context.Context,
 	stackName string,
