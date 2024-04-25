@@ -8,13 +8,12 @@ import (
 
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
+	"github.com/awslabs/goformation/v7/cloudformation/policies"
 	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
 	"github.com/awslabs/goformation/v7/cloudformation/tags"
 	"github.com/pentops/o5-deploy-aws/cf"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 )
 
 const (
@@ -155,9 +154,8 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 		switch dbType := database.Engine.(type) {
 		case *application_pb.Database_Postgres_:
 
-			parameterName := fmt.Sprintf("DatabaseSecret%s", cases.Title(language.English).String(database.Name))
-
-			secret := cf.NewResource(parameterName, &secretsmanager.Secret{
+			secret := cf.NewResource(cf.CleanParameterName("Database", database.Name), &secretsmanager.Secret{
+				AWSCloudFormationDeletionPolicy: policies.DeletionPolicy("Retain"),
 				Name: cloudformation.JoinPtr("/", []string{
 					"", // Leading /
 					cloudformation.Ref(EnvNameParameter),

@@ -285,19 +285,19 @@ func TestBlobstore(t *testing.T) {
 
 		rr := result{}
 
-		bucketResource, ok := out.Template.Resources["AWSS3Bucketbucket"].(*cf.Resource[*s3.Bucket])
+		bucketResource, ok := out.Template.Resources["S3BucketBucket"].(*cf.Resource[*s3.Bucket])
 		if ok {
 			rr.bucket = bucketResource
 		}
 
-		roleResource, ok := out.Template.Resources["AWSIAMRolemainAssume"].(*cf.Resource[*iam.Role])
+		roleResource, ok := out.Template.Resources["IAMRoleMainAssume"].(*cf.Resource[*iam.Role])
 		if !ok || roleResource == nil {
 			t.Fatalf("role resource not found")
 		}
 
 		rr.role = roleResource
 
-		taskDef, ok := out.Template.Resources["AWSECSTaskDefinitionmain"].(*cf.Resource[*ecs.TaskDefinition])
+		taskDef, ok := out.Template.Resources["ECSTaskDefinitionMain"].(*cf.Resource[*ecs.TaskDefinition])
 		if !ok || taskDef == nil {
 			t.Fatalf("task definition not found")
 		}
@@ -329,7 +329,7 @@ func TestBlobstore(t *testing.T) {
 
 		getAtt := &GetAtt{}
 		decode(t, rwPolicy.Statement[0].Resource[0], getAtt)
-		assert.Equal(t, "AWSS3Bucketbucket", getAtt.Resource)
+		assert.Equal(t, "S3BucketBucket", getAtt.Resource)
 		assert.Equal(t, "Arn", getAtt.Attribute)
 
 		if rr.envVar == nil {
@@ -375,8 +375,8 @@ func TestBlobstore(t *testing.T) {
 
 		bucketARN := cloudformation.Join(":", []string{
 			"arn:aws:s3",
-			cloudformation.Ref(AWSRegionParameter),
-			cloudformation.Ref(AWSAccountIDParameter),
+			"", //cloudformation.Ref(AWSRegionParameter),
+			"", //cloudformation.Ref(AWSAccountIDParameter),
 			bucketName,
 		})
 
@@ -402,6 +402,7 @@ func assertFunctionEqual(t testing.TB, want, got string) {
 }
 
 func findPolicy(t testing.TB, roleResource *iam.Role, name string) *PolicyDocument {
+	t.Helper()
 	for _, policy := range roleResource.Policies {
 		join := decodeJoin(t, policy.PolicyName)
 		if join.Vals[3] == name {
