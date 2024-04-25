@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
+	"github.com/awslabs/goformation/v7/cloudformation/policies"
 	"github.com/awslabs/goformation/v7/cloudformation/s3"
 	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
 	"github.com/pentops/o5-deploy-aws/cf"
@@ -54,7 +55,8 @@ func mapResources(app *application_pb.Application, stackTemplate *Application) (
 				app.Name,
 				secretDef.Name,
 			}),
-			Description: cf.Stringf("Application Level Secret for %s:%s - value must be set manually", app.Name, secretDef.Name),
+			Description:                     cf.Stringf("Application Level Secret for %s:%s - value must be set manually", app.Name, secretDef.Name),
+			AWSCloudFormationDeletionPolicy: policies.DeletionPolicy("Retain"),
 		})
 		global.secrets[secretDef.Name] = secret
 		stackTemplate.AddResource(secret)
@@ -74,7 +76,8 @@ func mapBlobstore(blobstoreDef *application_pb.Blobstore, appName string) (*buck
 			cloudformation.Ref(S3BucketNamespaceParameter),
 		})
 		bucket := cf.NewResource(blobstoreDef.Name, &s3.Bucket{
-			BucketName: bucketName,
+			AWSCloudFormationDeletionPolicy: policies.DeletionPolicy("Retain"),
+			BucketName:                      bucketName,
 		})
 		return &bucketInfo{
 			name:  bucketName,
@@ -105,8 +108,8 @@ func mapBlobstore(blobstoreDef *application_pb.Blobstore, appName string) (*buck
 			name: bucketName,
 			arn: cloudformation.Join(":", []string{
 				"arn:aws:s3",
-				cloudformation.Ref(AWSRegionParameter),
-				cloudformation.Ref(AWSAccountIDParameter),
+				"", //cloudformation.Ref(AWSRegionParameter),
+				"", //cloudformation.Ref(AWSAccountIDParameter),
 				*bucketName}),
 			read:  readPermission,
 			write: writePermission,
