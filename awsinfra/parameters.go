@@ -14,22 +14,22 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 )
 
-type deferredParameterResolver struct {
+type DeferredParameterResolver struct {
 	clients         ClientBuilder
 	desiredCount    int32
 	listenerARN     string
 	takenPriorities map[int]bool
 }
 
-func newDeferredParameterResolver(clients ClientBuilder, listenerARN string, desiredCount int32) (*deferredParameterResolver, error) {
-	return &deferredParameterResolver{
+func NewDeferredParameterResolver(clients ClientBuilder, listenerARN string, desiredCount int32) (*DeferredParameterResolver, error) {
+	return &DeferredParameterResolver{
 		clients:      clients,
 		listenerARN:  listenerARN,
 		desiredCount: desiredCount,
 	}, nil
 }
 
-func (dpr *deferredParameterResolver) getTakenPriorities(ctx context.Context) (map[int]bool, error) {
+func (dpr *DeferredParameterResolver) getTakenPriorities(ctx context.Context) (map[int]bool, error) {
 	if dpr.takenPriorities != nil {
 		return dpr.takenPriorities, nil
 	}
@@ -76,7 +76,7 @@ func (dpr *deferredParameterResolver) getTakenPriorities(ctx context.Context) (m
 	return takenPriorities, nil
 }
 
-func (dpr *deferredParameterResolver) nextAvailableListenerRulePriority(ctx context.Context, group application_pb.RouteGroup) (int, error) {
+func (dpr *DeferredParameterResolver) nextAvailableListenerRulePriority(ctx context.Context, group application_pb.RouteGroup) (int, error) {
 	takenPriorities, err := dpr.getTakenPriorities(ctx)
 	if err != nil {
 		return 0, err
@@ -132,7 +132,7 @@ func validPreviousPriority(group application_pb.RouteGroup, previous *types.Para
 	return "", false
 }
 
-func (dpr *deferredParameterResolver) Resolve(ctx context.Context, input *deployer_pb.CloudFormationStackParameterType, previous *types.Parameter) (string, error) {
+func (dpr *DeferredParameterResolver) Resolve(ctx context.Context, input *deployer_pb.CloudFormationStackParameterType, previous *types.Parameter) (string, error) {
 	switch pt := input.Type.(type) {
 	case *deployer_pb.CloudFormationStackParameterType_RulePriority_:
 		group := pt.RulePriority.RouteGroup

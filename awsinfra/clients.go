@@ -70,32 +70,42 @@ type ClientSet struct {
 	AssumeRoleARN string
 }
 
+func NewClientSet(awsConfig aws.Config, assumeRoleARN string) *ClientSet {
+	return &ClientSet{
+		AWSConfig:     awsConfig,
+		AssumeRoleARN: assumeRoleARN,
+	}
+}
+
 func (cs *ClientSet) Clients(ctx context.Context) (*DeployerClients, error) {
 	if cs.clientCache != nil {
 		// TODO: Check Expiry
 		return cs.clientCache, nil
 	}
 
-	assumer := sts.NewFromConfig(cs.AWSConfig)
+	assumeRoleConfig := cs.AWSConfig
+	if cs.AssumeRoleARN != "" {
+		assumer := sts.NewFromConfig(cs.AWSConfig)
 
-	tempCredentials, err := assumer.AssumeRole(ctx, &sts.AssumeRoleInput{
-		RoleArn:         aws.String(cs.AssumeRoleARN),
-		DurationSeconds: aws.Int32(900),
-		RoleSessionName: aws.String(fmt.Sprintf("o5-deploy-aws-%d", time.Now().Unix())),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to assume role '%s': %w", cs.AssumeRoleARN, err)
-	}
+		tempCredentials, err := assumer.AssumeRole(ctx, &sts.AssumeRoleInput{
+			RoleArn:         aws.String(cs.AssumeRoleARN),
+			DurationSeconds: aws.Int32(900),
+			RoleSessionName: aws.String(fmt.Sprintf("o5-deploy-aws-%d", time.Now().Unix())),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to assume role '%s': %w", cs.AssumeRoleARN, err)
+		}
 
-	assumeRoleConfig, err := config.LoadDefaultConfig(ctx,
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			*tempCredentials.Credentials.AccessKeyId,
-			*tempCredentials.Credentials.SecretAccessKey,
-			*tempCredentials.Credentials.SessionToken),
-		),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w", err)
+		assumeRoleConfig, err = config.LoadDefaultConfig(ctx,
+			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+				*tempCredentials.Credentials.AccessKeyId,
+				*tempCredentials.Credentials.SecretAccessKey,
+				*tempCredentials.Credentials.SessionToken),
+			),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load config: %w", err)
+		}
 	}
 
 	return &DeployerClients{

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path"
 
 	"github.com/bradleyfalzon/ghinstallation"
@@ -25,6 +26,7 @@ type RepositoriesService interface {
 	DownloadContents(ctx context.Context, owner, repo, filepath string, opts *github.RepositoryContentGetOptions) (io.ReadCloser, *github.Response, error)
 	ListByOrg(context.Context, string, *github.RepositoryListByOrgOptions) ([]*github.Repository, *github.Response, error)
 	GetContents(ctx context.Context, owner, repo, path string, opts *github.RepositoryContentGetOptions) (fileContent *github.RepositoryContent, directoryContent []*github.RepositoryContent, resp *github.Response, err error)
+	GetBranch(ctx context.Context, owner, repo, branch string, followRedirects bool) (*github.Branch, *github.Response, error)
 }
 
 type AppConfig struct {
@@ -36,21 +38,16 @@ type AppConfig struct {
 
 func NewEnvClient(ctx context.Context) (*Client, error) {
 
-	config := struct {
-		// Method 1
-		GithubToken string `env:"GITHUB_TOKEN" default:""`
+	if os.Getenv("GH_PRIVATE_KEY") != "" {
+		config := struct {
+			GithubPrivateKey     string `env:"GH_PRIVATE_KEY"`
+			GithubAppID          int64  `env:"GH_APP_ID"`
+			GithubInstallationID int64  `env:"GH_INSTALLATION_ID"`
+		}{}
 
-		// Method 2
-		GithubPrivateKey     string `env:"GH_PRIVATE_KEY" default:""`
-		GithubAppID          int64  `env:"GH_APP_ID" default:""`
-		GithubInstallationID int64  `env:"GH_INSTALLATION_ID" default:""`
-	}{}
-
-	if err := envconf.Parse(&config); err != nil {
-		return nil, err
-	}
-
-	if config.GithubPrivateKey != "" {
+		if err := envconf.Parse(&config); err != nil {
+			return nil, err
+		}
 		if config.GithubAppID == 0 || config.GithubInstallationID == 0 {
 			return nil, fmt.Errorf("no github app id or installation id")
 		}
@@ -61,9 +58,9 @@ func NewEnvClient(ctx context.Context) (*Client, error) {
 			PrivateKey:     config.GithubPrivateKey,
 		})
 
-	} else if config.GithubToken != "" {
+	} else if token := os.Getenv("GITHUB_TOKEN"); token != "" {
 		ts := oauth2.StaticTokenSource(
-			&oauth2.Token{AccessToken: config.GithubToken},
+			&oauth2.Token{AccessToken: token},
 		)
 		tc := oauth2.NewClient(ctx, ts)
 		return NewClient(tc)
@@ -93,6 +90,22 @@ func NewClient(tc *http.Client) (*Client, error) {
 	}
 
 	return cl, nil
+}
+
+type Commit struct {
+	Commit string
+}
+
+func (cl Client) BranchCommit(ctx context.Context, org, repo, ref string) (*Commit, error) {
+
+	rr, _, err := cl.repositories.GetBranch(ctx, org, repo, ref, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Commit{
+		Commit: *rr.Commit.SHA,
+	}, nil
 }
 
 func (cl Client) PullO5Configs(ctx context.Context, org string, repo string, ref string) ([]*application_pb.Application, error) {

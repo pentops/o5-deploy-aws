@@ -87,7 +87,7 @@ func (cf *CFClient) resolveParameters(ctx context.Context, lastInput []types.Par
 		}
 	}
 
-	dpr, err := newDeferredParameterResolver(cf.Clients, listenerARN, desiredCount)
+	dpr, err := NewDeferredParameterResolver(cf.Clients, listenerARN, desiredCount)
 	if err != nil {
 		return nil, err
 	}
