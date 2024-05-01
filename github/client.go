@@ -31,9 +31,10 @@ type RepositoriesService interface {
 
 type AppConfig struct {
 	OrgName        string `json:"orgName"`
-	PrivateKey     string `json:"privateKey"`
-	AppID          int64  `json:"appId"`
-	InstallationID int64  `json:"installationId"`
+	Public         bool   `json:"public,omitempty"`
+	PrivateKey     string `json:"privateKey,omitempty"`
+	AppID          int64  `json:"appId,omitempty"`
+	InstallationID int64  `json:"installationId,omitempty"`
 }
 
 func NewEnvClient(ctx context.Context) (*Client, error) {
@@ -69,18 +70,22 @@ func NewEnvClient(ctx context.Context) (*Client, error) {
 }
 
 func NewAppClient(config AppConfig) (*Client, error) {
-	tr := http.DefaultTransport
-	privateKey, err := base64.StdEncoding.DecodeString(config.PrivateKey)
-	if err != nil {
-		return nil, err
+	httpClient := &http.Client{}
+	if !config.Public {
+		tr := http.DefaultTransport
+		privateKey, err := base64.StdEncoding.DecodeString(config.PrivateKey)
+		if err != nil {
+			return nil, err
+		}
+
+		itr, err := ghinstallation.New(tr, config.AppID, config.InstallationID, privateKey)
+		if err != nil {
+			return nil, err
+		}
+		httpClient.Transport = itr
 	}
 
-	itr, err := ghinstallation.New(tr, config.AppID, config.InstallationID, privateKey)
-	if err != nil {
-		return nil, err
-	}
-
-	return NewClient(&http.Client{Transport: itr})
+	return NewClient(httpClient)
 }
 
 func NewClient(tc *http.Client) (*Client, error) {
