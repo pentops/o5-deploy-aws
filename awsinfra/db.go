@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 
 	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
@@ -38,12 +37,6 @@ func (s *Storage) PublishEvent(ctx context.Context, msg outbox.OutboxMessage) er
 	})
 }
 
-type DuplicateRequestContextError string
-
-func (e DuplicateRequestContextError) Error() string {
-	return fmt.Sprintf("duplicate request context: %s", string(e))
-}
-
 func (s *Storage) RequestToClientToken(ctx context.Context, req *messaging_pb.RequestMetadata) (string, error) {
 	token := uuid.NewString()
 
@@ -59,7 +52,8 @@ func (s *Storage) RequestToClientToken(ctx context.Context, req *messaging_pb.Re
 				"dest":    req.ReplyTo,
 			})).Scan(&foundToken)
 		if err == nil {
-			return DuplicateRequestContextError(foundToken)
+			token = foundToken
+			return nil
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
