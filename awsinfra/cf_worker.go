@@ -29,12 +29,9 @@ type InfraWorker struct {
 	*CFClient
 }
 
-func NewInfraWorker(clients ClientBuilder, db DBLite) *InfraWorker {
-	cfClient := &CFClient{
-		Clients: clients,
-	}
+func NewInfraWorker(db DBLite, adapter *CFClient) *InfraWorker {
 	return &InfraWorker{
-		CFClient: cfClient,
+		CFClient: adapter,
 		db:       db,
 	}
 }
