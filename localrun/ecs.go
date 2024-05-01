@@ -13,16 +13,11 @@ import (
 )
 
 type ecsRunner struct {
-	clients awsinfra.ClientBuilder
+	ecsClient awsinfra.ECSAPI
 }
 
 func (d *ecsRunner) runMigrationTask(ctx context.Context, migrationID string, msg *deployer_pb.PostgresMigrationSpec) error {
-
-	clients, err := d.clients.Clients(ctx)
-	if err != nil {
-		return err
-	}
-	ecsClient := clients.ECS
+	ecsClient := d.ecsClient
 
 	task, err := ecsClient.RunTask(ctx, &ecs.RunTaskInput{
 		TaskDefinition: aws.String(msg.MigrationTaskArn),

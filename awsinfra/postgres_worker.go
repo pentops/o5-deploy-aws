@@ -18,18 +18,20 @@ type PostgresMigrateWorker struct {
 	deployer_tpb.UnimplementedPostgresRequestTopicServer
 	deployer_tpb.UnimplementedECSReplyTopicServer
 
-	db DBLite
-	*CFClient
+	db       DBLite
+	migrator IDBMigrator
 }
 
-func NewPostgresMigrateWorker(clients ClientBuilder, db DBLite) *PostgresMigrateWorker {
-	cfClient := &CFClient{
-		Clients: clients,
-	}
+func NewPostgresMigrateWorker(db DBLite, migrator IDBMigrator) *PostgresMigrateWorker {
 	return &PostgresMigrateWorker{
 		db:       db,
-		CFClient: cfClient,
+		migrator: migrator,
 	}
+}
+
+type IDBMigrator interface {
+	UpsertPostgresDatabase(ctx context.Context, migrationID string, msg *deployer_pb.PostgresCreationSpec) error
+	CleanupPostgresDatabase(ctx context.Context, migrationID string, msg *deployer_pb.PostgresCleanupSpec) error
 }
 
 type pgRequest interface {
@@ -39,7 +41,7 @@ type pgRequest interface {
 
 var migrationNamespace = uuid.MustParse("0C99B6B3-826C-4428-940A-62492DE5BA8F")
 
-func (d *PostgresMigrateWorker) runCallback(ctx context.Context, msg pgRequest, phase string, cb func(context.Context, *DBMigrator) error) error {
+func (d *PostgresMigrateWorker) runCallback(ctx context.Context, msg pgRequest, phase string, cb func(context.Context) error) error {
 	request := msg.GetRequest()
 	if request == nil {
 		return fmt.Errorf("request is nil")
@@ -56,9 +58,7 @@ func (d *PostgresMigrateWorker) runCallback(ctx context.Context, msg pgRequest, 
 		return err
 	}
 
-	migrator := NewDBMigrator(d.Clients)
-
-	migrateErr := cb(ctx, migrator)
+	migrateErr := cb(ctx)
 
 	if migrateErr != nil {
 		log.WithError(ctx, migrateErr).Error("RunDatabaseMigration")
@@ -88,14 +88,14 @@ func (d *PostgresMigrateWorker) runCallback(ctx context.Context, msg pgRequest, 
 }
 
 func (d *PostgresMigrateWorker) UpsertPostgresDatabase(ctx context.Context, msg *deployer_tpb.UpsertPostgresDatabaseMessage) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, d.runCallback(ctx, msg, "upsert", func(ctx context.Context, migrator *DBMigrator) error {
-		return migrator.UpsertPostgresDatabase(ctx, msg.MigrationId, msg.Spec)
+	return &emptypb.Empty{}, d.runCallback(ctx, msg, "upsert", func(ctx context.Context) error {
+		return d.migrator.UpsertPostgresDatabase(ctx, msg.MigrationId, msg.Spec)
 	})
 }
 
 func (d *PostgresMigrateWorker) CleanupPostgresDatabase(ctx context.Context, msg *deployer_tpb.CleanupPostgresDatabaseMessage) (*emptypb.Empty, error) {
-	return &emptypb.Empty{}, d.runCallback(ctx, msg, "cleanup", func(ctx context.Context, migrator *DBMigrator) error {
-		return migrator.CleanupPostgresDatabase(ctx, msg.MigrationId, msg.Spec)
+	return &emptypb.Empty{}, d.runCallback(ctx, msg, "cleanup", func(ctx context.Context) error {
+		return d.migrator.CleanupPostgresDatabase(ctx, msg.MigrationId, msg.Spec)
 	})
 }
 

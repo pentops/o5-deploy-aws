@@ -16,30 +16,25 @@ import (
 type ECSWorker struct {
 	deployer_tpb.UnimplementedECSRequestTopicServer
 
-	db      DBLite
-	clients ClientBuilder
+	db  DBLite
+	ecs ECSAPI
 }
 
-func NewECSWorker(db DBLite, clients ClientBuilder) (*ECSWorker, error) {
+func NewECSWorker(db DBLite, ecsClient ECSAPI) (*ECSWorker, error) {
 	return &ECSWorker{
-		db:      db,
-		clients: clients,
+		db:  db,
+		ecs: ecsClient,
 	}, nil
 }
 
 func (handler *ECSWorker) RunECSTask(ctx context.Context, msg *deployer_tpb.RunECSTaskMessage) (*emptypb.Empty, error) {
-	clients, err := handler.clients.Clients(ctx)
-	if err != nil {
-		return nil, err
-	}
-	ecsClient := clients.ECS
 
 	clientToken, err := handler.db.RequestToClientToken(ctx, msg.Request)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = ecsClient.RunTask(ctx, &ecs.RunTaskInput{
+	_, err = handler.ecs.RunTask(ctx, &ecs.RunTaskInput{
 		TaskDefinition: aws.String(msg.TaskDefinition),
 		Cluster:        aws.String(msg.Cluster),
 		Count:          aws.Int32(1),

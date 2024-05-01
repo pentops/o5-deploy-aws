@@ -15,17 +15,17 @@ import (
 )
 
 type DeferredParameterResolver struct {
-	clients         ClientBuilder
 	desiredCount    int32
 	listenerARN     string
 	takenPriorities map[int]bool
+	elbClient       ELBV2API
 }
 
-func NewDeferredParameterResolver(clients ClientBuilder, listenerARN string, desiredCount int32) (*DeferredParameterResolver, error) {
+func NewDeferredParameterResolver(elbClient ELBV2API, listenerARN string, desiredCount int32) (*DeferredParameterResolver, error) {
 	return &DeferredParameterResolver{
-		clients:      clients,
 		listenerARN:  listenerARN,
 		desiredCount: desiredCount,
+		elbClient:    elbClient,
 	}, nil
 }
 
@@ -38,15 +38,10 @@ func (dpr *DeferredParameterResolver) getTakenPriorities(ctx context.Context) (m
 		return nil, fmt.Errorf("missing listener ARN - The Stack must have a parameter named %s to automatically resolve rule priorities", app.ListenerARNParameter)
 	}
 
-	clients, err := dpr.clients.Clients(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	takenPriorities := make(map[int]bool)
 	var marker *string
 	for {
-		rules, err := clients.ELB.DescribeRules(ctx, &elbv2.DescribeRulesInput{
+		rules, err := dpr.elbClient.DescribeRules(ctx, &elbv2.DescribeRulesInput{
 			ListenerArn: aws.String(dpr.listenerARN),
 			Marker:      marker,
 		})

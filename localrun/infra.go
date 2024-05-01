@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-deploy-aws/deployer"
@@ -21,20 +24,32 @@ type InfraAdapter struct {
 	ecsClient *ecsRunner
 }
 
-func NewInfraAdapter(clients awsinfra.ClientBuilder) *InfraAdapter {
-	cfClient := &awsinfra.CFClient{
-		Clients: clients,
-	}
-	dbMigrator := awsinfra.NewDBMigrator(clients)
+func NewInfraAdapter(ctx context.Context, cl awsinfra.DeployerClients) (*InfraAdapter, error) {
+	cfClient := awsinfra.NewCFAdapter(cl.CloudFormation, cl.ELB, cl.SNS, []string{})
+	dbMigrator := awsinfra.NewDBMigrator(cl.SecretsManager)
 	ecsClient := &ecsRunner{
-		clients: clients,
+		ecsClient: cl.ECS,
 	}
 
 	return &InfraAdapter{
 		cfClient:  cfClient,
 		dbClient:  dbMigrator,
 		ecsClient: ecsClient,
+	}, nil
+}
+
+func NewInfraAdapterFromConfig(ctx context.Context, config aws.Config) (*InfraAdapter, error) {
+	cfClient := awsinfra.NewCFAdapterFromConfig(config, []string{})
+	dbMigrator := awsinfra.NewDBMigrator(secretsmanager.NewFromConfig(config))
+	ecsClient := &ecsRunner{
+		ecsClient: ecs.NewFromConfig(config),
 	}
+
+	return &InfraAdapter{
+		cfClient:  cfClient,
+		dbClient:  dbMigrator,
+		ecsClient: ecsClient,
+	}, nil
 }
 
 func newToken() string {

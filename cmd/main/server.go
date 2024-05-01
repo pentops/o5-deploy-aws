@@ -6,8 +6,13 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
+	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	sq "github.com/elgris/sqrl"
 	"github.com/pentops/log.go/grpc_log"
 	"github.com/pentops/log.go/log"
@@ -188,6 +193,35 @@ func runServe(ctx context.Context, cfg struct {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
+	if cfg.DeployerAssumeRole != "" {
+		stsClient := sts.NewFromConfig(awsConfig)
+		provider := stscreds.NewAssumeRoleProvider(stsClient, cfg.DeployerAssumeRole)
+		creds := aws.NewCredentialsCache(provider)
+
+		assumeRoleConfig, err := config.LoadDefaultConfig(ctx,
+			config.WithCredentialsProvider(creds),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to load config: %w", err)
+		}
+
+		awsConfig = assumeRoleConfig
+	}
+
+	{
+		stsClient := sts.NewFromConfig(awsConfig)
+		identity, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+		if err != nil {
+			return fmt.Errorf("failed to get caller identity: %w", err)
+		}
+		log.WithFields(ctx, map[string]interface{}{
+			"account":     aws.ToString(identity.Account),
+			"arn":         aws.ToString(identity.Arn),
+			"user":        aws.ToString(identity.UserId),
+			"assumedRole": cfg.DeployerAssumeRole,
+		}).Info("Running With AWS Identity")
+	}
+
 	s3Client := s3.NewFromConfig(awsConfig)
 
 	db, err := service.OpenDatabase(ctx)
@@ -197,26 +231,23 @@ func runServe(ctx context.Context, cfg struct {
 
 	templateStore := deployer.NewS3TemplateStore(s3Client, cfg.CFTemplates)
 
-	clientSet := &awsinfra.ClientSet{
-		AssumeRoleARN: cfg.DeployerAssumeRole,
-		AWSConfig:     awsConfig,
-	}
-
 	infraStore, err := awsinfra.NewStorage(db)
 	if err != nil {
 		return err
 	}
-	awsInfraRunner := awsinfra.NewInfraWorker(clientSet, infraStore)
-	awsInfraRunner.CallbackARNs = []string{cfg.CallbackARN}
+	cfAdapter := awsinfra.NewCFAdapterFromConfig(awsConfig, []string{cfg.CallbackARN})
+	awsInfraRunner := awsinfra.NewInfraWorker(infraStore, cfAdapter)
 
-	ecsWorker, err := awsinfra.NewECSWorker(infraStore, clientSet)
+	ecsWorker, err := awsinfra.NewECSWorker(infraStore, ecs.NewFromConfig(awsConfig))
 	if err != nil {
 		return err
 	}
 
 	rawWorker := awsinfra.NewRawMessageWorker(awsInfraRunner, ecsWorker)
 
-	pgMigrateRunner := awsinfra.NewPostgresMigrateWorker(clientSet, infraStore)
+	dbMigrator := awsinfra.NewDBMigrator(secretsmanager.NewFromConfig(awsConfig))
+
+	pgMigrateRunner := awsinfra.NewPostgresMigrateWorker(infraStore, dbMigrator)
 
 	specBuilder, err := deployer.NewSpecBuilder(templateStore)
 	if err != nil {
@@ -379,14 +410,12 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		return fmt.Errorf("AWS Deployer requires the type of environment provider to be AWS")
 	}
 
-	clientSet := &awsinfra.ClientSet{
-		AssumeRoleARN: awsTarget.O5DeployerAssumeRole,
-		AWSConfig:     awsConfig,
-	}
-
 	templateStore := deployer.NewS3TemplateStore(s3Client, cfg.ScratchBucket)
 
-	infra := localrun.NewInfraAdapter(clientSet)
+	infra, err := localrun.NewInfraAdapterFromConfig(ctx, awsConfig)
+	if err != nil {
+		return err
+	}
 
 	return localrun.RunLocalDeploy(ctx, templateStore, infra, localrun.Spec{
 		Version:     cfg.Version,

@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
+	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	snstypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 	"github.com/aws/smithy-go"
@@ -19,18 +20,29 @@ import (
 )
 
 type CFClient struct {
-	Clients      ClientBuilder
+	cfClient     CloudFormationAPI
+	elbClient    ELBV2API
+	snsClient    SNSAPI
 	CallbackARNs []string
 }
 
-func (cf *CFClient) getClient(ctx context.Context) (CloudFormationAPI, error) {
-	clients, err := cf.Clients.Clients(ctx)
-	if err != nil {
-		return nil, err
+func NewCFAdapter(cfClient CloudFormationAPI, elbClient ELBV2API, snsClient SNSAPI, callbackARNs []string) *CFClient {
+	return &CFClient{
+		cfClient:     cfClient,
+		elbClient:    elbClient,
+		snsClient:    snsClient,
+		CallbackARNs: callbackARNs,
 	}
-	return clients.CloudFormation, nil
 }
 
+func NewCFAdapterFromConfig(config aws.Config, callbackARNs []string) *CFClient {
+	return NewCFAdapter(
+		cloudformation.NewFromConfig(config),
+		elasticloadbalancingv2.NewFromConfig(config),
+		sns.NewFromConfig(config),
+		callbackARNs,
+	)
+}
 func (cf *CFClient) GetOneStack(ctx context.Context, stackName string) (*StackStatus, error) {
 	stack, err := cf.getOneStack(ctx, stackName)
 	if err != nil {
@@ -45,12 +57,8 @@ func (cf *CFClient) GetOneStack(ctx context.Context, stackName string) (*StackSt
 }
 
 func (cf *CFClient) getOneStack(ctx context.Context, stackName string) (*types.Stack, error) {
-	client, err := cf.getClient(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("getClient: %w", err)
-	}
 
-	res, err := client.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
+	res, err := cf.cfClient.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{
 		StackName: aws.String(stackName),
 	})
 	if err != nil {
@@ -87,7 +95,7 @@ func (cf *CFClient) resolveParameters(ctx context.Context, lastInput []types.Par
 		}
 	}
 
-	dpr, err := NewDeferredParameterResolver(cf.Clients, listenerARN, desiredCount)
+	dpr, err := NewDeferredParameterResolver(cf.elbClient, listenerARN, desiredCount)
 	if err != nil {
 		return nil, err
 	}
@@ -127,12 +135,8 @@ func (cf *CFClient) resolveParameters(ctx context.Context, lastInput []types.Par
 }
 
 func (cf *CFClient) CreateNewStack(ctx context.Context, reqToken string, msg *deployer_tpb.CreateNewStackMessage) error {
-	clients, err := cf.Clients.Clients(ctx)
-	if err != nil {
-		return err
-	}
 
-	if err := upsertExtraResources(ctx, clients, msg.Spec); err != nil {
+	if err := cf.upsertExtraResources(ctx, msg.Spec); err != nil {
 		return err
 	}
 
@@ -141,7 +145,7 @@ func (cf *CFClient) CreateNewStack(ctx context.Context, reqToken string, msg *de
 		return err
 	}
 
-	_, err = clients.CloudFormation.CreateStack(ctx, &cloudformation.CreateStackInput{
+	_, err = cf.cfClient.CreateStack(ctx, &cloudformation.CreateStackInput{
 		StackName:          aws.String(msg.Spec.StackName),
 		ClientRequestToken: aws.String(reqToken),
 		TemplateURL:        aws.String(msg.Spec.TemplateUrl),
@@ -159,12 +163,8 @@ func (cf *CFClient) CreateNewStack(ctx context.Context, reqToken string, msg *de
 }
 
 func (cf *CFClient) UpdateStack(ctx context.Context, reqToken string, msg *deployer_tpb.UpdateStackMessage) error {
-	clients, err := cf.Clients.Clients(ctx)
-	if err != nil {
-		return err
-	}
 
-	if err := upsertExtraResources(ctx, clients, msg.Spec); err != nil {
+	if err := cf.upsertExtraResources(ctx, msg.Spec); err != nil {
 		return err
 	}
 
@@ -179,7 +179,7 @@ func (cf *CFClient) UpdateStack(ctx context.Context, reqToken string, msg *deplo
 		return err
 	}
 
-	_, err = clients.CloudFormation.UpdateStack(ctx, &cloudformation.UpdateStackInput{
+	_, err = cf.cfClient.UpdateStack(ctx, &cloudformation.UpdateStackInput{
 		StackName:          aws.String(msg.Spec.StackName),
 		ClientRequestToken: aws.String(reqToken),
 		TemplateURL:        aws.String(msg.Spec.TemplateUrl),
@@ -220,12 +220,7 @@ func (cf *CFClient) ScaleStack(ctx context.Context, reqToken string, msg *deploy
 
 	}
 
-	client, err := cf.getClient(ctx)
-	if err != nil {
-		return err
-	}
-
-	_, err = client.UpdateStack(ctx, &cloudformation.UpdateStackInput{
+	_, err = cf.cfClient.UpdateStack(ctx, &cloudformation.UpdateStackInput{
 		StackName:           aws.String(msg.StackName),
 		ClientRequestToken:  aws.String(reqToken),
 		UsePreviousTemplate: aws.Bool(true),
@@ -243,12 +238,7 @@ func (cf *CFClient) ScaleStack(ctx context.Context, reqToken string, msg *deploy
 }
 
 func (cf *CFClient) CancelStackUpdate(ctx context.Context, reqToken string, msg *deployer_tpb.CancelStackUpdateMessage) error {
-	client, err := cf.getClient(ctx)
-	if err != nil {
-		return err
-	}
-
-	_, err = client.CancelUpdateStack(ctx, &cloudformation.CancelUpdateStackInput{
+	_, err := cf.cfClient.CancelUpdateStack(ctx, &cloudformation.CancelUpdateStackInput{
 		StackName:          aws.String(msg.StackName),
 		ClientRequestToken: aws.String(reqToken),
 	})
@@ -256,24 +246,18 @@ func (cf *CFClient) CancelStackUpdate(ctx context.Context, reqToken string, msg 
 }
 
 func (cf *CFClient) DeleteStack(ctx context.Context, reqToken string, msg *deployer_tpb.DeleteStackMessage) error {
-	client, err := cf.getClient(ctx)
-	if err != nil {
-		return err
-	}
-
-	_, err = client.DeleteStack(ctx, &cloudformation.DeleteStackInput{
+	_, err := cf.cfClient.DeleteStack(ctx, &cloudformation.DeleteStackInput{
 		StackName:          aws.String(msg.StackName),
 		ClientRequestToken: aws.String(reqToken),
 	})
 	return err
 }
 
-func upsertExtraResources(ctx context.Context, clients *DeployerClients, evt *deployer_pb.CFStackInput) error {
-	snsClient := clients.SNS
+func (cf *CFClient) upsertExtraResources(ctx context.Context, evt *deployer_pb.CFStackInput) error {
 
 	for _, topic := range evt.SnsTopics {
 		log.WithField(ctx, "topic", topic).Debug("Creating SNS topic")
-		_, err := snsClient.CreateTopic(ctx, &sns.CreateTopicInput{
+		_, err := cf.snsClient.CreateTopic(ctx, &sns.CreateTopicInput{
 			Name: aws.String(topic),
 			Tags: []snstypes.Tag{
 				{

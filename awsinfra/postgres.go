@@ -20,12 +20,12 @@ import (
 )
 
 type DBMigrator struct {
-	clients ClientBuilder
+	secretsManager SecretsManagerAPI
 }
 
-func NewDBMigrator(clients ClientBuilder) *DBMigrator {
+func NewDBMigrator(client SecretsManagerAPI) *DBMigrator {
 	return &DBMigrator{
-		clients: clients,
+		secretsManager: client,
 	}
 }
 
@@ -62,12 +62,7 @@ func (ss DBSecret) buildURLForDB(dbName string) string {
 func (d *DBMigrator) rootPostgresCredentials(ctx context.Context, rootSecretName string) (*DBSecret, error) {
 	// "/${var.env_name}/global/rds/${var.name}/root" from TF
 
-	clients, err := d.clients.Clients(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	res, err := clients.SecretsManager.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+	res, err := d.secretsManager.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
 		SecretId: aws.String(rootSecretName),
 	})
 	if err != nil {
@@ -325,12 +320,7 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *deployer_p
 		"secretARN":   msg.SecretArn,
 	}).Debug("Storing New User Credentials")
 
-	clients, err := d.clients.Clients(ctx)
-	if err != nil {
-		return err
-	}
-
-	_, err = clients.SecretsManager.UpdateSecret(ctx, &secretsmanager.UpdateSecretInput{
+	_, err = d.secretsManager.UpdateSecret(ctx, &secretsmanager.UpdateSecretInput{
 		// ARN or Name
 		SecretId:     aws.String(msg.SecretArn),
 		SecretString: aws.String(string(jsonBytes)),

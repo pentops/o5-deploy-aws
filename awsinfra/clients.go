@@ -2,20 +2,13 @@ package awsinfra
 
 import (
 	"context"
-	"fmt"
-	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
-	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
-	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 type CloudFormationAPI interface {
@@ -58,63 +51,4 @@ type DeployerClients struct {
 	SecretsManager SecretsManagerAPI
 	ECS            ECSAPI
 	S3             S3API
-}
-
-type ClientBuilder interface {
-	Clients(ctx context.Context) (*DeployerClients, error)
-}
-
-type ClientSet struct {
-	clientCache   *DeployerClients
-	AWSConfig     aws.Config
-	AssumeRoleARN string
-}
-
-func NewClientSet(awsConfig aws.Config, assumeRoleARN string) *ClientSet {
-	return &ClientSet{
-		AWSConfig:     awsConfig,
-		AssumeRoleARN: assumeRoleARN,
-	}
-}
-
-func (cs *ClientSet) Clients(ctx context.Context) (*DeployerClients, error) {
-	if cs.clientCache != nil {
-		// TODO: Check Expiry
-		return cs.clientCache, nil
-	}
-
-	assumeRoleConfig := cs.AWSConfig
-	if cs.AssumeRoleARN != "" {
-		assumer := sts.NewFromConfig(cs.AWSConfig)
-
-		tempCredentials, err := assumer.AssumeRole(ctx, &sts.AssumeRoleInput{
-			RoleArn:         aws.String(cs.AssumeRoleARN),
-			DurationSeconds: aws.Int32(900),
-			RoleSessionName: aws.String(fmt.Sprintf("o5-deploy-aws-%d", time.Now().Unix())),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to assume role '%s': %w", cs.AssumeRoleARN, err)
-		}
-
-		assumeRoleConfig, err = config.LoadDefaultConfig(ctx,
-			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-				*tempCredentials.Credentials.AccessKeyId,
-				*tempCredentials.Credentials.SecretAccessKey,
-				*tempCredentials.Credentials.SessionToken),
-			),
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load config: %w", err)
-		}
-	}
-
-	return &DeployerClients{
-		CloudFormation: cloudformation.NewFromConfig(assumeRoleConfig),
-		SNS:            sns.NewFromConfig(assumeRoleConfig),
-		ELB:            elasticloadbalancingv2.NewFromConfig(assumeRoleConfig),
-		SecretsManager: secretsmanager.NewFromConfig(assumeRoleConfig),
-		ECS:            ecs.NewFromConfig(assumeRoleConfig),
-		S3:             s3.NewFromConfig(assumeRoleConfig),
-	}, nil
-
 }
