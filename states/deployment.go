@@ -8,6 +8,7 @@ import (
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
+	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -74,9 +75,8 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 
 	// [*] --> QUEUED : Created
 	sm.From(deployer_pb.DeploymentStatus_UNSPECIFIED).
-		Do(deployer_pb.DeploymentPSMFunc(func(
+		Transition(deployer_pb.DeploymentPSMTransition(func(
 			ctx context.Context,
-			tb deployer_pb.DeploymentPSMTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_Created,
 		) error {
@@ -93,13 +93,21 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 
 	// QUEUED --> TRIGGERED : Trigger
 	sm.From(deployer_pb.DeploymentStatus_QUEUED).
-		Do(deployer_pb.DeploymentPSMFunc(func(
+		Transition(deployer_pb.DeploymentPSMTransition(func(
 			ctx context.Context,
-			tb deployer_pb.DeploymentPSMTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_Triggered,
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_TRIGGERED
+			return nil
+		})).
+		Hook(deployer_pb.DeploymentPSMHook(func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			tb deployer_pb.DeploymentPSMHookBaton,
+			deployment *deployer_pb.DeploymentState,
+			event *deployer_pb.DeploymentEventType_Triggered,
+		) error {
 
 			tb.ChainEvent(chainDeploymentEvent(tb, &deployer_pb.DeploymentEventType_StackWait{}))
 
@@ -108,15 +116,22 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 
 	// TRIGGERED --> WAITING : StackWait
 	sm.From(deployer_pb.DeploymentStatus_TRIGGERED).
-		Do(deployer_pb.DeploymentPSMFunc(func(
+		Transition(deployer_pb.DeploymentPSMTransition(func(
 			ctx context.Context,
-			tb deployer_pb.DeploymentPSMTransitionBaton,
 			deployment *deployer_pb.DeploymentState,
 			event *deployer_pb.DeploymentEventType_StackWait,
 		) error {
 			deployment.Status = deployer_pb.DeploymentStatus_WAITING
-			//deployment.WaitingOnRemotePhase = proto.String("wait")
+			return nil
 
+		})).
+		Hook(deployer_pb.DeploymentPSMHook(func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			tb deployer_pb.DeploymentPSMHookBaton,
+			deployment *deployer_pb.DeploymentState,
+			event *deployer_pb.DeploymentEventType_StackWait,
+		) error {
 			requestMetadata, err := buildRequestMetadata(&deployer_pb.StepContext{
 				Phase:        deployer_pb.StepPhase_WAIT,
 				DeploymentId: deployment.DeploymentId,
@@ -137,9 +152,8 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 	// WAITIHG --> FAILED : StackWaitFailure
 	sm.From(
 		deployer_pb.DeploymentStatus_WAITING,
-	).Do(deployer_pb.DeploymentPSMFunc(func(
+	).Transition(deployer_pb.DeploymentPSMTransition(func(
 		ctx context.Context,
-		tb deployer_pb.DeploymentPSMTransitionBaton,
 		deployment *deployer_pb.DeploymentState,
 		event *deployer_pb.DeploymentEventType_StackWaitFailure,
 	) error {
@@ -150,13 +164,16 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 	// WAITING --> AVAILABLE : StackAvailable
 	sm.From(
 		deployer_pb.DeploymentStatus_WAITING,
-	).Do(deployer_pb.DeploymentPSMFunc(func(
+	).Transition(deployer_pb.DeploymentPSMTransition(func(
 		ctx context.Context,
-		tb deployer_pb.DeploymentPSMTransitionBaton,
 		deployment *deployer_pb.DeploymentState,
 		event *deployer_pb.DeploymentEventType_StackAvailable,
 	) error {
 		deployment.Status = deployer_pb.DeploymentStatus_AVAILABLE
+
+		// TODO: The plan should be generated in a side effect and stored as a
+		// new event.
+
 		plan, err := planDeploymentSteps(ctx, deployment, planInput{
 			stackStatus: event.StackOutput,
 			flags:       deployment.Spec.Flags,
@@ -165,46 +182,66 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 			return err
 		}
 		deployment.Steps = plan
-
-		tb.ChainEvent(chainDeploymentEvent(tb, &deployer_pb.DeploymentEventType_RunSteps{}))
-
 		return nil
-	}))
+	})).
+		Hook(deployer_pb.DeploymentPSMHook(func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			tb deployer_pb.DeploymentPSMHookBaton,
+			deployment *deployer_pb.DeploymentState,
+			event *deployer_pb.DeploymentEventType_StackAvailable,
+		) error {
+
+			tb.ChainEvent(chainDeploymentEvent(tb, &deployer_pb.DeploymentEventType_RunSteps{}))
+
+			return nil
+		}))
 
 	// AVAILABLE --> RUNNING : RunSteps
-	sm.From(
-		deployer_pb.DeploymentStatus_AVAILABLE,
-	).Do(deployer_pb.DeploymentPSMFunc(func(
-		ctx context.Context,
-		tb deployer_pb.DeploymentPSMTransitionBaton,
-		deployment *deployer_pb.DeploymentState,
-		event *deployer_pb.DeploymentEventType_RunSteps,
-	) error {
-		deployment.Status = deployer_pb.DeploymentStatus_RUNNING
-		return stepNext(ctx, tb, deployment)
-	}))
+	sm.From(deployer_pb.DeploymentStatus_AVAILABLE).
+		Transition(deployer_pb.DeploymentPSMTransition(func(
+			ctx context.Context,
+			deployment *deployer_pb.DeploymentState,
+			event *deployer_pb.DeploymentEventType_RunSteps,
+		) error {
+			deployment.Status = deployer_pb.DeploymentStatus_RUNNING
+			return nil
+		})).
+		Hook(deployer_pb.DeploymentPSMHook(func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			tb deployer_pb.DeploymentPSMHookBaton,
+			deployment *deployer_pb.DeploymentState,
+			event *deployer_pb.DeploymentEventType_RunSteps,
+		) error {
+			return stepNext(ctx, tb, deployment)
+		}))
 
 	// RUNNING --> RUNNING : StepResult
-	sm.From(
-		deployer_pb.DeploymentStatus_RUNNING,
-	).Do(deployer_pb.DeploymentPSMFunc(func(
-		ctx context.Context,
-		tb deployer_pb.DeploymentPSMTransitionBaton,
-		deployment *deployer_pb.DeploymentState,
-		event *deployer_pb.DeploymentEventType_StepResult,
-	) error {
-
-		updateDeploymentStep(deployment, event)
-
-		return stepNext(ctx, tb, deployment)
-	}))
+	sm.From(deployer_pb.DeploymentStatus_RUNNING).
+		Transition(deployer_pb.DeploymentPSMTransition(func(
+			ctx context.Context,
+			deployment *deployer_pb.DeploymentState,
+			event *deployer_pb.DeploymentEventType_StepResult,
+		) error {
+			updateDeploymentStep(deployment, event)
+			return nil
+		})).
+		Hook(deployer_pb.DeploymentPSMHook(func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			tb deployer_pb.DeploymentPSMHookBaton,
+			deployment *deployer_pb.DeploymentState,
+			event *deployer_pb.DeploymentEventType_StepResult,
+		) error {
+			return stepNext(ctx, tb, deployment)
+		}))
 
 	// RUNNING --> DONE : Done
 	sm.From(
 		deployer_pb.DeploymentStatus_RUNNING,
-	).Do(deployer_pb.DeploymentPSMFunc(func(
+	).Transition(deployer_pb.DeploymentPSMTransition(func(
 		ctx context.Context,
-		tb deployer_pb.DeploymentPSMTransitionBaton,
 		deployment *deployer_pb.DeploymentState,
 		event *deployer_pb.DeploymentEventType_Done,
 	) error {
@@ -213,9 +250,8 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 	}))
 
 	// * --> FAILED : Error
-	sm.From().Do(deployer_pb.DeploymentPSMFunc(func(
+	sm.From().Transition(deployer_pb.DeploymentPSMTransition(func(
 		ctx context.Context,
-		tb deployer_pb.DeploymentPSMTransitionBaton,
 		deployment *deployer_pb.DeploymentState,
 		event *deployer_pb.DeploymentEventType_Error,
 	) error {
@@ -224,9 +260,8 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 	}))
 
 	// * --> TERMINATED : Terminated
-	sm.From().Do(deployer_pb.DeploymentPSMFunc(func(
+	sm.From().Transition(deployer_pb.DeploymentPSMTransition(func(
 		ctx context.Context,
-		tb deployer_pb.DeploymentPSMTransitionBaton,
 		deployment *deployer_pb.DeploymentState,
 		event *deployer_pb.DeploymentEventType_Terminated,
 	) error {
@@ -238,9 +273,8 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 	sm.From(
 		deployer_pb.DeploymentStatus_FAILED,
 		deployer_pb.DeploymentStatus_TERMINATED,
-	).Do(deployer_pb.DeploymentPSMFunc(func(
+	).Transition(deployer_pb.DeploymentPSMTransition(func(
 		ctx context.Context,
-		tb deployer_pb.DeploymentPSMTransitionBaton,
 		deployment *deployer_pb.DeploymentState,
 		event *deployer_pb.DeploymentEventType_Triggered,
 	) error {
@@ -250,9 +284,8 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 	// Discard Step Results
 	sm.From(
 		deployer_pb.DeploymentStatus_TERMINATED,
-	).Do(deployer_pb.DeploymentPSMFunc(func(
+	).Transition(deployer_pb.DeploymentPSMTransition(func(
 		ctx context.Context,
-		tb deployer_pb.DeploymentPSMTransitionBaton,
 		deployment *deployer_pb.DeploymentState,
 		event *deployer_pb.DeploymentEventType_StepResult,
 	) error {

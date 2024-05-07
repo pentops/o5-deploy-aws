@@ -24,13 +24,13 @@ require (
 	github.com/iancoleman/strcase v0.3.0
 	github.com/lib/pq v1.10.9
 	github.com/pentops/flowtest v0.0.0-20240222224419-c36885c5b6f6
-	github.com/pentops/jsonapi v0.0.0-20240409180110-344be49fb0b7
+	github.com/pentops/jsonapi v0.0.0-20240501170241-5a5f63f07418
 	github.com/pentops/log.go v0.0.0-20231218074934-67aedcab3fa4
-	github.com/pentops/o5-go v0.0.0-20240417154803-887869874156
+	github.com/pentops/o5-go v0.0.0-20240430213737-0b7c2d1f1971
 	github.com/pentops/outbox.pg.go v0.0.0-20231222014950-493c01cfbcc7
 	github.com/pentops/pgtest.go v0.0.0-20231220005207-f01c870bad2e
-	github.com/pentops/protostate v0.0.0-20240410172427-722915485730
-	github.com/pentops/runner v0.0.0-20240119184422-1878cd4dc14d
+	github.com/pentops/protostate v0.0.0-20240507224927-061bebbb51da
+	github.com/pentops/runner v0.0.0-20240423175422-9ce56dcd8e33
 	github.com/pentops/sqrlx.go v0.0.0-20240108202916-8687fdf983c0
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/stretchr/testify v1.9.0

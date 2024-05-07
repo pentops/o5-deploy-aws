@@ -32,71 +32,96 @@ func NewStateMachines() (*StateMachines, error) {
 		return nil, fmt.Errorf("NewStackEventer: %w", err)
 	}
 
-	deployment.AddHook(func(
+	deployment.From().Hook(deployer_pb.DeploymentPSMHook(func(
 		ctx context.Context,
 		tx sqrlx.Transaction,
+		tb deployer_pb.DeploymentPSMHookBaton,
 		state *deployer_pb.DeploymentState,
-		event *deployer_pb.DeploymentEvent,
+		event *deployer_pb.DeploymentEventType_Created,
 	) error {
-		switch event.UnwrapPSMEvent().(type) {
 
-		case *deployer_pb.DeploymentEventType_Created:
-
-			stackEvent := &deployer_pb.StackEvent{
-				StackId: StackID(state.Spec.EnvironmentName, state.Spec.AppName),
-				Metadata: &deployer_pb.EventMetadata{
-					EventId:   uuid.NewString(),
-					Timestamp: timestamppb.Now(),
-				},
-				Event: &deployer_pb.StackEventType{
-					Type: &deployer_pb.StackEventType_Triggered_{
-						Triggered: &deployer_pb.StackEventType_Triggered{
-							Deployment: &deployer_pb.StackDeployment{
-								DeploymentId: state.DeploymentId,
-								Version:      state.Spec.Version,
-							},
-							EnvironmentName: state.Spec.EnvironmentName,
-							EnvironmentId:   state.Spec.EnvironmentId,
-							ApplicationName: state.Spec.AppName,
+		stackEvent := &deployer_pb.StackEvent{
+			StackId: StackID(state.Spec.EnvironmentName, state.Spec.AppName),
+			Metadata: &deployer_pb.EventMetadata{
+				EventId:   uuid.NewString(),
+				Timestamp: timestamppb.Now(),
+			},
+			Event: &deployer_pb.StackEventType{
+				Type: &deployer_pb.StackEventType_Triggered_{
+					Triggered: &deployer_pb.StackEventType_Triggered{
+						Deployment: &deployer_pb.StackDeployment{
+							DeploymentId: state.DeploymentId,
+							Version:      state.Spec.Version,
 						},
+						EnvironmentName: state.Spec.EnvironmentName,
+						EnvironmentId:   state.Spec.EnvironmentId,
+						ApplicationName: state.Spec.AppName,
 					},
 				},
-			}
+			},
+		}
 
-			if _, err := stack.TransitionInTx(ctx, tx, stackEvent); err != nil {
-				return err
-			}
-
-		case *deployer_pb.DeploymentEventType_Error,
-			*deployer_pb.DeploymentEventType_Terminated,
-			*deployer_pb.DeploymentEventType_Done:
-
-			stackEvent := &deployer_pb.StackEvent{
-				StackId: StackID(state.Spec.EnvironmentName, state.Spec.AppName),
-				Metadata: &deployer_pb.EventMetadata{
-					EventId:   uuid.NewString(),
-					Timestamp: timestamppb.Now(),
-				},
-				Event: &deployer_pb.StackEventType{
-					Type: &deployer_pb.StackEventType_DeploymentCompleted_{
-						DeploymentCompleted: &deployer_pb.StackEventType_DeploymentCompleted{
-							Deployment: &deployer_pb.StackDeployment{
-								DeploymentId: state.DeploymentId,
-								Version:      state.Spec.Version,
-							},
-						},
-					},
-				},
-			}
-
-			if _, err := stack.TransitionInTx(ctx, tx, stackEvent); err != nil {
-				return err
-			}
-
+		if _, err := stack.TransitionInTx(ctx, tx, stackEvent); err != nil {
+			return err
 		}
 
 		return nil
-	})
+	}))
+
+	deploymentCompleted := func(ctx context.Context, tx sqrlx.Transaction, state *deployer_pb.DeploymentState) error {
+
+		stackEvent := &deployer_pb.StackEvent{
+			StackId: StackID(state.Spec.EnvironmentName, state.Spec.AppName),
+			Metadata: &deployer_pb.EventMetadata{
+				EventId:   uuid.NewString(),
+				Timestamp: timestamppb.Now(),
+			},
+			Event: &deployer_pb.StackEventType{
+				Type: &deployer_pb.StackEventType_DeploymentCompleted_{
+					DeploymentCompleted: &deployer_pb.StackEventType_DeploymentCompleted{
+						Deployment: &deployer_pb.StackDeployment{
+							DeploymentId: state.DeploymentId,
+							Version:      state.Spec.Version,
+						},
+					},
+				},
+			},
+		}
+
+		if _, err := stack.TransitionInTx(ctx, tx, stackEvent); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	deployment.From().Hook(deployer_pb.DeploymentPSMHook(func(
+		ctx context.Context,
+		tx sqrlx.Transaction,
+		tb deployer_pb.DeploymentPSMHookBaton,
+		state *deployer_pb.DeploymentState,
+		event *deployer_pb.DeploymentEventType_Error,
+	) error {
+		return deploymentCompleted(ctx, tx, state)
+	}))
+	deployment.From().Hook(deployer_pb.DeploymentPSMHook(func(
+		ctx context.Context,
+		tx sqrlx.Transaction,
+		tb deployer_pb.DeploymentPSMHookBaton,
+		state *deployer_pb.DeploymentState,
+		event *deployer_pb.DeploymentEventType_Terminated,
+	) error {
+		return deploymentCompleted(ctx, tx, state)
+	}))
+	deployment.From().Hook(deployer_pb.DeploymentPSMHook(func(
+		ctx context.Context,
+		tx sqrlx.Transaction,
+		tb deployer_pb.DeploymentPSMHookBaton,
+		state *deployer_pb.DeploymentState,
+		event *deployer_pb.DeploymentEventType_Done,
+	) error {
+		return deploymentCompleted(ctx, tx, state)
+	}))
 
 	return &StateMachines{
 		Deployment:  deployment,

@@ -55,7 +55,8 @@ func TestCreateHappy(t *testing.T) {
 		t.NoError(err)
 	})
 
-	initialTrigger := &deployer_tpb.RequestDeploymentMessage{}
+	// Trigger the deployment by pushing to the configured branch
+	initialRequestDeployment := &deployer_tpb.RequestDeploymentMessage{}
 	ss.Step("Github Trigger", func(t UniverseAsserter) {
 		t.Github.Configs["owner/repo/after"] = []*application_pb.Application{{
 			Name: "app",
@@ -73,13 +74,13 @@ func TestCreateHappy(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		t.Outbox.PopMessage(t, initialTrigger)
+		t.Outbox.PopMessage(t, initialRequestDeployment)
 
 	})
 
 	triggerMessage := &deployer_tpb.TriggerDeploymentMessage{}
-	ss.Step("[*] --> QUEUED", func(t UniverseAsserter) {
-		_, err := t.DeployerTopic.RequestDeployment(ctx, initialTrigger)
+	ss.Step("Process the initial request to a trigger", func(t UniverseAsserter) {
+		_, err := t.DeployerTopic.RequestDeployment(ctx, initialRequestDeployment)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -97,7 +98,7 @@ func TestCreateHappy(t *testing.T) {
 	var stackRequest *messaging_pb.RequestMetadata
 	var stackName string
 
-	ss.Step("QUEUED --> TRIGGERED --> WAITING", func(t UniverseAsserter) {
+	ss.Step("Process the trigger", func(t UniverseAsserter) {
 		_, err := t.DeployerTopic.TriggerDeployment(ctx, triggerMessage)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -118,7 +119,7 @@ func TestCreateHappy(t *testing.T) {
 		t.AssertDeploymentStatus(t, triggerMessage.DeploymentId, deployer_pb.DeploymentStatus_WAITING)
 	})
 
-	ss.Step("WAITING --> AVAILABLE --> RUNNING : StackStatus.Missing", func(t UniverseAsserter) {
+	ss.Step("Stack not available leads to a Create New Stack message", func(t UniverseAsserter) {
 		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &deployer_tpb.StackStatusChangedMessage{
 			Request:   stackRequest,
 			StackName: stackName,
