@@ -1,0 +1,21 @@
+version: v1
+plugins:
+  - plugin: buf.build/protocolbuffers/go:v1.31.0
+    out: .
+    opt: paths=import,module=github.com/pentops/o5-deploy-aws
+
+  - name: go-messaging # github.com/pentops/protoc-gen-go-messaging
+    out: .
+    opt: paths=import,module=github.com/pentops/o5-deploy-aws
+
+  - name: go-sugar # github.com/pentops/protoc-gen-go-sugar
+    out: .
+    opt: paths=import,module=github.com/pentops/o5-deploy-aws
+
+  - name: go-psm # github.com/pentops/protostate
+    out: .
+    opt: paths=import,module=github.com/pentops/o5-deploy-aws
+
+  - name: go-grpc # 'Official' version
+    out: .
+    opt: paths=import,module=github.com/pentops/o5-deploy-aws

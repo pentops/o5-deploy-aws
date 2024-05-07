@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package o5.deployer.v1;
+
+import "buf/validate/validate.proto";
+import "o5/deployer/v1/event.proto";
+import "psm/list/v1/annotations.proto";
+import "psm/state/v1/annotations.proto";
+
+option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb";
+
+message StackState {
+  option (psm.state.v1.state).name = "stack";
+  string stack_id = 1 [(buf.validate.field).string.uuid = true];
+  StackStatus status = 2 [(psm.list.v1.field).enum.filtering.filterable = true];
+
+  optional StackDeployment current_deployment = 3;
+
+  string stack_name = 7 [
+    (buf.validate.field).string.pattern = "^[a-z][a-z0-9]+-[a-z][a-z0-9]+$",
+    (psm.list.v1.field).string.open_text.searching = {
+      searchable: true,
+      field_identifier: "tsv_stack_name"
+    }
+  ];
+  string application_name = 4 [
+    (buf.validate.field).string.pattern = "^[a-z][a-z0-9]+$",
+    (psm.list.v1.field).string.open_text.searching = {
+      searchable: true,
+      field_identifier: "tsv_app_name"
+    }
+  ];
+  string environment_name = 5 [
+    (buf.validate.field).string.pattern = "^[a-z][a-z0-9]+$",
+    (psm.list.v1.field).string.open_text.searching = {
+      searchable: true,
+      field_identifier: "tsv_environment_name"
+    }
+  ];
+  string environment_id = 8 [(buf.validate.field).string.uuid = true];
+
+  repeated StackDeployment queued_deployments = 6;
+
+  StackConfig config = 10;
+}
+
+message StackConfig {
+  SourceTriggerType code_source = 10;
+}
+
+enum StackStatus {
+  STACK_STATUS_UNSPECIFIED = 0;
+  STACK_STATUS_CREATING = 1;
+  STACK_STATUS_STABLE = 2;
+  STACK_STATUS_AVAILABLE = 3;
+  STACK_STATUS_MIGRATING = 4;
+  STACK_STATUS_BROKEN = 5;
+}
+
+message StackDeployment {
+  string deployment_id = 1 [(buf.validate.field).string.uuid = true];
+  string version = 2;
+}
+
+message SourceTriggerType {
+  oneof type {
+    Github github = 1;
+  }
+
+  message Github {
+    string owner = 1;
+    string repo = 2;
+    string branch = 3;
+  }
+}
+
+message StackEvent {
+  option (psm.state.v1.event).name = "stack";
+
+  EventMetadata metadata = 1 [
+    (psm.state.v1.event_field).metadata = true,
+    (buf.validate.field).required = true
+  ];
+
+  string stack_id = 2 [
+    (psm.state.v1.event_field).state_key = true,
+    (buf.validate.field).string.uuid = true
+  ];
+
+  StackEventType event = 3 [
+    (psm.state.v1.event_field).event_type = true,
+    (buf.validate.field).required = true
+  ];
+}
+
+message StackEventType {
+  oneof type {
+    option (psm.list.v1.oneof).filtering.filterable = true;
+
+    Configured configured = 2;
+    Triggered triggered = 3;
+    DeploymentCompleted deployment_completed = 4;
+    DeploymentFailed deployment_failed = 5;
+    Available available = 6;
+  }
+
+  message Configured {
+    string application_name = 1;
+    string environment_id = 2;
+    string environment_name = 3;
+    StackConfig config = 4;
+  }
+
+  message Triggered {
+    StackDeployment deployment = 1;
+    string application_name = 2;
+    string environment_name = 3;
+    string environment_id = 4;
+  }
+
+  message DeploymentCompleted {
+    StackDeployment deployment = 1;
+  }
+
+  message DeploymentFailed {
+    StackDeployment deployment = 1;
+    string error = 2;
+  }
+
+  message Available {}
+}

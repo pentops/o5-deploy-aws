@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	sq "github.com/elgris/sqrl"
-	"github.com/pentops/o5-go/github/v1/github_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/github/v1/github_pb"
 	"github.com/pentops/sqrlx.go/sqrlx"
 )
 

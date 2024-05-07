@@ -6,7 +6,7 @@ import (
 
 	sq "github.com/elgris/sqrl"
 	"github.com/pentops/o5-deploy-aws/states"
-	"github.com/pentops/o5-go/deployer/v1/deployer_spb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_spb"
 	"github.com/pentops/protostate/psm"
 	"github.com/pentops/sqrlx.go/sqrlx"
 )

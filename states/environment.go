@@ -3,7 +3,7 @@ package states
 import (
 	"context"
 
-	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
 )
 
 func NewEnvironmentEventer() (*deployer_pb.EnvironmentPSM, error) {

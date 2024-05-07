@@ -15,8 +15,8 @@ import (
 	"github.com/aws/smithy-go"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/cf/app"
-	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
 )
 
 type CFClient struct {
