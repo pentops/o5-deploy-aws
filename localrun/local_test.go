@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/pentops/flowtest"
-	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	"google.golang.org/protobuf/proto"
