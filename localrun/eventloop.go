@@ -150,12 +150,12 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		})
 		log.WithField(ctx, "event", protojson.Format(innerEvent.Event)).Debug("Begin Deployment Event")
 
-		transition, err := stateMachine.FindTransition(deployment, innerEvent)
+		statusBefore := deployment.Status
+		transition, err := stateMachine.FindTransition(statusBefore, innerEvent)
 		if err != nil {
 			return err
 		}
-		unwrapped := innerEvent.Event.UnwrapPSMEvent()
-		if err := transition.RunTransition(ctx, baton, deployment, unwrapped); err != nil {
+		if err := transition.RunTransition(ctx, deployment, innerEvent); err != nil {
 			return err
 		}
 
@@ -166,6 +166,15 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 
 		if err := tx.StoreDeploymentEvent(ctx, deployment, innerEvent); err != nil {
 			return err
+		}
+
+		hooks := stateMachine.FindHooks(statusBefore, innerEvent)
+		for _, hook := range hooks {
+			// nil TX means no hooks can use the database. This method is
+			// getting bad.
+			if err := hook.RunStateHook(ctx, nil, baton, deployment, innerEvent); err != nil {
+				return err
+			}
 		}
 
 		// Each transiton will produce either one chain event, or one side

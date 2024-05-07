@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -85,9 +86,8 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 	// The stack is immediately 'AVAILABLE' and ready for the first deployment.
 	sm.From(
 		deployer_pb.StackStatus_UNSPECIFIED,
-	).Do(deployer_pb.StackPSMFunc(func(
+	).Transition(deployer_pb.StackPSMTransition(func(
 		ctx context.Context,
-		tb deployer_pb.StackPSMTransitionBaton,
 		state *deployer_pb.StackState,
 		event *deployer_pb.StackEventType_Configured,
 	) error {
@@ -103,26 +103,26 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 	// Updating the configuration to an existing stack, regardless of how it was
 	// created (via configuration or deployment), leaves the status as it is and
 	// just updates the config.
-	sm.From().Do(deployer_pb.StackPSMFunc(func(
-		ctx context.Context,
-		tb deployer_pb.StackPSMTransitionBaton,
-		state *deployer_pb.StackState,
-		event *deployer_pb.StackEventType_Configured,
-	) error {
-		state.Config = event.Config
+	sm.From().
+		Transition(deployer_pb.StackPSMTransition(func(
+			ctx context.Context,
+			state *deployer_pb.StackState,
+			event *deployer_pb.StackEventType_Configured,
+		) error {
+			state.Config = event.Config
 
-		if state.EnvironmentId != event.EnvironmentId {
-			return status.Errorf(codes.InvalidArgument, "environment id cannot be changed (from %s to %s)", state.EnvironmentId, event.EnvironmentId)
-		}
-		if state.EnvironmentName != event.EnvironmentName {
-			return status.Errorf(codes.InvalidArgument, "environment name cannot be changed (from %s to %s)", state.EnvironmentName, event.EnvironmentName)
-		}
-		if state.ApplicationName != event.ApplicationName {
-			return status.Errorf(codes.InvalidArgument, "application name cannot be changed (from %s to %s)", state.ApplicationName, event.ApplicationName)
-		}
+			if state.EnvironmentId != event.EnvironmentId {
+				return status.Errorf(codes.InvalidArgument, "environment id cannot be changed (from %s to %s)", state.EnvironmentId, event.EnvironmentId)
+			}
+			if state.EnvironmentName != event.EnvironmentName {
+				return status.Errorf(codes.InvalidArgument, "environment name cannot be changed (from %s to %s)", state.EnvironmentName, event.EnvironmentName)
+			}
+			if state.ApplicationName != event.ApplicationName {
+				return status.Errorf(codes.InvalidArgument, "application name cannot be changed (from %s to %s)", state.ApplicationName, event.ApplicationName)
+			}
 
-		return nil
-	}))
+			return nil
+		}))
 
 	// The 'Triggered' event arrives when a Deployment is *created*.
 	// The deployment starts in a 'QUEUED' status
@@ -133,9 +133,8 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 	// As this is the first deployment for the stack, we can trigger the deployment immediately.
 	sm.From(
 		deployer_pb.StackStatus_UNSPECIFIED,
-	).Do(deployer_pb.StackPSMFunc(func(
+	).Transition(deployer_pb.StackPSMTransition(func(
 		ctx context.Context,
-		tb deployer_pb.StackPSMTransitionBaton,
 		state *deployer_pb.StackState,
 		event *deployer_pb.StackEventType_Triggered,
 	) error {
@@ -146,6 +145,14 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		state.EnvironmentId = event.EnvironmentId
 		state.QueuedDeployments = []*deployer_pb.StackDeployment{}
 		state.StackName = fmt.Sprintf("%s-%s", event.EnvironmentName, event.ApplicationName)
+		return nil
+	})).Hook(deployer_pb.StackPSMHook(func(
+		ctx context.Context,
+		tx sqrlx.Transaction,
+		tb deployer_pb.StackPSMHookBaton,
+		state *deployer_pb.StackState,
+		event *deployer_pb.StackEventType_Triggered,
+	) error {
 
 		tb.SideEffect(&deployer_tpb.TriggerDeploymentMessage{
 			DeploymentId:    state.CurrentDeployment.DeploymentId,
@@ -156,21 +163,27 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		})
 		return nil
 
-	},
-	))
+	}))
 
 	// AVAILABLE --> MIGRATING : Triggered externally, run now
 	sm.From(
 		deployer_pb.StackStatus_AVAILABLE,
-	).Do(deployer_pb.StackPSMFunc(func(
+	).Transition(deployer_pb.StackPSMTransition(func(
 		ctx context.Context,
-		tb deployer_pb.StackPSMTransitionBaton,
 		state *deployer_pb.StackState,
 		event *deployer_pb.StackEventType_Triggered,
 	) error {
 		state.Status = deployer_pb.StackStatus_MIGRATING
 
 		state.CurrentDeployment = event.Deployment
+		return nil
+	})).Hook(deployer_pb.StackPSMHook(func(
+		ctx context.Context,
+		tx sqrlx.Transaction,
+		tb deployer_pb.StackPSMHookBaton,
+		state *deployer_pb.StackState,
+		event *deployer_pb.StackEventType_Triggered,
+	) error {
 
 		tb.SideEffect(&deployer_tpb.TriggerDeploymentMessage{
 			DeploymentId:    state.CurrentDeployment.DeploymentId,
@@ -180,59 +193,76 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 			ApplicationName: state.ApplicationName,
 		})
 		return nil
-	},
-	))
+	}))
 
 	// CREATING --> STABLE : DeploymentCompleted
 	// MIGRATING --> STABLE : DeploymentCompleted
 	sm.From(
 		deployer_pb.StackStatus_CREATING,
 		deployer_pb.StackStatus_MIGRATING,
-	).Do(deployer_pb.StackPSMFunc(func(
-		ctx context.Context,
-		tb deployer_pb.StackPSMTransitionBaton,
-		state *deployer_pb.StackState,
-		event *deployer_pb.StackEventType_DeploymentCompleted,
-	) error {
-		state.Status = deployer_pb.StackStatus_STABLE
-		tb.ChainEvent(chainStackEvent(tb, &deployer_pb.StackEventType_Available{}))
-		return nil
-	},
-	))
+	).
+		Transition(deployer_pb.StackPSMTransition(func(
+			ctx context.Context,
+			state *deployer_pb.StackState,
+			event *deployer_pb.StackEventType_DeploymentCompleted,
+		) error {
+			state.Status = deployer_pb.StackStatus_STABLE
+			return nil
+		})).
+		Hook(deployer_pb.StackPSMHook(func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			tb deployer_pb.StackPSMHookBaton,
+			state *deployer_pb.StackState,
+			event *deployer_pb.StackEventType_DeploymentCompleted,
+		) error {
+			tb.ChainEvent(chainStackEvent(tb, &deployer_pb.StackEventType_Available{}))
+			return nil
+		}))
 
 	// STABLE -> AVAILABLE : Available
-	sm.From(
-		deployer_pb.StackStatus_STABLE,
-	).Do(deployer_pb.StackPSMFunc(func(
-		ctx context.Context,
-		tb deployer_pb.StackPSMTransitionBaton,
-		state *deployer_pb.StackState,
-		event *deployer_pb.StackEventType_Available,
-	) error {
+	sm.From(deployer_pb.StackStatus_STABLE).
+		Transition(deployer_pb.StackPSMTransition(func(
+			ctx context.Context,
+			state *deployer_pb.StackState,
+			event *deployer_pb.StackEventType_Available,
+		) error {
 
-		if len(state.QueuedDeployments) == 0 {
-			state.Status = deployer_pb.StackStatus_AVAILABLE
-			state.CurrentDeployment = nil
-			// Nothing left to do, leave the stack in available
+			if len(state.QueuedDeployments) == 0 {
+				state.Status = deployer_pb.StackStatus_AVAILABLE
+				state.CurrentDeployment = nil
+				// Nothing left to do, leave the stack in available
+				return nil
+			}
+
+			state.Status = deployer_pb.StackStatus_MIGRATING
+
+			// TODO: An event to trigger the next deployment by ID
+			state.CurrentDeployment = state.QueuedDeployments[0]
+			state.QueuedDeployments = state.QueuedDeployments[1:]
 			return nil
-		}
+		})).
+		Hook(deployer_pb.StackPSMHook(func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			tb deployer_pb.StackPSMHookBaton,
+			state *deployer_pb.StackState,
+			event *deployer_pb.StackEventType_Available,
+		) error {
+			if state.Status != deployer_pb.StackStatus_MIGRATING {
+				return nil
+			}
 
-		state.Status = deployer_pb.StackStatus_MIGRATING
+			tb.SideEffect(&deployer_tpb.TriggerDeploymentMessage{
+				DeploymentId:    state.CurrentDeployment.DeploymentId,
+				StackId:         state.StackId,
+				Version:         state.CurrentDeployment.Version,
+				EnvironmentName: state.EnvironmentName,
+				ApplicationName: state.ApplicationName,
+			})
 
-		state.CurrentDeployment = state.QueuedDeployments[0]
-		state.QueuedDeployments = state.QueuedDeployments[1:]
-
-		tb.SideEffect(&deployer_tpb.TriggerDeploymentMessage{
-			DeploymentId:    state.CurrentDeployment.DeploymentId,
-			StackId:         state.StackId,
-			Version:         state.CurrentDeployment.Version,
-			EnvironmentName: state.EnvironmentName,
-			ApplicationName: state.ApplicationName,
-		})
-
-		return nil
-	},
-	))
+			return nil
+		}))
 
 	// BROKEN --> BROKEN : Triggered
 	// CREATING --> CREATING : Triggered
@@ -241,16 +271,14 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		deployer_pb.StackStatus_BROKEN,
 		deployer_pb.StackStatus_CREATING,
 		deployer_pb.StackStatus_MIGRATING,
-	).Do(deployer_pb.StackPSMFunc(func(
+	).Transition(deployer_pb.StackPSMTransition(func(
 		ctx context.Context,
-		tb deployer_pb.StackPSMTransitionBaton,
 		state *deployer_pb.StackState,
 		event *deployer_pb.StackEventType_Triggered,
 	) error {
 		// No state change.
 		state.QueuedDeployments = append(state.QueuedDeployments, event.Deployment)
 		return nil
-	},
-	))
+	}))
 	return sm, nil
 }
