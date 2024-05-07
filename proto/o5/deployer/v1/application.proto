@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package o5.deployer.v1;
+
+import "o5/application/v1/application.proto";
+
+option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb";
+
+message BuiltApplication {
+  string name = 1;
+  string version = 2;
+  bool quick_mode = 3;
+  repeated Parameter parameters = 4;
+  repeated string sns_topics = 5;
+  repeated PostgresDatabaseResource postgres_databases = 6;
+}
+
+message Parameter {
+  string name = 1;
+  string type = 2;
+  string description = 3;
+  ParameterSourceType source = 4;
+
+  repeated string args = 6;
+}
+
+message PostgresDatabaseResource {
+  string db_name = 1;
+  string server_group = 2;
+  string secret_output_name = 3;
+  repeated string db_extensions = 4;
+  optional string migration_task_output_name = 5;
+}
+
+message ParameterSourceType {
+  oneof type {
+    Static static = 1;
+    WellKnown well_known = 2;
+    RulePriority rule_priority = 3;
+    DesiredCount desired_count = 4;
+    CrossEnvSns cross_env_sns = 5;
+    EnvVar env_var = 6;
+  }
+
+  message Static {
+    string value = 1;
+  }
+
+  message WellKnown {
+    string name = 1;
+  }
+
+  message RulePriority {
+    o5.application.v1.RouteGroup route_group = 1;
+  }
+
+  message DesiredCount {}
+
+  message CrossEnvSns {
+    string env_name = 1;
+  }
+
+  message EnvVar {
+    string name = 1;
+  }
+}

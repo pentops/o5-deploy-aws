@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
-	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
 )
 
 var stackStatusProgress = []types.StackStatus{

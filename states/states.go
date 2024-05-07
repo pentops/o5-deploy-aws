@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

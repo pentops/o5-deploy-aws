@@ -2,7 +2,7 @@ package cf
 
 import (
 	"github.com/awslabs/goformation/v7/cloudformation"
-	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
 )
 
 type TemplateBuilder struct {

@@ -6,7 +6,7 @@ import (
 
 	"github.com/bufbuild/protovalidate-go"
 	"github.com/pentops/o5-deploy-aws/deployer"
-	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
 )
 
 // StateStore wires back the events to the deployer, rather than relying on
