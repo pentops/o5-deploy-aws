@@ -133,7 +133,7 @@ message ListDeploymentsRequest {
   psm.list.v1.PageRequest page = 100;
   psm.list.v1.QueryRequest query = 101;
   option (psm.list.v1.list_request) = {
-    sort_tiebreaker: ["deployment_id"]
+    sort_tiebreaker: ["keys.deployment_id"]
   };
 }
 
@@ -156,7 +156,7 @@ message ListStacksRequest {
   psm.list.v1.PageRequest page = 100;
   psm.list.v1.QueryRequest query = 101;
   option (psm.list.v1.list_request) = {
-    sort_tiebreaker: ["stack_id"]
+    sort_tiebreaker: ["keys.stack_id"]
   };
 }
 

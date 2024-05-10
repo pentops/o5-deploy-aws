@@ -112,7 +112,7 @@ func runDataPass(ctx context.Context, config struct{}) error {
 				for {
 					res := &deployer_spb.ListStackEventsResponse{}
 					if err := stackQuery.ListEvents(ctx, db, &deployer_spb.ListStackEventsRequest{
-						StackId: stack.StackId,
+						StackId: stack.Keys.StackId,
 						Page:    eventPage,
 					}, res); err != nil {
 						return err
@@ -157,7 +157,7 @@ func runDataPass(ctx context.Context, config struct{}) error {
 				for {
 					res := &deployer_spb.ListDeploymentEventsResponse{}
 					if err := deploymentQuery.ListEvents(ctx, db, &deployer_spb.ListDeploymentEventsRequest{
-						DeploymentId: deployment.DeploymentId,
+						DeploymentId: deployment.Keys.DeploymentId,
 						Page:         eventPage,
 					}, res); err != nil {
 						return err

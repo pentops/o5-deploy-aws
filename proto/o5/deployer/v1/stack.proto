@@ -3,34 +3,49 @@ syntax = "proto3";
 package o5.deployer.v1;
 
 import "buf/validate/validate.proto";
-import "o5/deployer/v1/event.proto";
+import "j5/ext/v1/annotations.proto";
 import "psm/list/v1/annotations.proto";
 import "psm/state/v1/annotations.proto";
+import "psm/state/v1/metadata.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb";
 
+message StackKeys {
+  option (psm.state.v1.psm).name = "stack";
+
+  string stack_id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (psm.state.v1.field).primary_key = true
+  ];
+}
+
 message StackState {
-  option (psm.state.v1.state).name = "stack";
-  string stack_id = 1 [(buf.validate.field).string.uuid = true];
-  StackStatus status = 2 [(psm.list.v1.field).enum.filtering.filterable = true];
+  psm.state.v1.StateMetadata metadata = 1 [(buf.validate.field).required = true];
 
-  optional StackDeployment current_deployment = 3;
+  StackKeys keys = 2 [
+    (j5.ext.v1.field).message.flatten = true,
+    (buf.validate.field).required = true
+  ];
 
-  string stack_name = 7 [
+  StackStatus status = 3 [(psm.list.v1.field).enum.filtering.filterable = true];
+
+  optional StackDeployment current_deployment = 4;
+
+  string stack_name = 5 [
     (buf.validate.field).string.pattern = "^[a-z][a-z0-9]+-[a-z][a-z0-9]+$",
     (psm.list.v1.field).string.open_text.searching = {
       searchable: true,
       field_identifier: "tsv_stack_name"
     }
   ];
-  string application_name = 4 [
+  string application_name = 6 [
     (buf.validate.field).string.pattern = "^[a-z][a-z0-9]+$",
     (psm.list.v1.field).string.open_text.searching = {
       searchable: true,
       field_identifier: "tsv_app_name"
     }
   ];
-  string environment_name = 5 [
+  string environment_name = 7 [
     (buf.validate.field).string.pattern = "^[a-z][a-z0-9]+$",
     (psm.list.v1.field).string.open_text.searching = {
       searchable: true,
@@ -39,7 +54,7 @@ message StackState {
   ];
   string environment_id = 8 [(buf.validate.field).string.uuid = true];
 
-  repeated StackDeployment queued_deployments = 6;
+  repeated StackDeployment queued_deployments = 9;
 
   StackConfig config = 10;
 }
@@ -75,22 +90,14 @@ message SourceTriggerType {
 }
 
 message StackEvent {
-  option (psm.state.v1.event).name = "stack";
+  psm.state.v1.EventMetadata metadata = 1 [(buf.validate.field).required = true];
 
-  EventMetadata metadata = 1 [
-    (psm.state.v1.event_field).metadata = true,
+  StackKeys keys = 2 [
+    (j5.ext.v1.field).message.flatten = true,
     (buf.validate.field).required = true
   ];
 
-  string stack_id = 2 [
-    (psm.state.v1.event_field).state_key = true,
-    (buf.validate.field).string.uuid = true
-  ];
-
-  StackEventType event = 3 [
-    (psm.state.v1.event_field).event_type = true,
-    (buf.validate.field).required = true
-  ];
+  StackEventType event = 3 [(buf.validate.field).required = true];
 }
 
 message StackEventType {

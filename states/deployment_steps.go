@@ -307,7 +307,7 @@ func stepToSideEffect(step *deployer_pb.DeploymentStep, deployment *deployer_pb.
 	requestMetadata, err := buildRequestMetadata(&deployer_pb.StepContext{
 		StepId:       &step.Id,
 		Phase:        deployer_pb.StepPhase_STEPS,
-		DeploymentId: deployment.DeploymentId,
+		DeploymentId: deployment.Keys.DeploymentId,
 	})
 	if err != nil {
 		return nil, err

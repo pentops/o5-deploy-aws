@@ -7,9 +7,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
+	"github.com/pentops/protostate/gen/state/v1/psm_pb"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -20,15 +22,14 @@ func StackID(envName, appName string) string {
 }
 
 func chainStackEvent(tb deployer_pb.StackPSMTransitionBaton, event deployer_pb.IsStackEventTypeWrappedType) *deployer_pb.StackEvent {
-	md := tb.FullCause().Metadata
+	md := tb.FullCause()
 	de := &deployer_pb.StackEvent{
-		Metadata: &deployer_pb.EventMetadata{
+		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
-			Actor:     md.Actor,
 		},
-		StackId: tb.FullCause().StackId,
-		Event:   &deployer_pb.StackEventType{},
+		Keys:  proto.Clone(md.Keys).(*deployer_pb.StackKeys),
+		Event: &deployer_pb.StackEventType{},
 	}
 	de.Event.Set(event)
 	return de
@@ -60,7 +61,7 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		StoreExtraEventColumns(func(e *deployer_pb.StackEvent) (map[string]interface{}, error) {
 			return map[string]interface{}{
 				"id":        e.Metadata.EventId,
-				"stack_id":  e.StackId,
+				"stack_id":  e.Keys.StackId,
 				"timestamp": e.Metadata.Timestamp,
 			}, nil
 		})
@@ -156,7 +157,7 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 
 		tb.SideEffect(&deployer_tpb.TriggerDeploymentMessage{
 			DeploymentId:    state.CurrentDeployment.DeploymentId,
-			StackId:         state.StackId,
+			StackId:         state.Keys.StackId,
 			Version:         state.CurrentDeployment.Version,
 			EnvironmentName: state.EnvironmentName,
 			ApplicationName: state.ApplicationName,
@@ -187,7 +188,7 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 
 		tb.SideEffect(&deployer_tpb.TriggerDeploymentMessage{
 			DeploymentId:    state.CurrentDeployment.DeploymentId,
-			StackId:         state.StackId,
+			StackId:         state.Keys.StackId,
 			Version:         state.CurrentDeployment.Version,
 			EnvironmentName: state.EnvironmentName,
 			ApplicationName: state.ApplicationName,
@@ -255,7 +256,7 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 
 			tb.SideEffect(&deployer_tpb.TriggerDeploymentMessage{
 				DeploymentId:    state.CurrentDeployment.DeploymentId,
-				StackId:         state.StackId,
+				StackId:         state.Keys.StackId,
 				Version:         state.CurrentDeployment.Version,
 				EnvironmentName: state.EnvironmentName,
 				ApplicationName: state.ApplicationName,

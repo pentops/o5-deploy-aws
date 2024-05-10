@@ -11,7 +11,7 @@ func NewEnvironmentEventer() (*deployer_pb.EnvironmentPSM, error) {
 		StoreExtraEventColumns(func(e *deployer_pb.EnvironmentEvent) (map[string]interface{}, error) {
 			return map[string]interface{}{
 				"id":             e.Metadata.EventId,
-				"environment_id": e.EnvironmentId,
+				"environment_id": e.Keys.EnvironmentId,
 				"timestamp":      e.Metadata.Timestamp,
 			}, nil
 		})

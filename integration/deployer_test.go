@@ -248,7 +248,7 @@ func TestStackLock(t *testing.T) {
 			},
 		})
 		t.NoError(err)
-		environmentID = res.State.EnvironmentId
+		environmentID = res.State.Keys.EnvironmentId
 	})
 
 	ss.Step("Request First", func(t UniverseAsserter) {

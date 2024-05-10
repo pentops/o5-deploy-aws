@@ -17,6 +17,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/outbox.pg.go/outbox"
+	"github.com/pentops/protostate/gen/state/v1/psm_pb"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -87,8 +88,10 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 	tx := lel.storage
 
 	eventQueue := []*deployer_pb.DeploymentEvent{{
-		DeploymentId: trigger.DeploymentId,
-		Metadata: &deployer_pb.EventMetadata{
+		Keys: &deployer_pb.DeploymentKeys{
+			DeploymentId: trigger.DeploymentId,
+		},
+		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
 		},
@@ -100,8 +103,10 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 			},
 		},
 	}, {
-		DeploymentId: trigger.DeploymentId,
-		Metadata: &deployer_pb.EventMetadata{
+		Keys: &deployer_pb.DeploymentKeys{
+			DeploymentId: trigger.DeploymentId,
+		},
+		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
 		},
@@ -130,7 +135,10 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		deployment, err := tx.GetDeployment(ctx, deploymentId)
 		if errors.Is(err, deployer.DeploymentNotFoundError) {
 			deployment = &deployer_pb.DeploymentState{
-				DeploymentId: deploymentId,
+				Metadata: &psm_pb.StateMetadata{},
+				Keys: &deployer_pb.DeploymentKeys{
+					DeploymentId: deploymentId,
+				},
 			}
 		} else if err != nil {
 			return err
@@ -144,7 +152,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		stateBefore := deployment.Status.ShortString()
 
 		ctx = log.WithFields(ctx, map[string]interface{}{
-			"deploymentId": innerEvent.DeploymentId,
+			"deploymentId": innerEvent.Keys.DeploymentId,
 			"eventType":    typeKey,
 			"transition":   fmt.Sprintf("%s -> ? : %s", stateBefore, typeKey),
 		})
@@ -156,7 +164,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 			return err
 		}
 		if err := transition.RunTransition(ctx, deployment, innerEvent); err != nil {
-			return err
+			return fmt.Errorf("run transisiotn: %w", err)
 		}
 
 		ctx = log.WithFields(ctx, map[string]interface{}{
@@ -220,8 +228,10 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 
 			if result != nil {
 				mapped := &deployer_pb.DeploymentEvent{
-					DeploymentId: deploymentId,
-					Metadata: &deployer_pb.EventMetadata{
+					Keys: &deployer_pb.DeploymentKeys{
+						DeploymentId: deploymentId,
+					},
+					Metadata: &psm_pb.EventMetadata{
 						EventId:   uuid.NewString(),
 						Timestamp: timestamppb.Now(),
 					},

@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/protostate/gen/state/v1/psm_pb"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -41,8 +42,10 @@ func NewStateMachines() (*StateMachines, error) {
 	) error {
 
 		stackEvent := &deployer_pb.StackEvent{
-			StackId: StackID(state.Spec.EnvironmentName, state.Spec.AppName),
-			Metadata: &deployer_pb.EventMetadata{
+			Keys: &deployer_pb.StackKeys{
+				StackId: StackID(state.Spec.EnvironmentName, state.Spec.AppName),
+			},
+			Metadata: &psm_pb.EventMetadata{
 				EventId:   uuid.NewString(),
 				Timestamp: timestamppb.Now(),
 			},
@@ -50,7 +53,7 @@ func NewStateMachines() (*StateMachines, error) {
 				Type: &deployer_pb.StackEventType_Triggered_{
 					Triggered: &deployer_pb.StackEventType_Triggered{
 						Deployment: &deployer_pb.StackDeployment{
-							DeploymentId: state.DeploymentId,
+							DeploymentId: state.Keys.DeploymentId,
 							Version:      state.Spec.Version,
 						},
 						EnvironmentName: state.Spec.EnvironmentName,
@@ -71,8 +74,10 @@ func NewStateMachines() (*StateMachines, error) {
 	deploymentCompleted := func(ctx context.Context, tx sqrlx.Transaction, state *deployer_pb.DeploymentState) error {
 
 		stackEvent := &deployer_pb.StackEvent{
-			StackId: StackID(state.Spec.EnvironmentName, state.Spec.AppName),
-			Metadata: &deployer_pb.EventMetadata{
+			Keys: &deployer_pb.StackKeys{
+				StackId: StackID(state.Spec.EnvironmentName, state.Spec.AppName),
+			},
+			Metadata: &psm_pb.EventMetadata{
 				EventId:   uuid.NewString(),
 				Timestamp: timestamppb.Now(),
 			},
@@ -80,7 +85,7 @@ func NewStateMachines() (*StateMachines, error) {
 				Type: &deployer_pb.StackEventType_DeploymentCompleted_{
 					DeploymentCompleted: &deployer_pb.StackEventType_DeploymentCompleted{
 						Deployment: &deployer_pb.StackDeployment{
-							DeploymentId: state.DeploymentId,
+							DeploymentId: state.Keys.DeploymentId,
 							Version:      state.Spec.Version,
 						},
 					},

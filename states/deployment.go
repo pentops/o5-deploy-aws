@@ -8,6 +8,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
+	"github.com/pentops/protostate/gen/state/v1/psm_pb"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -27,15 +28,14 @@ func buildRequestMetadata(contextMessage proto.Message) (*messaging_pb.RequestMe
 }
 
 func chainDeploymentEvent(tb deployer_pb.DeploymentPSMTransitionBaton, event deployer_pb.IsDeploymentEventTypeWrappedType) *deployer_pb.DeploymentEvent {
-	md := tb.FullCause().Metadata
+	md := tb.FullCause()
 	de := &deployer_pb.DeploymentEvent{
-		Metadata: &deployer_pb.EventMetadata{
+		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
-			Actor:     md.Actor,
 		},
-		DeploymentId: tb.FullCause().DeploymentId,
-		Event:        &deployer_pb.DeploymentEventType{},
+		Keys:  proto.Clone(md.Keys).(*deployer_pb.DeploymentKeys),
+		Event: &deployer_pb.DeploymentEventType{},
 	}
 	de.Event.Set(event)
 	return de
@@ -51,7 +51,7 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		StoreExtraEventColumns(func(e *deployer_pb.DeploymentEvent) (map[string]interface{}, error) {
 			return map[string]interface{}{
 				"id":            e.Metadata.EventId,
-				"deployment_id": e.DeploymentId,
+				"deployment_id": e.Keys.DeploymentId,
 				"timestamp":     e.Metadata.Timestamp,
 			}, nil
 		})
@@ -84,7 +84,6 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 			deployment.Spec = event.Spec
 			deployment.StackName = fmt.Sprintf("%s-%s", event.Spec.EnvironmentName, event.Spec.AppName)
 			deployment.StackId = StackID(event.Spec.EnvironmentName, event.Spec.AppName)
-			deployment.CreatedAt = timestamppb.Now()
 
 			// No follow on, the stack state will trigger
 
@@ -134,7 +133,7 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		) error {
 			requestMetadata, err := buildRequestMetadata(&deployer_pb.StepContext{
 				Phase:        deployer_pb.StepPhase_WAIT,
-				DeploymentId: deployment.DeploymentId,
+				DeploymentId: deployment.Keys.DeploymentId,
 			})
 			if err != nil {
 				return err

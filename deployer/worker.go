@@ -12,6 +12,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
+	"github.com/pentops/protostate/gen/state/v1/psm_pb"
 	"github.com/pentops/protostate/psm"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -49,38 +50,16 @@ func NewDeployerWorker(conn sqrlx.Connection, specBuilder *SpecBuilder, states *
 func (dw *DeployerWorker) doDeploymentEvent(ctx context.Context, event *deployer_pb.DeploymentEvent) error {
 	_, err := dw.deploymentEventer.Transition(ctx, dw.db, event)
 	return err
-
-	/*
-
-		if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
-			deployment, err := getDeployment(ctx, tx, event.DeploymentId)
-			if errors.Is(err, DeploymentNotFoundError) {
-				trigger := event.Event.GetCreated()
-				if trigger == nil {
-					return fmt.Errorf("deployment %s not found, and the event is not an initiating event", event.DeploymentId)
-				}
-
-				deployment = &deployer_pb.DeploymentState{
-					DeploymentId: event.DeploymentId,
-					Spec:         trigger.Spec,
-				}
-			} else if err != nil {
-				return fmt.Errorf("GetDeployment: %w", err)
-			}
-
-			return dw.deploymentEventer.handleEvent(ctx, tx, deployment, event)
-		}); err != nil {
-			return fmt.Errorf("doDeploymentEvent: %w", err)
-		}
-		return nil*/
 }
 
 func (dw *DeployerWorker) TriggerDeployment(ctx context.Context, msg *deployer_tpb.TriggerDeploymentMessage) (*emptypb.Empty, error) {
 
 	// SIDE EFFECT
 	triggerDeploymentEvent := &deployer_pb.DeploymentEvent{
-		DeploymentId: msg.DeploymentId,
-		Metadata: &deployer_pb.EventMetadata{
+		Keys: &deployer_pb.DeploymentKeys{
+			DeploymentId: msg.DeploymentId,
+		},
+		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
 		},
@@ -133,8 +112,10 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 	}
 
 	createDeploymentEvent := &deployer_pb.DeploymentEvent{
-		DeploymentId: msg.DeploymentId,
-		Metadata: &deployer_pb.EventMetadata{
+		Keys: &deployer_pb.DeploymentKeys{
+			DeploymentId: msg.DeploymentId,
+		},
+		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
 		},
@@ -162,8 +143,10 @@ func StackStatusToEvent(msg *deployer_tpb.StackStatusChangedMessage) (*deployer_
 	}
 
 	event := &deployer_pb.DeploymentEvent{
-		DeploymentId: stepContext.DeploymentId,
-		Metadata: &deployer_pb.EventMetadata{
+		Keys: &deployer_pb.DeploymentKeys{
+			DeploymentId: stepContext.DeploymentId,
+		},
+		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
 		},
@@ -267,8 +250,10 @@ func PostgresMigrationToEvent(msg *deployer_tpb.PostgresDatabaseStatusMessage) (
 	}
 
 	event := &deployer_pb.DeploymentEvent{
-		DeploymentId: stepContext.DeploymentId,
-		Metadata: &deployer_pb.EventMetadata{
+		Keys: &deployer_pb.DeploymentKeys{
+			DeploymentId: stepContext.DeploymentId,
+		},
+		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
 		},

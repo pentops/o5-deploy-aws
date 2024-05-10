@@ -3,24 +3,37 @@ syntax = "proto3";
 package o5.deployer.v1;
 
 import "buf/validate/validate.proto";
-import "o5/deployer/v1/event.proto";
+import "j5/ext/v1/annotations.proto";
 import "o5/environment/v1/environment.proto";
 import "psm/list/v1/annotations.proto";
 import "psm/state/v1/annotations.proto";
+import "psm/state/v1/metadata.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb";
 
+message EnvironmentKeys {
+  option (psm.state.v1.psm).name = "environment";
+
+  string environment_id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (psm.state.v1.field).primary_key = true
+  ];
+}
+
 message EnvironmentState {
-  option (psm.state.v1.state).name = "environment";
+  psm.state.v1.StateMetadata metadata = 1 [(buf.validate.field).required = true];
 
-  string environment_id = 1 [(buf.validate.field).string.uuid = true];
+  EnvironmentKeys keys = 2 [
+    (j5.ext.v1.field).message.flatten = true,
+    (buf.validate.field).required = true
+  ];
 
-  EnvironmentStatus status = 2[(psm.list.v1.field).enum.filtering = {
+  EnvironmentStatus status = 3 [(psm.list.v1.field).enum.filtering = {
     filterable: true,
     default_filters: ["ENVIRONMENT_STATUS_ACTIVE"],
   }];
 
-  o5.environment.v1.Environment config = 3;
+  o5.environment.v1.Environment config = 4;
 }
 
 enum EnvironmentStatus {
@@ -29,22 +42,12 @@ enum EnvironmentStatus {
 }
 
 message EnvironmentEvent {
-  option (psm.state.v1.event).name = "environment";
-
-  EventMetadata metadata = 1 [
-    (psm.state.v1.event_field).metadata = true,
-    (buf.validate.field).required = true
+  psm.state.v1.EventMetadata metadata = 1 [(buf.validate.field).required = true];
+  EnvironmentKeys keys = 2 [
+    (buf.validate.field).required = true,
+    (j5.ext.v1.field).message.flatten = true
   ];
-
-  string environment_id = 2 [
-    (psm.state.v1.event_field).state_key = true,
-    (buf.validate.field).string.uuid = true
-  ];
-
-  EnvironmentEventType event = 4 [
-    (psm.state.v1.event_field).event_type = true,
-    (buf.validate.field).required = true
-  ];
+  EnvironmentEventType event = 3 [(buf.validate.field).required = true];
 }
 
 message EnvironmentEventType {

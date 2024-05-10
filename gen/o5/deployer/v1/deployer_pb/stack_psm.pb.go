@@ -4,15 +4,15 @@ package deployer_pb
 
 import (
 	context "context"
-	fmt "fmt"
+	psm_pb "github.com/pentops/protostate/gen/state/v1/psm_pb"
 	psm "github.com/pentops/protostate/psm"
 	sqrlx "github.com/pentops/sqrlx.go/sqrlx"
 	proto "google.golang.org/protobuf/proto"
-	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // StateObjectOptions: StackPSM
 type StackPSM = psm.StateMachine[
+	*StackKeys,
 	*StackState,
 	StackStatus,
 	*StackEvent,
@@ -20,6 +20,7 @@ type StackPSM = psm.StateMachine[
 ]
 
 type StackPSMDB = psm.DBStateMachine[
+	*StackKeys,
 	*StackState,
 	StackStatus,
 	*StackEvent,
@@ -27,6 +28,7 @@ type StackPSMDB = psm.DBStateMachine[
 ]
 
 type StackPSMEventer = psm.Eventer[
+	*StackKeys,
 	*StackState,
 	StackStatus,
 	*StackEvent,
@@ -34,26 +36,30 @@ type StackPSMEventer = psm.Eventer[
 ]
 
 func DefaultStackPSMConfig() *psm.StateMachineConfig[
+	*StackKeys,
 	*StackState,
 	StackStatus,
 	*StackEvent,
 	StackPSMEvent,
 ] {
 	return psm.NewStateMachineConfig[
+		*StackKeys,
 		*StackState,
 		StackStatus,
 		*StackEvent,
 		StackPSMEvent,
-	](StackPSMConverter{}, DefaultStackPSMTableSpec)
+	](DefaultStackPSMTableSpec)
 }
 
 func NewStackPSM(config *psm.StateMachineConfig[
+	*StackKeys,
 	*StackState,
 	StackStatus,
 	*StackEvent,
 	StackPSMEvent,
 ]) (*StackPSM, error) {
 	return psm.NewStateMachine[
+		*StackKeys,
 		*StackState,
 		StackStatus,
 		*StackEvent,
@@ -62,6 +68,7 @@ func NewStackPSM(config *psm.StateMachineConfig[
 }
 
 type StackPSMTableSpec = psm.PSMTableSpec[
+	*StackKeys,
 	*StackState,
 	StackStatus,
 	*StackEvent,
@@ -76,7 +83,7 @@ var DefaultStackPSMTableSpec = StackPSMTableSpec{
 			return map[string]interface{}{}, nil
 		},
 		PKFieldPaths: []string{
-			"stack_id",
+			"keys.stack_id",
 		},
 	},
 	Event: psm.TableSpec[*StackEvent]{
@@ -87,12 +94,13 @@ var DefaultStackPSMTableSpec = StackPSMTableSpec{
 			return map[string]interface{}{
 				"id":        metadata.EventId,
 				"timestamp": metadata.Timestamp,
-				"actor":     metadata.Actor,
-				"stack_id":  event.StackId,
+				"cause":     metadata.Cause,
+				"sequence":  metadata.Sequence,
+				"stack_id":  event.Keys.StackId,
 			}, nil
 		},
 		PKFieldPaths: []string{
-			"metadata.event_id",
+			"metadata.EventId",
 		},
 		PK: func(event *StackEvent) (map[string]interface{}, error) {
 			return map[string]interface{}{
@@ -102,15 +110,29 @@ var DefaultStackPSMTableSpec = StackPSMTableSpec{
 	},
 	PrimaryKey: func(event *StackEvent) (map[string]interface{}, error) {
 		return map[string]interface{}{
-			"id": event.StackId,
+			"id": event.Keys.StackId,
 		}, nil
 	},
 }
 
-type StackPSMTransitionBaton = psm.TransitionBaton[*StackEvent, StackPSMEvent]
-type StackPSMHookBaton = psm.StateHookBaton[*StackEvent, StackPSMEvent]
+type StackPSMTransitionBaton = psm.TransitionBaton[
+	*StackKeys,
+	*StackState,
+	StackStatus,
+	*StackEvent,
+	StackPSMEvent,
+]
+
+type StackPSMHookBaton = psm.StateHookBaton[
+	*StackKeys,
+	*StackState,
+	StackStatus,
+	*StackEvent,
+	StackPSMEvent,
+]
 
 func StackPSMFunc[SE StackPSMEvent](cb func(context.Context, StackPSMTransitionBaton, *StackState, SE) error) psm.PSMCombinedFunc[
+	*StackKeys,
 	*StackState,
 	StackStatus,
 	*StackEvent,
@@ -118,6 +140,7 @@ func StackPSMFunc[SE StackPSMEvent](cb func(context.Context, StackPSMTransitionB
 	SE,
 ] {
 	return psm.PSMCombinedFunc[
+		*StackKeys,
 		*StackState,
 		StackStatus,
 		*StackEvent,
@@ -126,6 +149,7 @@ func StackPSMFunc[SE StackPSMEvent](cb func(context.Context, StackPSMTransitionB
 	](cb)
 }
 func StackPSMTransition[SE StackPSMEvent](cb func(context.Context, *StackState, SE) error) psm.PSMTransitionFunc[
+	*StackKeys,
 	*StackState,
 	StackStatus,
 	*StackEvent,
@@ -133,6 +157,7 @@ func StackPSMTransition[SE StackPSMEvent](cb func(context.Context, *StackState, 
 	SE,
 ] {
 	return psm.PSMTransitionFunc[
+		*StackKeys,
 		*StackState,
 		StackStatus,
 		*StackEvent,
@@ -141,6 +166,7 @@ func StackPSMTransition[SE StackPSMEvent](cb func(context.Context, *StackState, 
 	](cb)
 }
 func StackPSMHook[SE StackPSMEvent](cb func(context.Context, sqrlx.Transaction, StackPSMHookBaton, *StackState, SE) error) psm.PSMHookFunc[
+	*StackKeys,
 	*StackState,
 	StackStatus,
 	*StackEvent,
@@ -148,6 +174,7 @@ func StackPSMHook[SE StackPSMEvent](cb func(context.Context, sqrlx.Transaction, 
 	SE,
 ] {
 	return psm.PSMHookFunc[
+		*StackKeys,
 		*StackState,
 		StackStatus,
 		*StackEvent,
@@ -156,12 +183,14 @@ func StackPSMHook[SE StackPSMEvent](cb func(context.Context, sqrlx.Transaction, 
 	](cb)
 }
 func StackPSMGeneralHook(cb func(context.Context, sqrlx.Transaction, *StackState, *StackEvent) error) psm.GeneralStateHook[
+	*StackKeys,
 	*StackState,
 	StackStatus,
 	*StackEvent,
 	StackPSMEvent,
 ] {
 	return psm.GeneralStateHook[
+		*StackKeys,
 		*StackState,
 		StackStatus,
 		*StackEvent,
@@ -183,35 +212,6 @@ const (
 type StackPSMEvent interface {
 	proto.Message
 	PSMEventKey() StackPSMEventKey
-}
-
-type StackPSMConverter struct{}
-
-func (c StackPSMConverter) EmptyState(e *StackEvent) *StackState {
-	return &StackState{
-		StackId: e.StackId,
-	}
-}
-
-func (c StackPSMConverter) DeriveChainEvent(e *StackEvent, systemActor psm.SystemActor, eventKey string) *StackEvent {
-	metadata := &EventMetadata{
-		EventId:   systemActor.NewEventID(e.Metadata.EventId, eventKey),
-		Timestamp: timestamppb.Now(),
-	}
-	actorProto := systemActor.ActorProto()
-	refl := metadata.ProtoReflect()
-	refl.Set(refl.Descriptor().Fields().ByName("actor"), actorProto)
-	return &StackEvent{
-		Metadata: metadata,
-		StackId:  e.StackId,
-	}
-}
-
-func (c StackPSMConverter) CheckStateKeys(s *StackState, e *StackEvent) error {
-	if s.StackId != e.StackId {
-		return fmt.Errorf("state field 'StackId' %q does not match event field %q", s.StackId, e.StackId)
-	}
-	return nil
 }
 
 func (etw *StackEventType) UnwrapPSMEvent() StackPSMEvent {
@@ -286,4 +286,33 @@ func (*StackEventType_DeploymentFailed) PSMEventKey() StackPSMEventKey {
 }
 func (*StackEventType_Available) PSMEventKey() StackPSMEventKey {
 	return StackPSMEventAvailable
+}
+func (ee *StackEvent) PSMMetadata() *psm_pb.EventMetadata {
+	if ee.Metadata == nil {
+		ee.Metadata = &psm_pb.EventMetadata{}
+	}
+	return ee.Metadata
+}
+
+func (st *StackState) PSMMetadata() *psm_pb.StateMetadata {
+	if st.Metadata == nil {
+		st.Metadata = &psm_pb.StateMetadata{}
+	}
+	return st.Metadata
+}
+
+func (ee *StackEvent) PSMKeys() *StackKeys {
+	return ee.Keys
+}
+
+func (ee *StackEvent) SetPSMKeys(inner *StackKeys) {
+	ee.Keys = inner
+}
+
+func (st *StackState) PSMKeys() *StackKeys {
+	return st.Keys
+}
+
+func (st *StackState) SetPSMKeys(inner *StackKeys) {
+	st.Keys = inner
 }

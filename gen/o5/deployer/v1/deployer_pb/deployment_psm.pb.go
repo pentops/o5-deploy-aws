@@ -4,15 +4,15 @@ package deployer_pb
 
 import (
 	context "context"
-	fmt "fmt"
+	psm_pb "github.com/pentops/protostate/gen/state/v1/psm_pb"
 	psm "github.com/pentops/protostate/psm"
 	sqrlx "github.com/pentops/sqrlx.go/sqrlx"
 	proto "google.golang.org/protobuf/proto"
-	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // StateObjectOptions: DeploymentPSM
 type DeploymentPSM = psm.StateMachine[
+	*DeploymentKeys,
 	*DeploymentState,
 	DeploymentStatus,
 	*DeploymentEvent,
@@ -20,6 +20,7 @@ type DeploymentPSM = psm.StateMachine[
 ]
 
 type DeploymentPSMDB = psm.DBStateMachine[
+	*DeploymentKeys,
 	*DeploymentState,
 	DeploymentStatus,
 	*DeploymentEvent,
@@ -27,6 +28,7 @@ type DeploymentPSMDB = psm.DBStateMachine[
 ]
 
 type DeploymentPSMEventer = psm.Eventer[
+	*DeploymentKeys,
 	*DeploymentState,
 	DeploymentStatus,
 	*DeploymentEvent,
@@ -34,26 +36,30 @@ type DeploymentPSMEventer = psm.Eventer[
 ]
 
 func DefaultDeploymentPSMConfig() *psm.StateMachineConfig[
+	*DeploymentKeys,
 	*DeploymentState,
 	DeploymentStatus,
 	*DeploymentEvent,
 	DeploymentPSMEvent,
 ] {
 	return psm.NewStateMachineConfig[
+		*DeploymentKeys,
 		*DeploymentState,
 		DeploymentStatus,
 		*DeploymentEvent,
 		DeploymentPSMEvent,
-	](DeploymentPSMConverter{}, DefaultDeploymentPSMTableSpec)
+	](DefaultDeploymentPSMTableSpec)
 }
 
 func NewDeploymentPSM(config *psm.StateMachineConfig[
+	*DeploymentKeys,
 	*DeploymentState,
 	DeploymentStatus,
 	*DeploymentEvent,
 	DeploymentPSMEvent,
 ]) (*DeploymentPSM, error) {
 	return psm.NewStateMachine[
+		*DeploymentKeys,
 		*DeploymentState,
 		DeploymentStatus,
 		*DeploymentEvent,
@@ -62,6 +68,7 @@ func NewDeploymentPSM(config *psm.StateMachineConfig[
 }
 
 type DeploymentPSMTableSpec = psm.PSMTableSpec[
+	*DeploymentKeys,
 	*DeploymentState,
 	DeploymentStatus,
 	*DeploymentEvent,
@@ -76,7 +83,7 @@ var DefaultDeploymentPSMTableSpec = DeploymentPSMTableSpec{
 			return map[string]interface{}{}, nil
 		},
 		PKFieldPaths: []string{
-			"deployment_id",
+			"keys.deployment_id",
 		},
 	},
 	Event: psm.TableSpec[*DeploymentEvent]{
@@ -87,12 +94,13 @@ var DefaultDeploymentPSMTableSpec = DeploymentPSMTableSpec{
 			return map[string]interface{}{
 				"id":            metadata.EventId,
 				"timestamp":     metadata.Timestamp,
-				"actor":         metadata.Actor,
-				"deployment_id": event.DeploymentId,
+				"cause":         metadata.Cause,
+				"sequence":      metadata.Sequence,
+				"deployment_id": event.Keys.DeploymentId,
 			}, nil
 		},
 		PKFieldPaths: []string{
-			"metadata.event_id",
+			"metadata.EventId",
 		},
 		PK: func(event *DeploymentEvent) (map[string]interface{}, error) {
 			return map[string]interface{}{
@@ -102,15 +110,29 @@ var DefaultDeploymentPSMTableSpec = DeploymentPSMTableSpec{
 	},
 	PrimaryKey: func(event *DeploymentEvent) (map[string]interface{}, error) {
 		return map[string]interface{}{
-			"id": event.DeploymentId,
+			"id": event.Keys.DeploymentId,
 		}, nil
 	},
 }
 
-type DeploymentPSMTransitionBaton = psm.TransitionBaton[*DeploymentEvent, DeploymentPSMEvent]
-type DeploymentPSMHookBaton = psm.StateHookBaton[*DeploymentEvent, DeploymentPSMEvent]
+type DeploymentPSMTransitionBaton = psm.TransitionBaton[
+	*DeploymentKeys,
+	*DeploymentState,
+	DeploymentStatus,
+	*DeploymentEvent,
+	DeploymentPSMEvent,
+]
+
+type DeploymentPSMHookBaton = psm.StateHookBaton[
+	*DeploymentKeys,
+	*DeploymentState,
+	DeploymentStatus,
+	*DeploymentEvent,
+	DeploymentPSMEvent,
+]
 
 func DeploymentPSMFunc[SE DeploymentPSMEvent](cb func(context.Context, DeploymentPSMTransitionBaton, *DeploymentState, SE) error) psm.PSMCombinedFunc[
+	*DeploymentKeys,
 	*DeploymentState,
 	DeploymentStatus,
 	*DeploymentEvent,
@@ -118,6 +140,7 @@ func DeploymentPSMFunc[SE DeploymentPSMEvent](cb func(context.Context, Deploymen
 	SE,
 ] {
 	return psm.PSMCombinedFunc[
+		*DeploymentKeys,
 		*DeploymentState,
 		DeploymentStatus,
 		*DeploymentEvent,
@@ -126,6 +149,7 @@ func DeploymentPSMFunc[SE DeploymentPSMEvent](cb func(context.Context, Deploymen
 	](cb)
 }
 func DeploymentPSMTransition[SE DeploymentPSMEvent](cb func(context.Context, *DeploymentState, SE) error) psm.PSMTransitionFunc[
+	*DeploymentKeys,
 	*DeploymentState,
 	DeploymentStatus,
 	*DeploymentEvent,
@@ -133,6 +157,7 @@ func DeploymentPSMTransition[SE DeploymentPSMEvent](cb func(context.Context, *De
 	SE,
 ] {
 	return psm.PSMTransitionFunc[
+		*DeploymentKeys,
 		*DeploymentState,
 		DeploymentStatus,
 		*DeploymentEvent,
@@ -141,6 +166,7 @@ func DeploymentPSMTransition[SE DeploymentPSMEvent](cb func(context.Context, *De
 	](cb)
 }
 func DeploymentPSMHook[SE DeploymentPSMEvent](cb func(context.Context, sqrlx.Transaction, DeploymentPSMHookBaton, *DeploymentState, SE) error) psm.PSMHookFunc[
+	*DeploymentKeys,
 	*DeploymentState,
 	DeploymentStatus,
 	*DeploymentEvent,
@@ -148,6 +174,7 @@ func DeploymentPSMHook[SE DeploymentPSMEvent](cb func(context.Context, sqrlx.Tra
 	SE,
 ] {
 	return psm.PSMHookFunc[
+		*DeploymentKeys,
 		*DeploymentState,
 		DeploymentStatus,
 		*DeploymentEvent,
@@ -156,12 +183,14 @@ func DeploymentPSMHook[SE DeploymentPSMEvent](cb func(context.Context, sqrlx.Tra
 	](cb)
 }
 func DeploymentPSMGeneralHook(cb func(context.Context, sqrlx.Transaction, *DeploymentState, *DeploymentEvent) error) psm.GeneralStateHook[
+	*DeploymentKeys,
 	*DeploymentState,
 	DeploymentStatus,
 	*DeploymentEvent,
 	DeploymentPSMEvent,
 ] {
 	return psm.GeneralStateHook[
+		*DeploymentKeys,
 		*DeploymentState,
 		DeploymentStatus,
 		*DeploymentEvent,
@@ -188,35 +217,6 @@ const (
 type DeploymentPSMEvent interface {
 	proto.Message
 	PSMEventKey() DeploymentPSMEventKey
-}
-
-type DeploymentPSMConverter struct{}
-
-func (c DeploymentPSMConverter) EmptyState(e *DeploymentEvent) *DeploymentState {
-	return &DeploymentState{
-		DeploymentId: e.DeploymentId,
-	}
-}
-
-func (c DeploymentPSMConverter) DeriveChainEvent(e *DeploymentEvent, systemActor psm.SystemActor, eventKey string) *DeploymentEvent {
-	metadata := &EventMetadata{
-		EventId:   systemActor.NewEventID(e.Metadata.EventId, eventKey),
-		Timestamp: timestamppb.Now(),
-	}
-	actorProto := systemActor.ActorProto()
-	refl := metadata.ProtoReflect()
-	refl.Set(refl.Descriptor().Fields().ByName("actor"), actorProto)
-	return &DeploymentEvent{
-		Metadata:     metadata,
-		DeploymentId: e.DeploymentId,
-	}
-}
-
-func (c DeploymentPSMConverter) CheckStateKeys(s *DeploymentState, e *DeploymentEvent) error {
-	if s.DeploymentId != e.DeploymentId {
-		return fmt.Errorf("state field 'DeploymentId' %q does not match event field %q", s.DeploymentId, e.DeploymentId)
-	}
-	return nil
 }
 
 func (etw *DeploymentEventType) UnwrapPSMEvent() DeploymentPSMEvent {
@@ -326,4 +326,33 @@ func (*DeploymentEventType_Done) PSMEventKey() DeploymentPSMEventKey {
 }
 func (*DeploymentEventType_Terminated) PSMEventKey() DeploymentPSMEventKey {
 	return DeploymentPSMEventTerminated
+}
+func (ee *DeploymentEvent) PSMMetadata() *psm_pb.EventMetadata {
+	if ee.Metadata == nil {
+		ee.Metadata = &psm_pb.EventMetadata{}
+	}
+	return ee.Metadata
+}
+
+func (st *DeploymentState) PSMMetadata() *psm_pb.StateMetadata {
+	if st.Metadata == nil {
+		st.Metadata = &psm_pb.StateMetadata{}
+	}
+	return st.Metadata
+}
+
+func (ee *DeploymentEvent) PSMKeys() *DeploymentKeys {
+	return ee.Keys
+}
+
+func (ee *DeploymentEvent) SetPSMKeys(inner *DeploymentKeys) {
+	ee.Keys = inner
+}
+
+func (st *DeploymentState) PSMKeys() *DeploymentKeys {
+	return st.Keys
+}
+
+func (st *DeploymentState) SetPSMKeys(inner *DeploymentKeys) {
+	st.Keys = inner
 }

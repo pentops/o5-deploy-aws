@@ -4,15 +4,15 @@ package deployer_pb
 
 import (
 	context "context"
-	fmt "fmt"
+	psm_pb "github.com/pentops/protostate/gen/state/v1/psm_pb"
 	psm "github.com/pentops/protostate/psm"
 	sqrlx "github.com/pentops/sqrlx.go/sqrlx"
 	proto "google.golang.org/protobuf/proto"
-	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // StateObjectOptions: EnvironmentPSM
 type EnvironmentPSM = psm.StateMachine[
+	*EnvironmentKeys,
 	*EnvironmentState,
 	EnvironmentStatus,
 	*EnvironmentEvent,
@@ -20,6 +20,7 @@ type EnvironmentPSM = psm.StateMachine[
 ]
 
 type EnvironmentPSMDB = psm.DBStateMachine[
+	*EnvironmentKeys,
 	*EnvironmentState,
 	EnvironmentStatus,
 	*EnvironmentEvent,
@@ -27,6 +28,7 @@ type EnvironmentPSMDB = psm.DBStateMachine[
 ]
 
 type EnvironmentPSMEventer = psm.Eventer[
+	*EnvironmentKeys,
 	*EnvironmentState,
 	EnvironmentStatus,
 	*EnvironmentEvent,
@@ -34,26 +36,30 @@ type EnvironmentPSMEventer = psm.Eventer[
 ]
 
 func DefaultEnvironmentPSMConfig() *psm.StateMachineConfig[
+	*EnvironmentKeys,
 	*EnvironmentState,
 	EnvironmentStatus,
 	*EnvironmentEvent,
 	EnvironmentPSMEvent,
 ] {
 	return psm.NewStateMachineConfig[
+		*EnvironmentKeys,
 		*EnvironmentState,
 		EnvironmentStatus,
 		*EnvironmentEvent,
 		EnvironmentPSMEvent,
-	](EnvironmentPSMConverter{}, DefaultEnvironmentPSMTableSpec)
+	](DefaultEnvironmentPSMTableSpec)
 }
 
 func NewEnvironmentPSM(config *psm.StateMachineConfig[
+	*EnvironmentKeys,
 	*EnvironmentState,
 	EnvironmentStatus,
 	*EnvironmentEvent,
 	EnvironmentPSMEvent,
 ]) (*EnvironmentPSM, error) {
 	return psm.NewStateMachine[
+		*EnvironmentKeys,
 		*EnvironmentState,
 		EnvironmentStatus,
 		*EnvironmentEvent,
@@ -62,6 +68,7 @@ func NewEnvironmentPSM(config *psm.StateMachineConfig[
 }
 
 type EnvironmentPSMTableSpec = psm.PSMTableSpec[
+	*EnvironmentKeys,
 	*EnvironmentState,
 	EnvironmentStatus,
 	*EnvironmentEvent,
@@ -76,7 +83,7 @@ var DefaultEnvironmentPSMTableSpec = EnvironmentPSMTableSpec{
 			return map[string]interface{}{}, nil
 		},
 		PKFieldPaths: []string{
-			"environment_id",
+			"keys.environment_id",
 		},
 	},
 	Event: psm.TableSpec[*EnvironmentEvent]{
@@ -87,12 +94,13 @@ var DefaultEnvironmentPSMTableSpec = EnvironmentPSMTableSpec{
 			return map[string]interface{}{
 				"id":             metadata.EventId,
 				"timestamp":      metadata.Timestamp,
-				"actor":          metadata.Actor,
-				"environment_id": event.EnvironmentId,
+				"cause":          metadata.Cause,
+				"sequence":       metadata.Sequence,
+				"environment_id": event.Keys.EnvironmentId,
 			}, nil
 		},
 		PKFieldPaths: []string{
-			"metadata.event_id",
+			"metadata.EventId",
 		},
 		PK: func(event *EnvironmentEvent) (map[string]interface{}, error) {
 			return map[string]interface{}{
@@ -102,15 +110,29 @@ var DefaultEnvironmentPSMTableSpec = EnvironmentPSMTableSpec{
 	},
 	PrimaryKey: func(event *EnvironmentEvent) (map[string]interface{}, error) {
 		return map[string]interface{}{
-			"id": event.EnvironmentId,
+			"id": event.Keys.EnvironmentId,
 		}, nil
 	},
 }
 
-type EnvironmentPSMTransitionBaton = psm.TransitionBaton[*EnvironmentEvent, EnvironmentPSMEvent]
-type EnvironmentPSMHookBaton = psm.StateHookBaton[*EnvironmentEvent, EnvironmentPSMEvent]
+type EnvironmentPSMTransitionBaton = psm.TransitionBaton[
+	*EnvironmentKeys,
+	*EnvironmentState,
+	EnvironmentStatus,
+	*EnvironmentEvent,
+	EnvironmentPSMEvent,
+]
+
+type EnvironmentPSMHookBaton = psm.StateHookBaton[
+	*EnvironmentKeys,
+	*EnvironmentState,
+	EnvironmentStatus,
+	*EnvironmentEvent,
+	EnvironmentPSMEvent,
+]
 
 func EnvironmentPSMFunc[SE EnvironmentPSMEvent](cb func(context.Context, EnvironmentPSMTransitionBaton, *EnvironmentState, SE) error) psm.PSMCombinedFunc[
+	*EnvironmentKeys,
 	*EnvironmentState,
 	EnvironmentStatus,
 	*EnvironmentEvent,
@@ -118,6 +140,7 @@ func EnvironmentPSMFunc[SE EnvironmentPSMEvent](cb func(context.Context, Environ
 	SE,
 ] {
 	return psm.PSMCombinedFunc[
+		*EnvironmentKeys,
 		*EnvironmentState,
 		EnvironmentStatus,
 		*EnvironmentEvent,
@@ -126,6 +149,7 @@ func EnvironmentPSMFunc[SE EnvironmentPSMEvent](cb func(context.Context, Environ
 	](cb)
 }
 func EnvironmentPSMTransition[SE EnvironmentPSMEvent](cb func(context.Context, *EnvironmentState, SE) error) psm.PSMTransitionFunc[
+	*EnvironmentKeys,
 	*EnvironmentState,
 	EnvironmentStatus,
 	*EnvironmentEvent,
@@ -133,6 +157,7 @@ func EnvironmentPSMTransition[SE EnvironmentPSMEvent](cb func(context.Context, *
 	SE,
 ] {
 	return psm.PSMTransitionFunc[
+		*EnvironmentKeys,
 		*EnvironmentState,
 		EnvironmentStatus,
 		*EnvironmentEvent,
@@ -141,6 +166,7 @@ func EnvironmentPSMTransition[SE EnvironmentPSMEvent](cb func(context.Context, *
 	](cb)
 }
 func EnvironmentPSMHook[SE EnvironmentPSMEvent](cb func(context.Context, sqrlx.Transaction, EnvironmentPSMHookBaton, *EnvironmentState, SE) error) psm.PSMHookFunc[
+	*EnvironmentKeys,
 	*EnvironmentState,
 	EnvironmentStatus,
 	*EnvironmentEvent,
@@ -148,6 +174,7 @@ func EnvironmentPSMHook[SE EnvironmentPSMEvent](cb func(context.Context, sqrlx.T
 	SE,
 ] {
 	return psm.PSMHookFunc[
+		*EnvironmentKeys,
 		*EnvironmentState,
 		EnvironmentStatus,
 		*EnvironmentEvent,
@@ -156,12 +183,14 @@ func EnvironmentPSMHook[SE EnvironmentPSMEvent](cb func(context.Context, sqrlx.T
 	](cb)
 }
 func EnvironmentPSMGeneralHook(cb func(context.Context, sqrlx.Transaction, *EnvironmentState, *EnvironmentEvent) error) psm.GeneralStateHook[
+	*EnvironmentKeys,
 	*EnvironmentState,
 	EnvironmentStatus,
 	*EnvironmentEvent,
 	EnvironmentPSMEvent,
 ] {
 	return psm.GeneralStateHook[
+		*EnvironmentKeys,
 		*EnvironmentState,
 		EnvironmentStatus,
 		*EnvironmentEvent,
@@ -179,35 +208,6 @@ const (
 type EnvironmentPSMEvent interface {
 	proto.Message
 	PSMEventKey() EnvironmentPSMEventKey
-}
-
-type EnvironmentPSMConverter struct{}
-
-func (c EnvironmentPSMConverter) EmptyState(e *EnvironmentEvent) *EnvironmentState {
-	return &EnvironmentState{
-		EnvironmentId: e.EnvironmentId,
-	}
-}
-
-func (c EnvironmentPSMConverter) DeriveChainEvent(e *EnvironmentEvent, systemActor psm.SystemActor, eventKey string) *EnvironmentEvent {
-	metadata := &EventMetadata{
-		EventId:   systemActor.NewEventID(e.Metadata.EventId, eventKey),
-		Timestamp: timestamppb.Now(),
-	}
-	actorProto := systemActor.ActorProto()
-	refl := metadata.ProtoReflect()
-	refl.Set(refl.Descriptor().Fields().ByName("actor"), actorProto)
-	return &EnvironmentEvent{
-		Metadata:      metadata,
-		EnvironmentId: e.EnvironmentId,
-	}
-}
-
-func (c EnvironmentPSMConverter) CheckStateKeys(s *EnvironmentState, e *EnvironmentEvent) error {
-	if s.EnvironmentId != e.EnvironmentId {
-		return fmt.Errorf("state field 'EnvironmentId' %q does not match event field %q", s.EnvironmentId, e.EnvironmentId)
-	}
-	return nil
 }
 
 func (etw *EnvironmentEventType) UnwrapPSMEvent() EnvironmentPSMEvent {
@@ -254,4 +254,33 @@ func (ee *EnvironmentEvent) SetPSMEvent(inner EnvironmentPSMEvent) {
 
 func (*EnvironmentEventType_Configured) PSMEventKey() EnvironmentPSMEventKey {
 	return EnvironmentPSMEventConfigured
+}
+func (ee *EnvironmentEvent) PSMMetadata() *psm_pb.EventMetadata {
+	if ee.Metadata == nil {
+		ee.Metadata = &psm_pb.EventMetadata{}
+	}
+	return ee.Metadata
+}
+
+func (st *EnvironmentState) PSMMetadata() *psm_pb.StateMetadata {
+	if st.Metadata == nil {
+		st.Metadata = &psm_pb.StateMetadata{}
+	}
+	return st.Metadata
+}
+
+func (ee *EnvironmentEvent) PSMKeys() *EnvironmentKeys {
+	return ee.Keys
+}
+
+func (ee *EnvironmentEvent) SetPSMKeys(inner *EnvironmentKeys) {
+	ee.Keys = inner
+}
+
+func (st *EnvironmentState) PSMKeys() *EnvironmentKeys {
+	return st.Keys
+}
+
+func (st *EnvironmentState) SetPSMKeys(inner *EnvironmentKeys) {
+	st.Keys = inner
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/outbox.pg.go/outbox"
+	"github.com/pentops/protostate/gen/state/v1/psm_pb"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -280,8 +281,10 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *deployer_s
 func (ds *CommandService) TerminateDeployment(ctx context.Context, req *deployer_spb.TerminateDeploymentRequest) (*deployer_spb.TerminateDeploymentResponse, error) {
 
 	event := &deployer_pb.DeploymentEvent{
-		DeploymentId: req.DeploymentId,
-		Metadata: &deployer_pb.EventMetadata{
+		Keys: &deployer_pb.DeploymentKeys{
+			DeploymentId: req.DeploymentId,
+		},
+		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
 		},
@@ -329,8 +332,10 @@ func (ds *CommandService) UpsertEnvironment(ctx context.Context, req *deployer_s
 	}
 
 	event := &deployer_pb.EnvironmentEvent{
-		EnvironmentId: identifiers.id,
-		Metadata: &deployer_pb.EventMetadata{
+		Keys: &deployer_pb.EnvironmentKeys{
+			EnvironmentId: identifiers.id,
+		},
+		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
 		},
@@ -358,8 +363,10 @@ func (ds *CommandService) UpsertStack(ctx context.Context, req *deployer_spb.Ups
 	}
 
 	event := &deployer_pb.StackEvent{
-		StackId: identifiers.stackID,
-		Metadata: &deployer_pb.EventMetadata{
+		Keys: &deployer_pb.StackKeys{
+			StackId: identifiers.stackID,
+		},
+		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
 		},
