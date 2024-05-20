@@ -41,7 +41,7 @@ func (lss *StateStore) StoreDeploymentEvent(ctx context.Context, state *deployer
 		return fmt.Errorf("validating state: %s", err)
 	}
 
-	lss.deployments[state.DeploymentId] = state
+	lss.deployments[state.Keys.DeploymentId] = state
 
 	if lss.StoreCallback != nil {
 		if err := lss.StoreCallback(ctx, state, event); err != nil {

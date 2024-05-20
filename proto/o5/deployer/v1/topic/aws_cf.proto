@@ -62,8 +62,8 @@ message CancelStackUpdateMessage {
 message StackStatusChangedMessage {
   o5.messaging.v1.RequestMetadata request = 1;
   string event_id = 2 [(buf.validate.field).string = {pattern: "^[a-zA-Z0-9-]+$"}];
-  string stack_name = 3;
-  string status = 4;
+  string stack_name = 3 [(buf.validate.field).required = true];
+  string status = 4 [(buf.validate.field).required = true];
   repeated o5.deployer.v1.KeyValue outputs = 5;
-  deployer.v1.CFLifecycle lifecycle = 6;
+  deployer.v1.CFLifecycle lifecycle = 6 [(buf.validate.field).required = true];
 }

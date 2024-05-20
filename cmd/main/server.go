@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	sq "github.com/elgris/sqrl"
-	"github.com/pentops/log.go/grpc_log"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-deploy-aws/cf/app"
@@ -112,7 +112,7 @@ func runDataPass(ctx context.Context, config struct{}) error {
 				for {
 					res := &deployer_spb.ListStackEventsResponse{}
 					if err := stackQuery.ListEvents(ctx, db, &deployer_spb.ListStackEventsRequest{
-						StackId: stack.StackId,
+						StackId: stack.Keys.StackId,
 						Page:    eventPage,
 					}, res); err != nil {
 						return err
@@ -157,7 +157,7 @@ func runDataPass(ctx context.Context, config struct{}) error {
 				for {
 					res := &deployer_spb.ListDeploymentEventsResponse{}
 					if err := deploymentQuery.ListEvents(ctx, db, &deployer_spb.ListDeploymentEventsRequest{
-						DeploymentId: deployment.DeploymentId,
+						DeploymentId: deployment.Keys.DeploymentId,
 						Page:         eventPage,
 					}, res); err != nil {
 						return err
@@ -259,7 +259,7 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	deploymentWorker, err := deployer.NewDeployerWorker(db, specBuilder, stateMachines)
+	deploymentWorker, err := service.NewDeployerWorker(db, specBuilder, stateMachines)
 	if err != nil {
 		return err
 	}
@@ -297,14 +297,16 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(
-		grpc_log.UnaryServerInterceptor(log.DefaultContext, log.DefaultTrace, log.DefaultLogger),
-	))
+	middleware := service.GRPCMiddleware()
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(middleware...)),
+	)
+
 	github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
 	deployer_spb.RegisterDeploymentQueryServiceServer(grpcServer, queryService)
 	deployer_spb.RegisterDeploymentCommandServiceServer(grpcServer, commandService)
 
-	deployer_tpb.RegisterDeployerTopicServer(grpcServer, deploymentWorker)
+	deployer_tpb.RegisterDeployerInputTopicServer(grpcServer, deploymentWorker)
 
 	messaging_tpb.RegisterRawMessageTopicServer(grpcServer, rawWorker)
 

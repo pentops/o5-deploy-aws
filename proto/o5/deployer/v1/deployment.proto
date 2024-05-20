@@ -4,37 +4,49 @@ package o5.deployer.v1;
 
 import "buf/validate/validate.proto";
 import "google/protobuf/timestamp.proto";
-import "o5/deployer/v1/event.proto";
+import "j5/ext/v1/annotations.proto";
 import "o5/deployer/v1/pgmigrate.proto";
 import "o5/deployer/v1/steps.proto";
 import "psm/list/v1/annotations.proto";
 import "psm/state/v1/annotations.proto";
+import "psm/state/v1/metadata.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb";
 
+message DeploymentKeys {
+  option (psm.state.v1.psm).name = "deployment";
+
+  string deployment_id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (psm.state.v1.field).primary_key = true
+  ];
+}
+
 message DeploymentState {
-  option (psm.state.v1.state).name = "deployment";
+  psm.state.v1.StateMetadata metadata = 1 [(buf.validate.field).required = true];
 
-  string deployment_id = 1 [(buf.validate.field).string.uuid = true];
-  DeploymentStatus status = 2 [(psm.list.v1.field).enum.filtering = {filterable: true}];
-  DeploymentSpec spec = 3;
+  DeploymentKeys keys = 2 [
+    (j5.ext.v1.field).message.flatten = true,
+    (buf.validate.field).required = true
+  ];
 
-  string stack_name = 4 [(psm.list.v1.field).string.open_text.searching = {
+  DeploymentStatus status = 3 [(psm.list.v1.field).enum.filtering = {filterable: true}];
+
+  DeploymentStateData data = 4;
+}
+
+message DeploymentStateData {
+  DeploymentSpec spec = 4;
+
+  string stack_name = 5 [(psm.list.v1.field).string.open_text.searching = {
     searchable: true,
     field_identifier: "tsv_stack_name"
   }];
-  string stack_id = 7 [
+
+  string stack_id = 6 [
     (buf.validate.field).string.uuid = true,
     (psm.list.v1.field).string.foreign_key.uuid.filtering.filterable = true
   ];
-
-  google.protobuf.Timestamp created_at = 5 [(psm.list.v1.field).timestamp = {
-    filtering: {filterable: true},
-    sorting: {
-      sortable: true,
-      default_sort: true
-    }
-  }];
 
   repeated DeploymentStep steps = 10;
 }
@@ -107,21 +119,11 @@ enum DeploymentStatus {
 }
 
 message DeploymentEvent {
-  option (psm.state.v1.event).name = "deployment";
-  EventMetadata metadata = 1 [
-    (psm.state.v1.event_field).metadata = true,
-    (buf.validate.field).required = true
-  ];
+  psm.state.v1.EventMetadata metadata = 1 [(buf.validate.field).required = true];
 
-  string deployment_id = 2 [
-    (psm.state.v1.event_field).state_key = true,
-    (buf.validate.field).string.uuid = true
-  ];
+  DeploymentKeys keys = 2 [(buf.validate.field).required = true];
 
-  DeploymentEventType event = 3 [
-    (psm.state.v1.event_field).event_type = true,
-    (buf.validate.field).required = true
-  ];
+  DeploymentEventType event = 3 [(buf.validate.field).required = true];
 }
 
 message DeploymentEventType {
@@ -163,7 +165,9 @@ message DeploymentEventType {
     CFStackOutput stack_output = 1;
   }
 
-  message RunSteps {}
+  message RunSteps {
+    repeated DeploymentStep steps = 10;
+  }
 
   message StepResult {
     string step_id = 1;

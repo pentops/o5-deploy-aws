@@ -16,7 +16,7 @@ type planInput struct {
 	flags       *deployer_pb.DeploymentFlags
 }
 
-func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.DeploymentState, input planInput) ([]*deployer_pb.DeploymentStep, error) {
+func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.DeploymentStateData, input planInput) ([]*deployer_pb.DeploymentStep, error) {
 
 	plan := make([]*deployer_pb.DeploymentStep, 0)
 
@@ -221,9 +221,9 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 	return plan, nil
 }
 
-func stepNext(ctx context.Context, tb deployer_pb.DeploymentPSMTransitionBaton, deployment *deployer_pb.DeploymentState) error {
+func stepNext(ctx context.Context, tb deployer_pb.DeploymentPSMHookBaton, deployment *deployer_pb.DeploymentState) error {
 	stepMap := make(map[string]*deployer_pb.DeploymentStep)
-	for _, step := range deployment.Steps {
+	for _, step := range deployment.Data.Steps {
 		stepMap[step.Id] = step
 	}
 
@@ -233,7 +233,7 @@ func stepNext(ctx context.Context, tb deployer_pb.DeploymentPSMTransitionBaton, 
 
 	waitingSteps := make([]*deployer_pb.DeploymentStep, 0)
 
-	for _, step := range deployment.Steps {
+	for _, step := range deployment.Data.Steps {
 		switch step.Status {
 		case deployer_pb.StepStatus_UNSPECIFIED, deployer_pb.StepStatus_BLOCKED:
 			waitingSteps = append(waitingSteps, step)
@@ -253,9 +253,9 @@ func stepNext(ctx context.Context, tb deployer_pb.DeploymentPSMTransitionBaton, 
 
 		// Nothing still running, we don't need to trigger any further
 		// tasks.
-		tb.ChainEvent(chainDeploymentEvent(tb, &deployer_pb.DeploymentEventType_Error{
+		tb.ChainEvent(&deployer_pb.DeploymentEventType_Error{
 			Error: "deployment steps failed",
-		}))
+		})
 		return nil
 	}
 
@@ -292,14 +292,14 @@ steps:
 	}
 
 	if anyOpen {
-		tb.ChainEvent(chainDeploymentEvent(tb, &deployer_pb.DeploymentEventType_Error{
+		tb.ChainEvent(&deployer_pb.DeploymentEventType_Error{
 			Error: "deployment steps deadlock",
-		}))
+		})
 		return nil
 	}
 
 	// All steps are done
-	tb.ChainEvent(chainDeploymentEvent(tb, &deployer_pb.DeploymentEventType_Done{}))
+	tb.ChainEvent(&deployer_pb.DeploymentEventType_Done{})
 
 	return nil
 }
@@ -307,7 +307,7 @@ func stepToSideEffect(step *deployer_pb.DeploymentStep, deployment *deployer_pb.
 	requestMetadata, err := buildRequestMetadata(&deployer_pb.StepContext{
 		StepId:       &step.Id,
 		Phase:        deployer_pb.StepPhase_STEPS,
-		DeploymentId: deployment.DeploymentId,
+		DeploymentId: deployment.Keys.DeploymentId,
 	})
 	if err != nil {
 		return nil, err
@@ -338,7 +338,7 @@ func stepToSideEffect(step *deployer_pb.DeploymentStep, deployment *deployer_pb.
 			DbName:            src.DbName,
 			RootSecretName:    src.RootSecretName,
 			DbExtensions:      src.DbExtensions,
-			RotateCredentials: deployment.Spec.Flags.RotateCredentials,
+			RotateCredentials: deployment.Data.Spec.Flags.RotateCredentials,
 		}
 		outputs, err := getStackOutputs(dependencies, st.PgUpsert.InfraOutputStepId)
 		if err != nil {
@@ -363,7 +363,7 @@ func stepToSideEffect(step *deployer_pb.DeploymentStep, deployment *deployer_pb.
 	case *deployer_pb.StepRequestType_PgMigrate:
 		src := st.PgMigrate.Spec
 		spec := &deployer_pb.PostgresMigrationSpec{
-			EcsClusterName: deployment.Spec.EcsCluster,
+			EcsClusterName: deployment.Data.Spec.EcsCluster,
 		}
 		outputs, err := getStackOutputs(dependencies, st.PgMigrate.InfraOutputStepId)
 		if err != nil {

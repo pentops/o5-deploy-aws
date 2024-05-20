@@ -52,7 +52,10 @@ func TestConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := context.Background()
+	ctx := WithPSMAction(context.Background(), PSMAction{
+		Method: "test",
+		Actor:  actorExtractor(context.Background()),
+	})
 
 	{ // Attempt to upsert stack before the environment exists.
 		_, err := ds.UpsertStack(ctx, &deployer_spb.UpsertStackRequest{
@@ -106,7 +109,10 @@ func TestTriggerDeployment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := context.Background()
+	ctx := WithPSMAction(context.Background(), PSMAction{
+		Method: "test",
+		Actor:  actorExtractor(context.Background()),
+	})
 
 	_, err = ds.UpsertEnvironment(ctx, &deployer_spb.UpsertEnvironmentRequest{
 		Src: &deployer_spb.UpsertEnvironmentRequest_Config{

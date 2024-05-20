@@ -11,9 +11,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
-	"github.com/pentops/o5-deploy-aws/deployer"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	"google.golang.org/protobuf/proto"
 )
@@ -56,7 +56,7 @@ func newToken() string {
 	return fmt.Sprintf("local-%d", time.Now().UnixNano())
 }
 
-func stackEvent(msg *deployer_tpb.StackStatusChangedMessage, err error) (deployer_pb.DeploymentPSMEvent, error) {
+func stackEvent(msg *deployer_tpb.StackStatusChangedMessage, err error) (*deployer_pb.DeploymentPSMEventSpec, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -66,28 +66,28 @@ func stackEvent(msg *deployer_tpb.StackStatusChangedMessage, err error) (deploye
 	if msg.Request == nil {
 		return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
 	}
-	event, err := deployer.StackStatusToEvent(msg)
+	event, err := service.StackStatusToEvent(msg)
 	if err != nil {
 		return nil, err
 	}
-	return event.UnwrapPSMEvent(), nil
+	return event, nil
 }
 
-func dbEvent(msg *deployer_tpb.PostgresDatabaseStatusMessage, err error) (deployer_pb.DeploymentPSMEvent, error) {
+func dbEvent(msg *deployer_tpb.PostgresDatabaseStatusMessage, err error) (*deployer_pb.DeploymentPSMEventSpec, error) {
 	if err != nil {
 		return nil, err
 	}
 	if msg.Request == nil {
 		return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
 	}
-	event, err := deployer.PostgresMigrationToEvent(msg)
+	event, err := service.PostgresMigrationToEvent(msg)
 	if err != nil {
 		return nil, err
 	}
-	return event.UnwrapPSMEvent(), nil
+	return event, nil
 }
 
-func (cf *InfraAdapter) HandleMessage(ctx context.Context, msg proto.Message) (deployer_pb.DeploymentPSMEvent, error) {
+func (cf *InfraAdapter) HandleMessage(ctx context.Context, msg proto.Message) (*deployer_pb.DeploymentPSMEventSpec, error) {
 	log.WithField(ctx, "infraReq", msg).Debug("InfraHandleMessage")
 	switch msg := msg.(type) {
 	case *deployer_tpb.UpdateStackMessage:
@@ -132,8 +132,6 @@ func (cf *InfraAdapter) HandleMessage(ctx context.Context, msg proto.Message) (d
 		}
 		return dbEvent(cf.CleanupPostgresDatabase(ctx, msg))
 
-	case *deployer_tpb.DeploymentCompleteMessage:
-		return nil, nil
 	}
 
 	return nil, fmt.Errorf("unknown side effect message type: %T", msg)

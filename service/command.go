@@ -22,7 +22,6 @@ import (
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.daemonl.com/envconf"
 )
 
@@ -99,9 +98,9 @@ func (ds *CommandService) lookupStack(ctx context.Context, presented string) (st
 	query := sq.
 		Select(
 			"id",
-			"state->>'applicationName'",
-			"state->>'environmentId'",
-			"state->>'environmentName'",
+			"state->'data'->>'applicationName'",
+			"state->'data'->>'environmentId'",
+			"state->'data'->>'environmentName'",
 		).From("stack")
 
 	fallbackAppName := ""
@@ -147,7 +146,7 @@ func (ds *CommandService) lookupStack(ctx context.Context, presented string) (st
 		res.environment.fullName = fallbackEnvName
 
 		err = tx.SelectRow(ctx, sq.Select("id").
-			From("environment").Where("state->'config'->>'fullName' = ?", fallbackEnvName)).
+			From("environment").Where("state->'data'->'config'->>'fullName' = ?", fallbackEnvName)).
 			Scan(&res.environment.id)
 
 		if errors.Is(err, sql.ErrNoRows) {
@@ -179,14 +178,14 @@ var environmentIDNamespace = uuid.MustParse("0D783718-F8FD-4543-AE3D-6382AB0B817
 
 func (ds *CommandService) lookupEnvironment(ctx context.Context, presented string) (environmentIdentifiers, error) {
 	query := sq.
-		Select("id", "state->'config'->>'fullName'").
+		Select("id", "state->'data'->'config'->>'fullName'").
 		From("environment")
 
 	fallbackToName := ""
 	if _, err := uuid.Parse(presented); err == nil {
 		query = query.Where("id = ?", presented)
 	} else {
-		query = query.Where("state->'config'->>'fullName' = ?", presented)
+		query = query.Where("state->'data'->'config'->>'fullName' = ?", presented)
 		fallbackToName = presented
 	}
 
@@ -279,15 +278,15 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *deployer_s
 
 func (ds *CommandService) TerminateDeployment(ctx context.Context, req *deployer_spb.TerminateDeploymentRequest) (*deployer_spb.TerminateDeploymentResponse, error) {
 
-	event := &deployer_pb.DeploymentEvent{
-		DeploymentId: req.DeploymentId,
-		Metadata: &deployer_pb.EventMetadata{
-			EventId:   uuid.NewString(),
-			Timestamp: timestamppb.Now(),
+	event := &deployer_pb.DeploymentPSMEventSpec{
+		Keys: &deployer_pb.DeploymentKeys{
+			DeploymentId: req.DeploymentId,
 		},
+		EventID:   uuid.NewString(),
+		Timestamp: time.Now(),
+		Event:     &deployer_pb.DeploymentEventType_Terminated{},
+		Cause:     CommandCause(ctx),
 	}
-
-	event.SetPSMEvent(&deployer_pb.DeploymentEventType_Terminated{})
 
 	_, err := ds.deploymentStateMachine.Transition(ctx, ds.db, event)
 	if err != nil {
@@ -327,18 +326,22 @@ func (ds *CommandService) UpsertEnvironment(ctx context.Context, req *deployer_s
 	if err != nil {
 		return nil, err
 	}
-
-	event := &deployer_pb.EnvironmentEvent{
-		EnvironmentId: identifiers.id,
-		Metadata: &deployer_pb.EventMetadata{
-			EventId:   uuid.NewString(),
-			Timestamp: timestamppb.Now(),
-		},
+	cause := CommandCause(ctx)
+	if cause == nil {
+		return nil, status.Error(codes.Internal, "no actor")
 	}
 
-	event.SetPSMEvent(&deployer_pb.EnvironmentEventType_Configured{
-		Config: config,
-	})
+	event := &deployer_pb.EnvironmentPSMEventSpec{
+		Keys: &deployer_pb.EnvironmentKeys{
+			EnvironmentId: identifiers.id,
+		},
+		EventID:   uuid.NewString(),
+		Timestamp: time.Now(),
+		Cause:     cause,
+		Event: &deployer_pb.EnvironmentEventType_Configured{
+			Config: config,
+		},
+	}
 
 	state, err := ds.environmentStateMachine.Transition(ctx, ds.db, event)
 	if err != nil {
@@ -357,20 +360,20 @@ func (ds *CommandService) UpsertStack(ctx context.Context, req *deployer_spb.Ups
 		return nil, err
 	}
 
-	event := &deployer_pb.StackEvent{
-		StackId: identifiers.stackID,
-		Metadata: &deployer_pb.EventMetadata{
-			EventId:   uuid.NewString(),
-			Timestamp: timestamppb.Now(),
+	event := &deployer_pb.StackPSMEventSpec{
+		Keys: &deployer_pb.StackKeys{
+			StackId: identifiers.stackID,
+		},
+		EventID:   uuid.NewString(),
+		Timestamp: time.Now(),
+		Cause:     CommandCause(ctx),
+		Event: &deployer_pb.StackEventType_Configured{
+			Config:          req.Config,
+			EnvironmentId:   identifiers.environment.id,
+			ApplicationName: identifiers.appName,
+			EnvironmentName: identifiers.environment.fullName,
 		},
 	}
-
-	event.SetPSMEvent(&deployer_pb.StackEventType_Configured{
-		Config:          req.Config,
-		EnvironmentId:   identifiers.environment.id,
-		ApplicationName: identifiers.appName,
-		EnvironmentName: identifiers.environment.fullName,
-	})
 
 	newState, err := ds.stackStateMachine.Transition(ctx, ds.db, event)
 	if err != nil {

@@ -5,67 +5,256 @@ package deployer_pb
 import (
 	context "context"
 	fmt "fmt"
+	psm_pb "github.com/pentops/protostate/gen/state/v1/psm_pb"
 	psm "github.com/pentops/protostate/psm"
 	sqrlx "github.com/pentops/sqrlx.go/sqrlx"
-	proto "google.golang.org/protobuf/proto"
-	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// StateObjectOptions: StackPSM
+// PSM StackPSM
+
 type StackPSM = psm.StateMachine[
-	*StackState,
-	StackStatus,
-	*StackEvent,
-	StackPSMEvent,
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
 ]
 
 type StackPSMDB = psm.DBStateMachine[
-	*StackState,
-	StackStatus,
-	*StackEvent,
-	StackPSMEvent,
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
 ]
 
 type StackPSMEventer = psm.Eventer[
-	*StackState,
-	StackStatus,
-	*StackEvent,
-	StackPSMEvent,
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
 ]
 
-func DefaultStackPSMConfig() *psm.StateMachineConfig[
-	*StackState,
-	StackStatus,
-	*StackEvent,
-	StackPSMEvent,
-] {
-	return psm.NewStateMachineConfig[
-		*StackState,
-		StackStatus,
-		*StackEvent,
-		StackPSMEvent,
-	](StackPSMConverter{}, DefaultStackPSMTableSpec)
+type StackPSMEventSpec = psm.EventSpec[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+]
+
+type StackPSMEventKey = string
+
+const (
+	StackPSMEventNil                 StackPSMEventKey = "<nil>"
+	StackPSMEventConfigured          StackPSMEventKey = "configured"
+	StackPSMEventDeploymentRequested StackPSMEventKey = "deployment_requested"
+	StackPSMEventDeploymentCompleted StackPSMEventKey = "deployment_completed"
+	StackPSMEventDeploymentFailed    StackPSMEventKey = "deployment_failed"
+	StackPSMEventRunDeployment       StackPSMEventKey = "run_deployment"
+)
+
+// EXTEND StackKeys with the psm.IKeyset interface
+
+// PSMIsSet is a helper for != nil, which does not work with generic parameters
+func (msg *StackKeys) PSMIsSet() bool {
+	return msg != nil
 }
 
-func NewStackPSM(config *psm.StateMachineConfig[
-	*StackState,
-	StackStatus,
-	*StackEvent,
-	StackPSMEvent,
-]) (*StackPSM, error) {
-	return psm.NewStateMachine[
-		*StackState,
-		StackStatus,
-		*StackEvent,
-		StackPSMEvent,
-	](config)
+// PSMFullName returns the full name of state machine with package prefix
+func (msg *StackKeys) PSMFullName() string {
+	return "o5.deployer.v1.stack"
+}
+
+// EXTEND StackState with the psm.IState interface
+
+// PSMIsSet is a helper for != nil, which does not work with generic parameters
+func (msg *StackState) PSMIsSet() bool {
+	return msg != nil
+}
+
+func (msg *StackState) PSMMetadata() *psm_pb.StateMetadata {
+	if msg.Metadata == nil {
+		msg.Metadata = &psm_pb.StateMetadata{}
+	}
+	return msg.Metadata
+}
+
+func (msg *StackState) PSMKeys() *StackKeys {
+	return msg.Keys
+}
+
+func (msg *StackState) SetStatus(status StackStatus) {
+	msg.Status = status
+}
+
+func (msg *StackState) SetPSMKeys(inner *StackKeys) {
+	msg.Keys = inner
+}
+
+func (msg *StackState) PSMData() *StackStateData {
+	if msg.Data == nil {
+		msg.Data = &StackStateData{}
+	}
+	return msg.Data
+}
+
+// EXTEND StackStateData with the psm.IStateData interface
+
+// PSMIsSet is a helper for != nil, which does not work with generic parameters
+func (msg *StackStateData) PSMIsSet() bool {
+	return msg != nil
+}
+
+// EXTEND StackEvent with the psm.IEvent interface
+
+// PSMIsSet is a helper for != nil, which does not work with generic parameters
+func (msg *StackEvent) PSMIsSet() bool {
+	return msg != nil
+}
+
+func (msg *StackEvent) PSMMetadata() *psm_pb.EventMetadata {
+	if msg.Metadata == nil {
+		msg.Metadata = &psm_pb.EventMetadata{}
+	}
+	return msg.Metadata
+}
+
+func (msg *StackEvent) PSMKeys() *StackKeys {
+	return msg.Keys
+}
+
+func (msg *StackEvent) SetPSMKeys(inner *StackKeys) {
+	msg.Keys = inner
+}
+
+// PSMEventKey returns the StackPSMEventPSMEventKey for the event, implementing psm.IEvent
+func (msg *StackEvent) PSMEventKey() StackPSMEventKey {
+	tt := msg.UnwrapPSMEvent()
+	if tt == nil {
+		return StackPSMEventNil
+	}
+	return tt.PSMEventKey()
+}
+
+// UnwrapPSMEvent implements psm.IEvent, returning the inner event message
+func (msg *StackEvent) UnwrapPSMEvent() StackPSMEvent {
+	if msg == nil {
+		return nil
+	}
+	if msg.Event == nil {
+		return nil
+	}
+	switch v := msg.Event.Type.(type) {
+	case *StackEventType_Configured_:
+		return v.Configured
+	case *StackEventType_DeploymentRequested_:
+		return v.DeploymentRequested
+	case *StackEventType_DeploymentCompleted_:
+		return v.DeploymentCompleted
+	case *StackEventType_DeploymentFailed_:
+		return v.DeploymentFailed
+	case *StackEventType_RunDeployment_:
+		return v.RunDeployment
+	default:
+		return nil
+	}
+}
+
+// SetPSMEvent sets the inner event message from a concrete type, implementing psm.IEvent
+func (msg *StackEvent) SetPSMEvent(inner StackPSMEvent) error {
+	if msg.Event == nil {
+		msg.Event = &StackEventType{}
+	}
+	switch v := inner.(type) {
+	case *StackEventType_Configured:
+		msg.Event.Type = &StackEventType_Configured_{Configured: v}
+	case *StackEventType_DeploymentRequested:
+		msg.Event.Type = &StackEventType_DeploymentRequested_{DeploymentRequested: v}
+	case *StackEventType_DeploymentCompleted:
+		msg.Event.Type = &StackEventType_DeploymentCompleted_{DeploymentCompleted: v}
+	case *StackEventType_DeploymentFailed:
+		msg.Event.Type = &StackEventType_DeploymentFailed_{DeploymentFailed: v}
+	case *StackEventType_RunDeployment:
+		msg.Event.Type = &StackEventType_RunDeployment_{RunDeployment: v}
+	default:
+		return fmt.Errorf("invalid type %T for StackEventType", v)
+	}
+	return nil
+}
+
+type StackPSMEvent interface {
+	psm.IInnerEvent
+	PSMEventKey() StackPSMEventKey
+}
+
+// EXTEND StackEventType_Configured with the StackPSMEvent interface
+
+// PSMIsSet is a helper for != nil, which does not work with generic parameters
+func (msg *StackEventType_Configured) PSMIsSet() bool {
+	return msg != nil
+}
+
+func (*StackEventType_Configured) PSMEventKey() StackPSMEventKey {
+	return StackPSMEventConfigured
+}
+
+// EXTEND StackEventType_DeploymentRequested with the StackPSMEvent interface
+
+// PSMIsSet is a helper for != nil, which does not work with generic parameters
+func (msg *StackEventType_DeploymentRequested) PSMIsSet() bool {
+	return msg != nil
+}
+
+func (*StackEventType_DeploymentRequested) PSMEventKey() StackPSMEventKey {
+	return StackPSMEventDeploymentRequested
+}
+
+// EXTEND StackEventType_DeploymentCompleted with the StackPSMEvent interface
+
+// PSMIsSet is a helper for != nil, which does not work with generic parameters
+func (msg *StackEventType_DeploymentCompleted) PSMIsSet() bool {
+	return msg != nil
+}
+
+func (*StackEventType_DeploymentCompleted) PSMEventKey() StackPSMEventKey {
+	return StackPSMEventDeploymentCompleted
+}
+
+// EXTEND StackEventType_DeploymentFailed with the StackPSMEvent interface
+
+// PSMIsSet is a helper for != nil, which does not work with generic parameters
+func (msg *StackEventType_DeploymentFailed) PSMIsSet() bool {
+	return msg != nil
+}
+
+func (*StackEventType_DeploymentFailed) PSMEventKey() StackPSMEventKey {
+	return StackPSMEventDeploymentFailed
+}
+
+// EXTEND StackEventType_RunDeployment with the StackPSMEvent interface
+
+// PSMIsSet is a helper for != nil, which does not work with generic parameters
+func (msg *StackEventType_RunDeployment) PSMIsSet() bool {
+	return msg != nil
+}
+
+func (*StackEventType_RunDeployment) PSMEventKey() StackPSMEventKey {
+	return StackPSMEventRunDeployment
 }
 
 type StackPSMTableSpec = psm.PSMTableSpec[
-	*StackState,
-	StackStatus,
-	*StackEvent,
-	StackPSMEvent,
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
 ]
 
 var DefaultStackPSMTableSpec = StackPSMTableSpec{
@@ -76,7 +265,7 @@ var DefaultStackPSMTableSpec = StackPSMTableSpec{
 			return map[string]interface{}{}, nil
 		},
 		PKFieldPaths: []string{
-			"stack_id",
+			"keys.stack_id",
 		},
 	},
 	Event: psm.TableSpec[*StackEvent]{
@@ -87,203 +276,125 @@ var DefaultStackPSMTableSpec = StackPSMTableSpec{
 			return map[string]interface{}{
 				"id":        metadata.EventId,
 				"timestamp": metadata.Timestamp,
-				"actor":     metadata.Actor,
-				"stack_id":  event.StackId,
+				"cause":     metadata.Cause,
+				"sequence":  metadata.Sequence,
+				"stack_id":  event.Keys.StackId,
 			}, nil
 		},
 		PKFieldPaths: []string{
-			"metadata.event_id",
-		},
-		PK: func(event *StackEvent) (map[string]interface{}, error) {
-			return map[string]interface{}{
-				"id": event.Metadata.EventId,
-			}, nil
+			"metadata.EventId",
 		},
 	},
-	PrimaryKey: func(event *StackEvent) (map[string]interface{}, error) {
+	EventPrimaryKey: func(id string, keys *StackKeys) (map[string]interface{}, error) {
 		return map[string]interface{}{
-			"id": event.StackId,
+			"id": id,
+		}, nil
+	},
+	PrimaryKey: func(keys *StackKeys) (map[string]interface{}, error) {
+		return map[string]interface{}{
+			"id": keys.StackId,
 		}, nil
 	},
 }
 
-type StackPSMTransitionBaton = psm.TransitionBaton[*StackEvent, StackPSMEvent]
-type StackPSMHookBaton = psm.StateHookBaton[*StackEvent, StackPSMEvent]
+func DefaultStackPSMConfig() *psm.StateMachineConfig[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.NewStateMachineConfig[
+		*StackKeys,      // implements psm.IKeyset
+		*StackState,     // implements psm.IState
+		StackStatus,     // implements psm.IStatusEnum
+		*StackStateData, // implements psm.IStateData
+		*StackEvent,     // implements psm.IEvent
+		StackPSMEvent,   // implements psm.IInnerEvent
+	](DefaultStackPSMTableSpec)
+}
 
-func StackPSMFunc[SE StackPSMEvent](cb func(context.Context, StackPSMTransitionBaton, *StackState, SE) error) psm.PSMCombinedFunc[
-	*StackState,
-	StackStatus,
-	*StackEvent,
-	StackPSMEvent,
-	SE,
+func NewStackPSM(config *psm.StateMachineConfig[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+]) (*StackPSM, error) {
+	return psm.NewStateMachine[
+		*StackKeys,      // implements psm.IKeyset
+		*StackState,     // implements psm.IState
+		StackStatus,     // implements psm.IStatusEnum
+		*StackStateData, // implements psm.IStateData
+		*StackEvent,     // implements psm.IEvent
+		StackPSMEvent,   // implements psm.IInnerEvent
+	](config)
+}
+
+func StackPSMMutation[SE StackPSMEvent](cb func(*StackStateData, SE) error) psm.PSMMutationFunc[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+	SE,              // Specific event type for the transition
 ] {
-	return psm.PSMCombinedFunc[
-		*StackState,
-		StackStatus,
-		*StackEvent,
-		StackPSMEvent,
-		SE,
+	return psm.PSMMutationFunc[
+		*StackKeys,      // implements psm.IKeyset
+		*StackState,     // implements psm.IState
+		StackStatus,     // implements psm.IStatusEnum
+		*StackStateData, // implements psm.IStateData
+		*StackEvent,     // implements psm.IEvent
+		StackPSMEvent,   // implements psm.IInnerEvent
+		SE,              // Specific event type for the transition
 	](cb)
 }
-func StackPSMTransition[SE StackPSMEvent](cb func(context.Context, *StackState, SE) error) psm.PSMTransitionFunc[
-	*StackState,
-	StackStatus,
-	*StackEvent,
-	StackPSMEvent,
-	SE,
-] {
-	return psm.PSMTransitionFunc[
-		*StackState,
-		StackStatus,
-		*StackEvent,
-		StackPSMEvent,
-		SE,
-	](cb)
-}
+
+type StackPSMHookBaton = psm.HookBaton[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+]
+
 func StackPSMHook[SE StackPSMEvent](cb func(context.Context, sqrlx.Transaction, StackPSMHookBaton, *StackState, SE) error) psm.PSMHookFunc[
-	*StackState,
-	StackStatus,
-	*StackEvent,
-	StackPSMEvent,
-	SE,
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+	SE,              // Specific event type for the transition
 ] {
 	return psm.PSMHookFunc[
-		*StackState,
-		StackStatus,
-		*StackEvent,
-		StackPSMEvent,
-		SE,
+		*StackKeys,      // implements psm.IKeyset
+		*StackState,     // implements psm.IState
+		StackStatus,     // implements psm.IStatusEnum
+		*StackStateData, // implements psm.IStateData
+		*StackEvent,     // implements psm.IEvent
+		StackPSMEvent,   // implements psm.IInnerEvent
+		SE,              // Specific event type for the transition
 	](cb)
 }
-func StackPSMGeneralHook(cb func(context.Context, sqrlx.Transaction, *StackState, *StackEvent) error) psm.GeneralStateHook[
-	*StackState,
-	StackStatus,
-	*StackEvent,
-	StackPSMEvent,
+func StackPSMGeneralHook(cb func(context.Context, sqrlx.Transaction, StackPSMHookBaton, *StackState, *StackEvent) error) psm.GeneralStateHook[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
 ] {
 	return psm.GeneralStateHook[
-		*StackState,
-		StackStatus,
-		*StackEvent,
-		StackPSMEvent,
+		*StackKeys,      // implements psm.IKeyset
+		*StackState,     // implements psm.IState
+		StackStatus,     // implements psm.IStatusEnum
+		*StackStateData, // implements psm.IStateData
+		*StackEvent,     // implements psm.IEvent
+		StackPSMEvent,   // implements psm.IInnerEvent
 	](cb)
-}
-
-type StackPSMEventKey = string
-
-const (
-	StackPSMEventNil                 StackPSMEventKey = "<nil>"
-	StackPSMEventConfigured          StackPSMEventKey = "configured"
-	StackPSMEventTriggered           StackPSMEventKey = "triggered"
-	StackPSMEventDeploymentCompleted StackPSMEventKey = "deployment_completed"
-	StackPSMEventDeploymentFailed    StackPSMEventKey = "deployment_failed"
-	StackPSMEventAvailable           StackPSMEventKey = "available"
-)
-
-type StackPSMEvent interface {
-	proto.Message
-	PSMEventKey() StackPSMEventKey
-}
-
-type StackPSMConverter struct{}
-
-func (c StackPSMConverter) EmptyState(e *StackEvent) *StackState {
-	return &StackState{
-		StackId: e.StackId,
-	}
-}
-
-func (c StackPSMConverter) DeriveChainEvent(e *StackEvent, systemActor psm.SystemActor, eventKey string) *StackEvent {
-	metadata := &EventMetadata{
-		EventId:   systemActor.NewEventID(e.Metadata.EventId, eventKey),
-		Timestamp: timestamppb.Now(),
-	}
-	actorProto := systemActor.ActorProto()
-	refl := metadata.ProtoReflect()
-	refl.Set(refl.Descriptor().Fields().ByName("actor"), actorProto)
-	return &StackEvent{
-		Metadata: metadata,
-		StackId:  e.StackId,
-	}
-}
-
-func (c StackPSMConverter) CheckStateKeys(s *StackState, e *StackEvent) error {
-	if s.StackId != e.StackId {
-		return fmt.Errorf("state field 'StackId' %q does not match event field %q", s.StackId, e.StackId)
-	}
-	return nil
-}
-
-func (etw *StackEventType) UnwrapPSMEvent() StackPSMEvent {
-	if etw == nil {
-		return nil
-	}
-	switch v := etw.Type.(type) {
-	case *StackEventType_Configured_:
-		return v.Configured
-	case *StackEventType_Triggered_:
-		return v.Triggered
-	case *StackEventType_DeploymentCompleted_:
-		return v.DeploymentCompleted
-	case *StackEventType_DeploymentFailed_:
-		return v.DeploymentFailed
-	case *StackEventType_Available_:
-		return v.Available
-	default:
-		return nil
-	}
-}
-func (etw *StackEventType) PSMEventKey() StackPSMEventKey {
-	tt := etw.UnwrapPSMEvent()
-	if tt == nil {
-		return StackPSMEventNil
-	}
-	return tt.PSMEventKey()
-}
-func (etw *StackEventType) SetPSMEvent(inner StackPSMEvent) {
-	switch v := inner.(type) {
-	case *StackEventType_Configured:
-		etw.Type = &StackEventType_Configured_{Configured: v}
-	case *StackEventType_Triggered:
-		etw.Type = &StackEventType_Triggered_{Triggered: v}
-	case *StackEventType_DeploymentCompleted:
-		etw.Type = &StackEventType_DeploymentCompleted_{DeploymentCompleted: v}
-	case *StackEventType_DeploymentFailed:
-		etw.Type = &StackEventType_DeploymentFailed_{DeploymentFailed: v}
-	case *StackEventType_Available:
-		etw.Type = &StackEventType_Available_{Available: v}
-	default:
-		panic("invalid type")
-	}
-}
-
-func (ee *StackEvent) PSMEventKey() StackPSMEventKey {
-	return ee.Event.PSMEventKey()
-}
-
-func (ee *StackEvent) UnwrapPSMEvent() StackPSMEvent {
-	return ee.Event.UnwrapPSMEvent()
-}
-
-func (ee *StackEvent) SetPSMEvent(inner StackPSMEvent) {
-	if ee.Event == nil {
-		ee.Event = &StackEventType{}
-	}
-	ee.Event.SetPSMEvent(inner)
-}
-
-func (*StackEventType_Configured) PSMEventKey() StackPSMEventKey {
-	return StackPSMEventConfigured
-}
-func (*StackEventType_Triggered) PSMEventKey() StackPSMEventKey {
-	return StackPSMEventTriggered
-}
-func (*StackEventType_DeploymentCompleted) PSMEventKey() StackPSMEventKey {
-	return StackPSMEventDeploymentCompleted
-}
-func (*StackEventType_DeploymentFailed) PSMEventKey() StackPSMEventKey {
-	return StackPSMEventDeploymentFailed
-}
-func (*StackEventType_Available) PSMEventKey() StackPSMEventKey {
-	return StackPSMEventAvailable
 }

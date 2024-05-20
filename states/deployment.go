@@ -4,13 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/uuid"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
+	"github.com/pentops/protostate/psm"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func buildRequestMetadata(contextMessage proto.Message) (*messaging_pb.RequestMetadata, error) {
@@ -26,65 +25,38 @@ func buildRequestMetadata(contextMessage proto.Message) (*messaging_pb.RequestMe
 	return req, nil
 }
 
-func chainDeploymentEvent(tb deployer_pb.DeploymentPSMTransitionBaton, event deployer_pb.IsDeploymentEventTypeWrappedType) *deployer_pb.DeploymentEvent {
-	md := tb.FullCause().Metadata
-	de := &deployer_pb.DeploymentEvent{
-		Metadata: &deployer_pb.EventMetadata{
-			EventId:   uuid.NewString(),
-			Timestamp: timestamppb.Now(),
-			Actor:     md.Actor,
-		},
-		DeploymentId: tb.FullCause().DeploymentId,
-		Event:        &deployer_pb.DeploymentEventType{},
-	}
-	de.Event.Set(event)
-	return de
-}
-
 func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 	config := deployer_pb.DefaultDeploymentPSMConfig().
 		StoreExtraStateColumns(func(s *deployer_pb.DeploymentState) (map[string]interface{}, error) {
 			return map[string]interface{}{
-				"stack_id": s.StackId,
+				"stack_id": s.Data.StackId,
 			}, nil
 		}).
 		StoreExtraEventColumns(func(e *deployer_pb.DeploymentEvent) (map[string]interface{}, error) {
 			return map[string]interface{}{
 				"id":            e.Metadata.EventId,
-				"deployment_id": e.DeploymentId,
+				"deployment_id": e.Keys.DeploymentId,
 				"timestamp":     e.Metadata.Timestamp,
 			}, nil
-		})
+		}).
+		SystemActor(psm.MustSystemActor("9C88DF5B-6ED0-46DF-A389-474F27A7395F"))
 
 	sm, err := config.NewStateMachine()
 	if err != nil {
 		return nil, err
 	}
 
-	/*
-		TODO: Future hook
-		sm.AddHook(func(ctx context.Context, tx sqrlx.Transaction, state *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
-			evt := &deployer_epb.DeploymentEventMessage{
-				Metadata: event.Metadata,
-				Event:    event.Event,
-				State:    state,
-			}
-			return outbox.Send(ctx, tx, evt)
-		})
-	*/
-
 	// [*] --> QUEUED : Created
 	sm.From(deployer_pb.DeploymentStatus_UNSPECIFIED).
-		Transition(deployer_pb.DeploymentPSMTransition(func(
-			ctx context.Context,
-			deployment *deployer_pb.DeploymentState,
+		OnEvent(deployer_pb.DeploymentPSMEventCreated).
+		SetStatus(deployer_pb.DeploymentStatus_QUEUED).
+		Mutate(deployer_pb.DeploymentPSMMutation(func(
+			deployment *deployer_pb.DeploymentStateData,
 			event *deployer_pb.DeploymentEventType_Created,
 		) error {
-			deployment.Status = deployer_pb.DeploymentStatus_QUEUED
 			deployment.Spec = event.Spec
 			deployment.StackName = fmt.Sprintf("%s-%s", event.Spec.EnvironmentName, event.Spec.AppName)
 			deployment.StackId = StackID(event.Spec.EnvironmentName, event.Spec.AppName)
-			deployment.CreatedAt = timestamppb.Now()
 
 			// No follow on, the stack state will trigger
 
@@ -93,14 +65,8 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 
 	// QUEUED --> TRIGGERED : Trigger
 	sm.From(deployer_pb.DeploymentStatus_QUEUED).
-		Transition(deployer_pb.DeploymentPSMTransition(func(
-			ctx context.Context,
-			deployment *deployer_pb.DeploymentState,
-			event *deployer_pb.DeploymentEventType_Triggered,
-		) error {
-			deployment.Status = deployer_pb.DeploymentStatus_TRIGGERED
-			return nil
-		})).
+		OnEvent(deployer_pb.DeploymentPSMEventTriggered).
+		SetStatus(deployer_pb.DeploymentStatus_TRIGGERED).
 		Hook(deployer_pb.DeploymentPSMHook(func(
 			ctx context.Context,
 			tx sqrlx.Transaction,
@@ -109,22 +75,15 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 			event *deployer_pb.DeploymentEventType_Triggered,
 		) error {
 
-			tb.ChainEvent(chainDeploymentEvent(tb, &deployer_pb.DeploymentEventType_StackWait{}))
+			tb.ChainEvent(&deployer_pb.DeploymentEventType_StackWait{})
 
 			return nil
 		}))
 
 	// TRIGGERED --> WAITING : StackWait
 	sm.From(deployer_pb.DeploymentStatus_TRIGGERED).
-		Transition(deployer_pb.DeploymentPSMTransition(func(
-			ctx context.Context,
-			deployment *deployer_pb.DeploymentState,
-			event *deployer_pb.DeploymentEventType_StackWait,
-		) error {
-			deployment.Status = deployer_pb.DeploymentStatus_WAITING
-			return nil
-
-		})).
+		OnEvent(deployer_pb.DeploymentPSMEventStackWait).
+		SetStatus(deployer_pb.DeploymentStatus_WAITING).
 		Hook(deployer_pb.DeploymentPSMHook(func(
 			ctx context.Context,
 			tx sqrlx.Transaction,
@@ -134,7 +93,7 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		) error {
 			requestMetadata, err := buildRequestMetadata(&deployer_pb.StepContext{
 				Phase:        deployer_pb.StepPhase_WAIT,
-				DeploymentId: deployment.DeploymentId,
+				DeploymentId: deployment.Keys.DeploymentId,
 			})
 			if err != nil {
 				return err
@@ -142,48 +101,23 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 
 			tb.SideEffect(&deployer_tpb.StabalizeStackMessage{
 				Request:      requestMetadata,
-				StackName:    deployment.StackName,
-				CancelUpdate: deployment.Spec.Flags.CancelUpdates,
+				StackName:    deployment.Data.StackName,
+				CancelUpdate: deployment.Data.Spec.Flags.CancelUpdates,
 			})
 
 			return nil
 		}))
 
 	// WAITIHG --> FAILED : StackWaitFailure
-	sm.From(
-		deployer_pb.DeploymentStatus_WAITING,
-	).Transition(deployer_pb.DeploymentPSMTransition(func(
-		ctx context.Context,
-		deployment *deployer_pb.DeploymentState,
-		event *deployer_pb.DeploymentEventType_StackWaitFailure,
-	) error {
-		deployment.Status = deployer_pb.DeploymentStatus_FAILED
-		return fmt.Errorf("stack failed: %s", event.Error)
-	}))
+	sm.From(deployer_pb.DeploymentStatus_WAITING).
+		OnEvent(deployer_pb.DeploymentPSMEventStackWaitFailure).
+		SetStatus(deployer_pb.DeploymentStatus_FAILED)
+		// REFACTOR NOTE: This used to return error.
 
 	// WAITING --> AVAILABLE : StackAvailable
-	sm.From(
-		deployer_pb.DeploymentStatus_WAITING,
-	).Transition(deployer_pb.DeploymentPSMTransition(func(
-		ctx context.Context,
-		deployment *deployer_pb.DeploymentState,
-		event *deployer_pb.DeploymentEventType_StackAvailable,
-	) error {
-		deployment.Status = deployer_pb.DeploymentStatus_AVAILABLE
-
-		// TODO: The plan should be generated in a side effect and stored as a
-		// new event.
-
-		plan, err := planDeploymentSteps(ctx, deployment, planInput{
-			stackStatus: event.StackOutput,
-			flags:       deployment.Spec.Flags,
-		})
-		if err != nil {
-			return err
-		}
-		deployment.Steps = plan
-		return nil
-	})).
+	sm.From(deployer_pb.DeploymentStatus_WAITING).
+		OnEvent(deployer_pb.DeploymentPSMEventStackAvailable).
+		SetStatus(deployer_pb.DeploymentStatus_AVAILABLE).
 		Hook(deployer_pb.DeploymentPSMHook(func(
 			ctx context.Context,
 			tx sqrlx.Transaction,
@@ -192,19 +126,34 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 			event *deployer_pb.DeploymentEventType_StackAvailable,
 		) error {
 
-			tb.ChainEvent(chainDeploymentEvent(tb, &deployer_pb.DeploymentEventType_RunSteps{}))
+			// TODO: The plan should be generated in a side effect and stored as a
+			// new event.
+
+			plan, err := planDeploymentSteps(ctx, deployment.Data, planInput{
+				stackStatus: event.StackOutput,
+				flags:       deployment.Data.Spec.Flags,
+			})
+			if err != nil {
+				return err
+			}
+
+			tb.ChainEvent(&deployer_pb.DeploymentEventType_RunSteps{
+				Steps: plan,
+			})
 
 			return nil
 		}))
 
 	// AVAILABLE --> RUNNING : RunSteps
 	sm.From(deployer_pb.DeploymentStatus_AVAILABLE).
-		Transition(deployer_pb.DeploymentPSMTransition(func(
-			ctx context.Context,
-			deployment *deployer_pb.DeploymentState,
+		OnEvent(deployer_pb.DeploymentPSMEventRunSteps).
+		SetStatus(deployer_pb.DeploymentStatus_RUNNING).
+		Mutate(deployer_pb.DeploymentPSMMutation(func(
+			deployment *deployer_pb.DeploymentStateData,
 			event *deployer_pb.DeploymentEventType_RunSteps,
 		) error {
-			deployment.Status = deployer_pb.DeploymentStatus_RUNNING
+
+			deployment.Steps = event.Steps
 			return nil
 		})).
 		Hook(deployer_pb.DeploymentPSMHook(func(
@@ -219,9 +168,8 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 
 	// RUNNING --> RUNNING : StepResult
 	sm.From(deployer_pb.DeploymentStatus_RUNNING).
-		Transition(deployer_pb.DeploymentPSMTransition(func(
-			ctx context.Context,
-			deployment *deployer_pb.DeploymentState,
+		Mutate(deployer_pb.DeploymentPSMMutation(func(
+			deployment *deployer_pb.DeploymentStateData,
 			event *deployer_pb.DeploymentEventType_StepResult,
 		) error {
 			updateDeploymentStep(deployment, event)
@@ -238,65 +186,41 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		}))
 
 	// RUNNING --> DONE : Done
-	sm.From(
-		deployer_pb.DeploymentStatus_RUNNING,
-	).Transition(deployer_pb.DeploymentPSMTransition(func(
-		ctx context.Context,
-		deployment *deployer_pb.DeploymentState,
-		event *deployer_pb.DeploymentEventType_Done,
-	) error {
-		deployment.Status = deployer_pb.DeploymentStatus_DONE
-		return nil
-	}))
+	sm.From(deployer_pb.DeploymentStatus_RUNNING).
+		OnEvent(deployer_pb.DeploymentPSMEventDone).
+		SetStatus(deployer_pb.DeploymentStatus_DONE)
 
 	// * --> FAILED : Error
-	sm.From().Transition(deployer_pb.DeploymentPSMTransition(func(
-		ctx context.Context,
-		deployment *deployer_pb.DeploymentState,
-		event *deployer_pb.DeploymentEventType_Error,
-	) error {
-		deployment.Status = deployer_pb.DeploymentStatus_FAILED
-		return nil
-	}))
+	sm.From().OnEvent(deployer_pb.DeploymentPSMEventError).
+		SetStatus(deployer_pb.DeploymentStatus_FAILED)
 
 	// * --> TERMINATED : Terminated
-	sm.From().Transition(deployer_pb.DeploymentPSMTransition(func(
-		ctx context.Context,
-		deployment *deployer_pb.DeploymentState,
-		event *deployer_pb.DeploymentEventType_Terminated,
-	) error {
-		deployment.Status = deployer_pb.DeploymentStatus_TERMINATED
-		return nil
-	}))
+	sm.From().OnEvent(deployer_pb.DeploymentPSMEventTerminated).
+		SetStatus(deployer_pb.DeploymentStatus_TERMINATED)
 
 	// Discard Triggered
 	sm.From(
 		deployer_pb.DeploymentStatus_FAILED,
 		deployer_pb.DeploymentStatus_TERMINATED,
-	).Transition(deployer_pb.DeploymentPSMTransition(func(
-		ctx context.Context,
-		deployment *deployer_pb.DeploymentState,
-		event *deployer_pb.DeploymentEventType_Triggered,
-	) error {
-		return nil
-	}))
+	).
+		OnEvent(deployer_pb.DeploymentPSMEventTriggered).
+		Noop()
 
 	// Discard Step Results
-	sm.From(
-		deployer_pb.DeploymentStatus_TERMINATED,
-	).Transition(deployer_pb.DeploymentPSMTransition(func(
-		ctx context.Context,
-		deployment *deployer_pb.DeploymentState,
-		event *deployer_pb.DeploymentEventType_StepResult,
-	) error {
-		updateDeploymentStep(deployment, event)
-		return nil
-	}))
+	sm.From(deployer_pb.DeploymentStatus_TERMINATED).
+		OnEvent(deployer_pb.DeploymentPSMEventStepResult).
+		Mutate(deployer_pb.DeploymentPSMMutation(func(
+			deployment *deployer_pb.DeploymentStateData,
+			event *deployer_pb.DeploymentEventType_StepResult,
+		) error {
+			updateDeploymentStep(deployment, event)
+			return nil
+		}))
 
 	return sm, nil
 }
 
-func updateDeploymentStep(deployment *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEventType_StepResult) {
+func updateDeploymentStep(deployment *deployer_pb.DeploymentStateData, event *deployer_pb.DeploymentEventType_StepResult) {
 	for _, step := range deployment.Steps {
 		if step.Id == event.StepId {
 			step.Status = event.Status

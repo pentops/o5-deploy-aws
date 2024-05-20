@@ -17,6 +17,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/outbox.pg.go/outbox"
+	"github.com/pentops/protostate/gen/state/v1/psm_pb"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -34,7 +35,7 @@ type EventLoop struct {
 }
 
 type IInfra interface {
-	HandleMessage(ctx context.Context, msg proto.Message) (deployer_pb.DeploymentPSMEvent, error)
+	HandleMessage(ctx context.Context, msg proto.Message) (*deployer_pb.DeploymentPSMEventSpec, error)
 }
 
 func NewEventLoop(awsRunner IInfra, stateStore *StateStore, specBuilder *deployer.SpecBuilder) *EventLoop {
@@ -53,10 +54,10 @@ func NewEventLoop(awsRunner IInfra, stateStore *StateStore, specBuilder *deploye
 type TransitionData struct {
 	CausedBy    *deployer_pb.DeploymentEvent
 	SideEffects []outbox.OutboxMessage
-	ChainEvents []*deployer_pb.DeploymentEvent
+	ChainEvents []deployer_pb.DeploymentPSMEvent
 }
 
-func (td *TransitionData) ChainEvent(event *deployer_pb.DeploymentEvent) {
+func (td *TransitionData) ChainEvent(event deployer_pb.DeploymentPSMEvent) {
 	td.ChainEvents = append(td.ChainEvents, event)
 }
 
@@ -64,8 +65,16 @@ func (td *TransitionData) SideEffect(msg outbox.OutboxMessage) {
 	td.SideEffects = append(td.SideEffects, msg)
 }
 
-func (td *TransitionData) ChainDerived(inner deployer_pb.DeploymentPSMEvent) {
-	panic("ChainDerived not implemented")
+func (td *TransitionData) AsCause() *psm_pb.Cause {
+	return &psm_pb.Cause{
+		Type: &psm_pb.Cause_PsmEvent{
+			PsmEvent: &psm_pb.PSMEventCause{
+				EventId:      td.CausedBy.Metadata.EventId,
+				StateMachine: td.CausedBy.Keys.PSMFullName(),
+			},
+		},
+	}
+
 }
 
 func (td *TransitionData) FullCause() *deployer_pb.DeploymentEvent {
@@ -87,8 +96,10 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 	tx := lel.storage
 
 	eventQueue := []*deployer_pb.DeploymentEvent{{
-		DeploymentId: trigger.DeploymentId,
-		Metadata: &deployer_pb.EventMetadata{
+		Keys: &deployer_pb.DeploymentKeys{
+			DeploymentId: trigger.DeploymentId,
+		},
+		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
 		},
@@ -100,8 +111,10 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 			},
 		},
 	}, {
-		DeploymentId: trigger.DeploymentId,
-		Metadata: &deployer_pb.EventMetadata{
+		Keys: &deployer_pb.DeploymentKeys{
+			DeploymentId: trigger.DeploymentId,
+		},
+		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
 		},
@@ -130,7 +143,10 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		deployment, err := tx.GetDeployment(ctx, deploymentId)
 		if errors.Is(err, deployer.DeploymentNotFoundError) {
 			deployment = &deployer_pb.DeploymentState{
-				DeploymentId: deploymentId,
+				Metadata: &psm_pb.StateMetadata{},
+				Keys: &deployer_pb.DeploymentKeys{
+					DeploymentId: deploymentId,
+				},
 			}
 		} else if err != nil {
 			return err
@@ -144,7 +160,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		stateBefore := deployment.Status.ShortString()
 
 		ctx = log.WithFields(ctx, map[string]interface{}{
-			"deploymentId": innerEvent.DeploymentId,
+			"deploymentId": innerEvent.Keys.DeploymentId,
 			"eventType":    typeKey,
 			"transition":   fmt.Sprintf("%s -> ? : %s", stateBefore, typeKey),
 		})
@@ -156,7 +172,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 			return err
 		}
 		if err := transition.RunTransition(ctx, deployment, innerEvent); err != nil {
-			return err
+			return fmt.Errorf("run transisiotn: %w", err)
 		}
 
 		ctx = log.WithFields(ctx, map[string]interface{}{
@@ -197,7 +213,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 			evt := baton.ChainEvents[0]
 
 			if lel.confirmPlan {
-				if _, ok := evt.Event.Type.(*deployer_pb.DeploymentEventType_RunSteps_); ok {
+				if evt.PSMEventKey() == deployer_pb.DeploymentPSMEventRunSteps {
 					if !confirmPlan(deployment) {
 						return nil
 					}
@@ -205,7 +221,18 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 				}
 			}
 			log.WithField(ctx, "chainEvent", protojson.Format(evt)).Debug("Chain Event")
-			eventQueue = append(eventQueue, evt)
+			wrapped := &deployer_pb.DeploymentEvent{
+				Keys: innerEvent.Keys,
+				Metadata: &psm_pb.EventMetadata{
+					EventId:   uuid.NewString(),
+					Timestamp: timestamppb.Now(),
+				},
+			}
+			if err := wrapped.SetPSMEvent(evt); err != nil {
+				return err
+			}
+
+			eventQueue = append(eventQueue, wrapped)
 			continue
 		}
 
@@ -220,13 +247,17 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 
 			if result != nil {
 				mapped := &deployer_pb.DeploymentEvent{
-					DeploymentId: deploymentId,
-					Metadata: &deployer_pb.EventMetadata{
+					Keys: &deployer_pb.DeploymentKeys{
+						DeploymentId: deploymentId,
+					},
+					Metadata: &psm_pb.EventMetadata{
 						EventId:   uuid.NewString(),
 						Timestamp: timestamppb.Now(),
 					},
 				}
-				mapped.SetPSMEvent(result)
+				if err := mapped.SetPSMEvent(result.Event); err != nil {
+					return err
+				}
 				log.WithField(ctx, "nextEvent", protojson.Format(mapped)).Debug("Side Effect Result")
 				eventQueue = append(eventQueue, mapped)
 			}
@@ -259,10 +290,10 @@ func AskBool(prompt string) bool {
 func confirmPlan(deployment *deployer_pb.DeploymentState) bool {
 	fmt.Printf("CONFIRM STEPS\n")
 	stepMap := make(map[string]*deployer_pb.DeploymentStep)
-	for _, step := range deployment.Steps {
+	for _, step := range deployment.Data.Steps {
 		stepMap[step.Id] = step
 	}
-	for _, step := range deployment.Steps {
+	for _, step := range deployment.Data.Steps {
 		typeKey, _ := step.Request.TypeKey()
 		fmt.Printf("- %s (%s)\n", step.Name, typeKey)
 		for _, dep := range step.DependsOn {
