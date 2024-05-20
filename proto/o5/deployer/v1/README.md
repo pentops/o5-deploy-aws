@@ -6,21 +6,15 @@ Deployer
 
 ```mermaid
 stateDiagram-v2
-    classDef auto fill:#002222,stroke-dasharray:4
-	classDef failed stroke:red,fill:#330000
+	[*] --> AVAILABLE : Configured
+	[*] --> AVAILABLE : DeploymentRequested
 
-	[*] --> CREATING : Triggered
-	CREATING --> CREATING : Triggered<br>(Adds to the queue)
-	CREATING --> STABLE : DeploymentCompleted
-	state stable <<choice>>
-	STABLE:::auto --> stable
-	stable --> AVAILABLE : Nothing Queued
-	stable --> MIGRATING : Pops from queue
-	AVAILABLE --> MIGRATING : Triggered<br>(External)
-	MIGRATING --> STABLE : DeploymentCompleted
-	MIGRATING --> MIGRATING : Triggered<br>(Adds to the queue)
-	CREATING --> BROKEN:::failed : DeploymentFailed
-	MIGRATING --> BROKEN : DeploymentFailed
+	AVAILABLE --> AVAILABLE : DeploymentRequested
+    MIGRATING --> MIGRATING : DeploymentRequested
+
+	AVAILABLE --> MIGRATING : RunDeployment
+	MIGRATING --> AVAILABLE : DeploymentCompleted
+	MIGRATING --> AVAILABLE : DeploymentFailed
 ```
 
 ## Deployment State

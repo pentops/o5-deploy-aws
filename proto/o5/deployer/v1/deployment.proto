@@ -32,6 +32,10 @@ message DeploymentState {
 
   DeploymentStatus status = 3 [(psm.list.v1.field).enum.filtering = {filterable: true}];
 
+  DeploymentStateData data = 4;
+}
+
+message DeploymentStateData {
   DeploymentSpec spec = 4;
 
   string stack_name = 5 [(psm.list.v1.field).string.open_text.searching = {
@@ -161,7 +165,9 @@ message DeploymentEventType {
     CFStackOutput stack_output = 1;
   }
 
-  message RunSteps {}
+  message RunSteps {
+    repeated DeploymentStep steps = 10;
+  }
 
   message StepResult {
     string step_id = 1;

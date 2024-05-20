@@ -33,6 +33,10 @@ message EnvironmentState {
     default_filters: ["ENVIRONMENT_STATUS_ACTIVE"],
   }];
 
+  EnvironmentStateData data = 4;
+}
+
+message EnvironmentStateData {
   o5.environment.v1.Environment config = 4;
 }
 

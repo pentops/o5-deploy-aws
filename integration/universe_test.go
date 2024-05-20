@@ -2,12 +2,16 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/iancoleman/strcase"
 	"github.com/pentops/flowtest"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/deployer"
+	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_epb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_spb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
@@ -19,6 +23,7 @@ import (
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	"github.com/pentops/outbox.pg.go/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
+	"google.golang.org/protobuf/proto"
 )
 
 type UniverseAsserter struct {
@@ -26,11 +31,9 @@ type UniverseAsserter struct {
 	flowtest.Asserter
 }
 
-/*
 func pascalKey(key string) string {
 	return strcase.ToCamel(key)
 }
-*/
 
 func (ua *UniverseAsserter) afterEach(ctx context.Context) {
 	ua.Helper()
@@ -39,23 +42,21 @@ func (ua *UniverseAsserter) afterEach(ctx context.Context) {
 	ua.Outbox.ForEachMessage(ua, func(topic, service string, data []byte) {
 
 		switch service {
-		/*
-			case "/o5.deployer.v1.events.DeployerEventsTopic/StackEvent":
-				event := &deployer_epb.StackEventMessage{}
-				if err := proto.Unmarshal(data, event); err != nil {
-					ua.Fatalf("unmarshal error: %v", err)
-				}
-				ua.Logf("Unexpected Stack Event: %s -> %s", event.Event.PSMEventKey(), event.State.Status.ShortString())
-				suggestions = append(suggestions, fmt.Sprintf("t.PopStackEvent(t, deployer_pb.StackPSMEvent%s, deployer_pb.StackStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.State.Status.ShortString()))
+		case "/o5.deployer.v1.events.DeployerEvents/Stack":
+			event := &deployer_epb.StackEvent{}
+			if err := proto.Unmarshal(data, event); err != nil {
+				ua.Fatalf("unmarshal error: %v", err)
+			}
+			ua.Logf("Unexpected Stack Event: %s -> %s", event.Event.PSMEventKey(), event.Status.ShortString())
+			suggestions = append(suggestions, fmt.Sprintf("t.PopStackEvent(t, deployer_pb.StackPSMEvent%s, deployer_pb.StackStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.Status.ShortString()))
 
-			case "/o5.deployer.v1.events.DeployerEventsTopic/DeploymentEvent":
-				event := &deployer_epb.DeploymentEventMessage{}
-				if err := proto.Unmarshal(data, event); err != nil {
-					ua.Fatalf("unmarshal error: %v", err)
-				}
-				ua.Logf("Unexpected Deployment Event: %s -> %s", event.Event.PSMEventKey(), event.State.Status.ShortString())
-				suggestions = append(suggestions, fmt.Sprintf("t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEvent%s, deployer_pb.DeploymentStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.State.Status.ShortString()))
-		*/
+		case "/o5.deployer.v1.events.DeployerEvents/Deployment":
+			event := &deployer_epb.DeploymentEvent{}
+			if err := proto.Unmarshal(data, event); err != nil {
+				ua.Fatalf("unmarshal error: %v", err)
+			}
+			ua.Logf("Unexpected Deployment Event: %s -> %s", event.Event.PSMEventKey(), event.Status.ShortString())
+			suggestions = append(suggestions, fmt.Sprintf("t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEvent%s, deployer_pb.DeploymentStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.Status.ShortString()))
 		default:
 			ua.Fatalf("unexpected message %s %s", topic, service)
 		}
@@ -102,7 +103,7 @@ func NewStepper(ctx context.Context, t testing.TB) *Stepper {
 }
 
 type Universe struct {
-	DeployerTopic deployer_tpb.DeployerTopicClient
+	DeployerTopic deployer_tpb.DeployerInputTopicClient
 	CFReplyTopic  deployer_tpb.CloudFormationReplyTopicClient
 
 	GithubWebhookTopic github_pb.WebhookTopicClient
@@ -149,10 +150,11 @@ func (cf *cfMock) ExpectCreateStack(t flowtest.TB) *deployer_tpb.CreateNewStackM
 func (cf *cfMock) StackStatusMissing(t flowtest.TB) {
 	t.Helper()
 	_, err := cf.uu.CFReplyTopic.StackStatusChanged(context.Background(), &deployer_tpb.StackStatusChangedMessage{
+		EventId:   fmt.Sprintf("event-%d", time.Now().UnixNano()),
 		Request:   cf.lastRequest,
 		StackName: cf.lastStack,
 		Lifecycle: deployer_pb.CFLifecycle_MISSING,
-		Status:    "",
+		Status:    "MISSING",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -161,6 +163,7 @@ func (cf *cfMock) StackStatusMissing(t flowtest.TB) {
 
 func (cf *cfMock) StackCreateCompleteMessage() *deployer_tpb.StackStatusChangedMessage {
 	return &deployer_tpb.StackStatusChangedMessage{
+		EventId:   fmt.Sprintf("event-%d", time.Now().UnixNano()),
 		Request:   cf.lastRequest,
 		StackName: cf.lastStack,
 		Lifecycle: deployer_pb.CFLifecycle_COMPLETE,
@@ -179,35 +182,47 @@ func (cf *cfMock) StackCreateComplete(t flowtest.TB) {
 	}
 }
 
-/*
-func (uu *Universe) PopStackEvent(t flowtest.TB, eventKey deployer_pb.StackPSMEventKey, status deployer_pb.StackStatus) *deployer_epb.StackEventMessage {
+func (uu *Universe) PopStackEvent(t flowtest.TB, eventKey deployer_pb.StackPSMEventKey, status deployer_pb.StackStatus) *deployer_epb.StackEvent {
 	t.Helper()
-	event := &deployer_epb.StackEventMessage{}
+	event := &deployer_epb.StackEvent{}
 	uu.Outbox.PopMatching(t, outboxtest.NewMatcher(event))
 	gotKey := event.Event.PSMEventKey()
 	if gotKey != eventKey {
-		t.Fatalf("unexpected event: %v, want %v", gotKey, eventKey)
+		t.Fatalf("unexpected Stack event: %v, want %v", gotKey, eventKey)
 	}
-	if status != event.State.Status {
-		t.Fatalf("unexpected status: %v, want %v", event.State.Status, status)
+	if status != event.Status {
+		t.Fatalf("unexpected Stack status: %v, want %v", event.Status, status)
 	}
 	return event
 }
 
-func (uu *Universe) PopDeploymentEvent(t flowtest.TB, eventKey deployer_pb.DeploymentPSMEventKey, status deployer_pb.DeploymentStatus) *deployer_epb.DeploymentEventMessage {
+func (uu *Universe) PopDeploymentEvent(t flowtest.TB, eventKey deployer_pb.DeploymentPSMEventKey, status deployer_pb.DeploymentStatus) *deployer_epb.DeploymentEvent {
 	t.Helper()
-	event := &deployer_epb.DeploymentEventMessage{}
+	event := &deployer_epb.DeploymentEvent{}
 	uu.Outbox.PopMatching(t, outboxtest.NewMatcher(event))
 	gotKey := event.Event.PSMEventKey()
 	if gotKey != eventKey {
-		t.Fatalf("unexpected event: %v, want %v", gotKey, eventKey)
+		t.Fatalf("unexpected Deployment event: %v, want %v", gotKey, eventKey)
 	}
-	if status != event.State.Status {
-		t.Fatalf("unexpected status: %v, want %v", event.State.Status, status)
+	if status != event.Status {
+		t.Fatalf("unexpected Deployment status: %v, want %v", event.Status, status)
 	}
 	return event
 }
-*/
+
+func (uu *Universe) PopEnvironmentEvent(t flowtest.TB, eventKey deployer_pb.EnvironmentPSMEventKey, status deployer_pb.EnvironmentStatus) *deployer_epb.EnvironmentEvent {
+	t.Helper()
+	event := &deployer_epb.EnvironmentEvent{}
+	uu.Outbox.PopMatching(t, outboxtest.NewMatcher(event))
+	gotKey := event.Event.PSMEventKey()
+	if gotKey != eventKey {
+		t.Fatalf("unexpected Environment event: %v, want %v", gotKey, eventKey)
+	}
+	if status != event.Status {
+		t.Fatalf("unexpected Environment status: %v, want %v", event.Status, status)
+	}
+	return event
+}
 
 func (ss *Stepper) RunSteps(t *testing.T) {
 	t.Helper()
@@ -247,15 +262,15 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	topicPair := flowtest.NewGRPCPair(t)
-	servicePair := flowtest.NewGRPCPair(t) // TODO: Middleware
+	topicPair := flowtest.NewGRPCPair(t, service.GRPCMiddleware()...)
+	servicePair := flowtest.NewGRPCPair(t, service.GRPCMiddleware()...)
 
-	deploymentWorker, err := deployer.NewDeployerWorker(conn, trigger, stateMachines)
+	deploymentWorker, err := service.NewDeployerWorker(conn, trigger, stateMachines)
 	if err != nil {
 		t.Fatal(err)
 	}
-	deployer_tpb.RegisterDeployerTopicServer(topicPair.Server, deploymentWorker)
-	uu.DeployerTopic = deployer_tpb.NewDeployerTopicClient(topicPair.Client)
+	deployer_tpb.RegisterDeployerInputTopicServer(topicPair.Server, deploymentWorker)
+	uu.DeployerTopic = deployer_tpb.NewDeployerInputTopicClient(topicPair.Client)
 
 	deployer_tpb.RegisterCloudFormationReplyTopicServer(topicPair.Server, deploymentWorker)
 	uu.CFReplyTopic = deployer_tpb.NewCloudFormationReplyTopicClient(topicPair.Client)
@@ -300,7 +315,7 @@ func (uu *Universe) AssertDeploymentStatus(t flowtest.Asserter, deploymentID str
 	}
 	if deployment.State.Status != status {
 
-		for _, step := range deployment.State.Steps {
+		for _, step := range deployment.State.Data.Steps {
 			t.Logf("step %s is %s", step.Name, step.Status.ShortString())
 		}
 		t.Fatalf("unexpected status: %v, want %s", deployment.State.Status.ShortString(), status.ShortString())
@@ -318,16 +333,15 @@ func (uu *Universe) AssertStackStatus(t flowtest.Asserter, stackID string, statu
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	t.Logf("stack: %v", stack)
 	if stack.State.Status != status {
 		t.Fatalf("unexpected status: %v, want %s", stack.State.Status.ShortString(), status.ShortString())
 	}
-	if len(stack.State.QueuedDeployments) != len(pendingDeployments) {
-		t.Fatalf("unexpected pending deployments: %v, want %v", stack.State.QueuedDeployments, pendingDeployments)
+	if len(stack.State.Data.QueuedDeployments) != len(pendingDeployments) {
+		t.Fatalf("unexpected pending deployments: %v, want %v", stack.State.Data.QueuedDeployments, pendingDeployments)
 	}
 	for i, deploymentID := range pendingDeployments {
-		if stack.State.QueuedDeployments[i].DeploymentId != deploymentID {
-			t.Fatalf("unexpected pending deployments: %v, want %v", stack.State.QueuedDeployments, pendingDeployments)
+		if stack.State.Data.QueuedDeployments[i].DeploymentId != deploymentID {
+			t.Fatalf("unexpected pending deployments: %v, want %v", stack.State.Data.QueuedDeployments, pendingDeployments)
 		}
 	}
 }

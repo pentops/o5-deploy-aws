@@ -4,75 +4,193 @@ package deployer_pb
 
 import (
 	context "context"
+	fmt "fmt"
 	psm_pb "github.com/pentops/protostate/gen/state/v1/psm_pb"
 	psm "github.com/pentops/protostate/psm"
 	sqrlx "github.com/pentops/sqrlx.go/sqrlx"
-	proto "google.golang.org/protobuf/proto"
 )
 
-// StateObjectOptions: EnvironmentPSM
+// PSM EnvironmentPSM
+
 type EnvironmentPSM = psm.StateMachine[
-	*EnvironmentKeys,
-	*EnvironmentState,
-	EnvironmentStatus,
-	*EnvironmentEvent,
-	EnvironmentPSMEvent,
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 ]
 
 type EnvironmentPSMDB = psm.DBStateMachine[
-	*EnvironmentKeys,
-	*EnvironmentState,
-	EnvironmentStatus,
-	*EnvironmentEvent,
-	EnvironmentPSMEvent,
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 ]
 
 type EnvironmentPSMEventer = psm.Eventer[
-	*EnvironmentKeys,
-	*EnvironmentState,
-	EnvironmentStatus,
-	*EnvironmentEvent,
-	EnvironmentPSMEvent,
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 ]
 
-func DefaultEnvironmentPSMConfig() *psm.StateMachineConfig[
-	*EnvironmentKeys,
-	*EnvironmentState,
-	EnvironmentStatus,
-	*EnvironmentEvent,
-	EnvironmentPSMEvent,
-] {
-	return psm.NewStateMachineConfig[
-		*EnvironmentKeys,
-		*EnvironmentState,
-		EnvironmentStatus,
-		*EnvironmentEvent,
-		EnvironmentPSMEvent,
-	](DefaultEnvironmentPSMTableSpec)
+type EnvironmentPSMEventSpec = psm.EventSpec[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
+]
+
+type EnvironmentPSMEventKey = string
+
+const (
+	EnvironmentPSMEventNil        EnvironmentPSMEventKey = "<nil>"
+	EnvironmentPSMEventConfigured EnvironmentPSMEventKey = "configured"
+)
+
+// EXTEND EnvironmentKeys with the psm.IKeyset interface
+
+// PSMIsSet is a helper for != nil, which does not work with generic parameters
+func (msg *EnvironmentKeys) PSMIsSet() bool {
+	return msg != nil
 }
 
-func NewEnvironmentPSM(config *psm.StateMachineConfig[
-	*EnvironmentKeys,
-	*EnvironmentState,
-	EnvironmentStatus,
-	*EnvironmentEvent,
-	EnvironmentPSMEvent,
-]) (*EnvironmentPSM, error) {
-	return psm.NewStateMachine[
-		*EnvironmentKeys,
-		*EnvironmentState,
-		EnvironmentStatus,
-		*EnvironmentEvent,
-		EnvironmentPSMEvent,
-	](config)
+// PSMFullName returns the full name of state machine with package prefix
+func (msg *EnvironmentKeys) PSMFullName() string {
+	return "o5.deployer.v1.environment"
+}
+
+// EXTEND EnvironmentState with the psm.IState interface
+
+// PSMIsSet is a helper for != nil, which does not work with generic parameters
+func (msg *EnvironmentState) PSMIsSet() bool {
+	return msg != nil
+}
+
+func (msg *EnvironmentState) PSMMetadata() *psm_pb.StateMetadata {
+	if msg.Metadata == nil {
+		msg.Metadata = &psm_pb.StateMetadata{}
+	}
+	return msg.Metadata
+}
+
+func (msg *EnvironmentState) PSMKeys() *EnvironmentKeys {
+	return msg.Keys
+}
+
+func (msg *EnvironmentState) SetStatus(status EnvironmentStatus) {
+	msg.Status = status
+}
+
+func (msg *EnvironmentState) SetPSMKeys(inner *EnvironmentKeys) {
+	msg.Keys = inner
+}
+
+func (msg *EnvironmentState) PSMData() *EnvironmentStateData {
+	if msg.Data == nil {
+		msg.Data = &EnvironmentStateData{}
+	}
+	return msg.Data
+}
+
+// EXTEND EnvironmentStateData with the psm.IStateData interface
+
+// PSMIsSet is a helper for != nil, which does not work with generic parameters
+func (msg *EnvironmentStateData) PSMIsSet() bool {
+	return msg != nil
+}
+
+// EXTEND EnvironmentEvent with the psm.IEvent interface
+
+// PSMIsSet is a helper for != nil, which does not work with generic parameters
+func (msg *EnvironmentEvent) PSMIsSet() bool {
+	return msg != nil
+}
+
+func (msg *EnvironmentEvent) PSMMetadata() *psm_pb.EventMetadata {
+	if msg.Metadata == nil {
+		msg.Metadata = &psm_pb.EventMetadata{}
+	}
+	return msg.Metadata
+}
+
+func (msg *EnvironmentEvent) PSMKeys() *EnvironmentKeys {
+	return msg.Keys
+}
+
+func (msg *EnvironmentEvent) SetPSMKeys(inner *EnvironmentKeys) {
+	msg.Keys = inner
+}
+
+// PSMEventKey returns the EnvironmentPSMEventPSMEventKey for the event, implementing psm.IEvent
+func (msg *EnvironmentEvent) PSMEventKey() EnvironmentPSMEventKey {
+	tt := msg.UnwrapPSMEvent()
+	if tt == nil {
+		return EnvironmentPSMEventNil
+	}
+	return tt.PSMEventKey()
+}
+
+// UnwrapPSMEvent implements psm.IEvent, returning the inner event message
+func (msg *EnvironmentEvent) UnwrapPSMEvent() EnvironmentPSMEvent {
+	if msg == nil {
+		return nil
+	}
+	if msg.Event == nil {
+		return nil
+	}
+	switch v := msg.Event.Type.(type) {
+	case *EnvironmentEventType_Configured_:
+		return v.Configured
+	default:
+		return nil
+	}
+}
+
+// SetPSMEvent sets the inner event message from a concrete type, implementing psm.IEvent
+func (msg *EnvironmentEvent) SetPSMEvent(inner EnvironmentPSMEvent) error {
+	if msg.Event == nil {
+		msg.Event = &EnvironmentEventType{}
+	}
+	switch v := inner.(type) {
+	case *EnvironmentEventType_Configured:
+		msg.Event.Type = &EnvironmentEventType_Configured_{Configured: v}
+	default:
+		return fmt.Errorf("invalid type %T for EnvironmentEventType", v)
+	}
+	return nil
+}
+
+type EnvironmentPSMEvent interface {
+	psm.IInnerEvent
+	PSMEventKey() EnvironmentPSMEventKey
+}
+
+// EXTEND EnvironmentEventType_Configured with the EnvironmentPSMEvent interface
+
+// PSMIsSet is a helper for != nil, which does not work with generic parameters
+func (msg *EnvironmentEventType_Configured) PSMIsSet() bool {
+	return msg != nil
+}
+
+func (*EnvironmentEventType_Configured) PSMEventKey() EnvironmentPSMEventKey {
+	return EnvironmentPSMEventConfigured
 }
 
 type EnvironmentPSMTableSpec = psm.PSMTableSpec[
-	*EnvironmentKeys,
-	*EnvironmentState,
-	EnvironmentStatus,
-	*EnvironmentEvent,
-	EnvironmentPSMEvent,
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 ]
 
 var DefaultEnvironmentPSMTableSpec = EnvironmentPSMTableSpec{
@@ -102,185 +220,117 @@ var DefaultEnvironmentPSMTableSpec = EnvironmentPSMTableSpec{
 		PKFieldPaths: []string{
 			"metadata.EventId",
 		},
-		PK: func(event *EnvironmentEvent) (map[string]interface{}, error) {
-			return map[string]interface{}{
-				"id": event.Metadata.EventId,
-			}, nil
-		},
 	},
-	PrimaryKey: func(event *EnvironmentEvent) (map[string]interface{}, error) {
+	EventPrimaryKey: func(id string, keys *EnvironmentKeys) (map[string]interface{}, error) {
 		return map[string]interface{}{
-			"id": event.Keys.EnvironmentId,
+			"id": id,
+		}, nil
+	},
+	PrimaryKey: func(keys *EnvironmentKeys) (map[string]interface{}, error) {
+		return map[string]interface{}{
+			"id": keys.EnvironmentId,
 		}, nil
 	},
 }
 
-type EnvironmentPSMTransitionBaton = psm.TransitionBaton[
-	*EnvironmentKeys,
-	*EnvironmentState,
-	EnvironmentStatus,
-	*EnvironmentEvent,
-	EnvironmentPSMEvent,
-]
-
-type EnvironmentPSMHookBaton = psm.StateHookBaton[
-	*EnvironmentKeys,
-	*EnvironmentState,
-	EnvironmentStatus,
-	*EnvironmentEvent,
-	EnvironmentPSMEvent,
-]
-
-func EnvironmentPSMFunc[SE EnvironmentPSMEvent](cb func(context.Context, EnvironmentPSMTransitionBaton, *EnvironmentState, SE) error) psm.PSMCombinedFunc[
-	*EnvironmentKeys,
-	*EnvironmentState,
-	EnvironmentStatus,
-	*EnvironmentEvent,
-	EnvironmentPSMEvent,
-	SE,
+func DefaultEnvironmentPSMConfig() *psm.StateMachineConfig[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.PSMCombinedFunc[
-		*EnvironmentKeys,
-		*EnvironmentState,
-		EnvironmentStatus,
-		*EnvironmentEvent,
-		EnvironmentPSMEvent,
-		SE,
+	return psm.NewStateMachineConfig[
+		*EnvironmentKeys,      // implements psm.IKeyset
+		*EnvironmentState,     // implements psm.IState
+		EnvironmentStatus,     // implements psm.IStatusEnum
+		*EnvironmentStateData, // implements psm.IStateData
+		*EnvironmentEvent,     // implements psm.IEvent
+		EnvironmentPSMEvent,   // implements psm.IInnerEvent
+	](DefaultEnvironmentPSMTableSpec)
+}
+
+func NewEnvironmentPSM(config *psm.StateMachineConfig[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
+]) (*EnvironmentPSM, error) {
+	return psm.NewStateMachine[
+		*EnvironmentKeys,      // implements psm.IKeyset
+		*EnvironmentState,     // implements psm.IState
+		EnvironmentStatus,     // implements psm.IStatusEnum
+		*EnvironmentStateData, // implements psm.IStateData
+		*EnvironmentEvent,     // implements psm.IEvent
+		EnvironmentPSMEvent,   // implements psm.IInnerEvent
+	](config)
+}
+
+func EnvironmentPSMMutation[SE EnvironmentPSMEvent](cb func(*EnvironmentStateData, SE) error) psm.PSMMutationFunc[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
+	SE,                    // Specific event type for the transition
+] {
+	return psm.PSMMutationFunc[
+		*EnvironmentKeys,      // implements psm.IKeyset
+		*EnvironmentState,     // implements psm.IState
+		EnvironmentStatus,     // implements psm.IStatusEnum
+		*EnvironmentStateData, // implements psm.IStateData
+		*EnvironmentEvent,     // implements psm.IEvent
+		EnvironmentPSMEvent,   // implements psm.IInnerEvent
+		SE,                    // Specific event type for the transition
 	](cb)
 }
-func EnvironmentPSMTransition[SE EnvironmentPSMEvent](cb func(context.Context, *EnvironmentState, SE) error) psm.PSMTransitionFunc[
-	*EnvironmentKeys,
-	*EnvironmentState,
-	EnvironmentStatus,
-	*EnvironmentEvent,
-	EnvironmentPSMEvent,
-	SE,
-] {
-	return psm.PSMTransitionFunc[
-		*EnvironmentKeys,
-		*EnvironmentState,
-		EnvironmentStatus,
-		*EnvironmentEvent,
-		EnvironmentPSMEvent,
-		SE,
-	](cb)
-}
+
+type EnvironmentPSMHookBaton = psm.HookBaton[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
+]
+
 func EnvironmentPSMHook[SE EnvironmentPSMEvent](cb func(context.Context, sqrlx.Transaction, EnvironmentPSMHookBaton, *EnvironmentState, SE) error) psm.PSMHookFunc[
-	*EnvironmentKeys,
-	*EnvironmentState,
-	EnvironmentStatus,
-	*EnvironmentEvent,
-	EnvironmentPSMEvent,
-	SE,
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
+	SE,                    // Specific event type for the transition
 ] {
 	return psm.PSMHookFunc[
-		*EnvironmentKeys,
-		*EnvironmentState,
-		EnvironmentStatus,
-		*EnvironmentEvent,
-		EnvironmentPSMEvent,
-		SE,
+		*EnvironmentKeys,      // implements psm.IKeyset
+		*EnvironmentState,     // implements psm.IState
+		EnvironmentStatus,     // implements psm.IStatusEnum
+		*EnvironmentStateData, // implements psm.IStateData
+		*EnvironmentEvent,     // implements psm.IEvent
+		EnvironmentPSMEvent,   // implements psm.IInnerEvent
+		SE,                    // Specific event type for the transition
 	](cb)
 }
-func EnvironmentPSMGeneralHook(cb func(context.Context, sqrlx.Transaction, *EnvironmentState, *EnvironmentEvent) error) psm.GeneralStateHook[
-	*EnvironmentKeys,
-	*EnvironmentState,
-	EnvironmentStatus,
-	*EnvironmentEvent,
-	EnvironmentPSMEvent,
+func EnvironmentPSMGeneralHook(cb func(context.Context, sqrlx.Transaction, EnvironmentPSMHookBaton, *EnvironmentState, *EnvironmentEvent) error) psm.GeneralStateHook[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 ] {
 	return psm.GeneralStateHook[
-		*EnvironmentKeys,
-		*EnvironmentState,
-		EnvironmentStatus,
-		*EnvironmentEvent,
-		EnvironmentPSMEvent,
+		*EnvironmentKeys,      // implements psm.IKeyset
+		*EnvironmentState,     // implements psm.IState
+		EnvironmentStatus,     // implements psm.IStatusEnum
+		*EnvironmentStateData, // implements psm.IStateData
+		*EnvironmentEvent,     // implements psm.IEvent
+		EnvironmentPSMEvent,   // implements psm.IInnerEvent
 	](cb)
-}
-
-type EnvironmentPSMEventKey = string
-
-const (
-	EnvironmentPSMEventNil        EnvironmentPSMEventKey = "<nil>"
-	EnvironmentPSMEventConfigured EnvironmentPSMEventKey = "configured"
-)
-
-type EnvironmentPSMEvent interface {
-	proto.Message
-	PSMEventKey() EnvironmentPSMEventKey
-}
-
-func (etw *EnvironmentEventType) UnwrapPSMEvent() EnvironmentPSMEvent {
-	if etw == nil {
-		return nil
-	}
-	switch v := etw.Type.(type) {
-	case *EnvironmentEventType_Configured_:
-		return v.Configured
-	default:
-		return nil
-	}
-}
-func (etw *EnvironmentEventType) PSMEventKey() EnvironmentPSMEventKey {
-	tt := etw.UnwrapPSMEvent()
-	if tt == nil {
-		return EnvironmentPSMEventNil
-	}
-	return tt.PSMEventKey()
-}
-func (etw *EnvironmentEventType) SetPSMEvent(inner EnvironmentPSMEvent) {
-	switch v := inner.(type) {
-	case *EnvironmentEventType_Configured:
-		etw.Type = &EnvironmentEventType_Configured_{Configured: v}
-	default:
-		panic("invalid type")
-	}
-}
-
-func (ee *EnvironmentEvent) PSMEventKey() EnvironmentPSMEventKey {
-	return ee.Event.PSMEventKey()
-}
-
-func (ee *EnvironmentEvent) UnwrapPSMEvent() EnvironmentPSMEvent {
-	return ee.Event.UnwrapPSMEvent()
-}
-
-func (ee *EnvironmentEvent) SetPSMEvent(inner EnvironmentPSMEvent) {
-	if ee.Event == nil {
-		ee.Event = &EnvironmentEventType{}
-	}
-	ee.Event.SetPSMEvent(inner)
-}
-
-func (*EnvironmentEventType_Configured) PSMEventKey() EnvironmentPSMEventKey {
-	return EnvironmentPSMEventConfigured
-}
-func (ee *EnvironmentEvent) PSMMetadata() *psm_pb.EventMetadata {
-	if ee.Metadata == nil {
-		ee.Metadata = &psm_pb.EventMetadata{}
-	}
-	return ee.Metadata
-}
-
-func (st *EnvironmentState) PSMMetadata() *psm_pb.StateMetadata {
-	if st.Metadata == nil {
-		st.Metadata = &psm_pb.StateMetadata{}
-	}
-	return st.Metadata
-}
-
-func (ee *EnvironmentEvent) PSMKeys() *EnvironmentKeys {
-	return ee.Keys
-}
-
-func (ee *EnvironmentEvent) SetPSMKeys(inner *EnvironmentKeys) {
-	ee.Keys = inner
-}
-
-func (st *EnvironmentState) PSMKeys() *EnvironmentKeys {
-	return st.Keys
-}
-
-func (st *EnvironmentState) SetPSMKeys(inner *EnvironmentKeys) {
-	st.Keys = inner
 }

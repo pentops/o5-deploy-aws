@@ -52,24 +52,24 @@ type StackEventTypeKey string
 
 const (
 	StackEvent_Configured          StackEventTypeKey = "configured"
-	StackEvent_Triggered           StackEventTypeKey = "triggered"
+	StackEvent_DeploymentRequested StackEventTypeKey = "deploymentRequested"
 	StackEvent_DeploymentCompleted StackEventTypeKey = "deploymentCompleted"
 	StackEvent_DeploymentFailed    StackEventTypeKey = "deploymentFailed"
-	StackEvent_Available           StackEventTypeKey = "available"
+	StackEvent_RunDeployment       StackEventTypeKey = "runDeployment"
 )
 
 func (x *StackEventType) TypeKey() (StackEventTypeKey, bool) {
 	switch x.Type.(type) {
 	case *StackEventType_Configured_:
 		return StackEvent_Configured, true
-	case *StackEventType_Triggered_:
-		return StackEvent_Triggered, true
+	case *StackEventType_DeploymentRequested_:
+		return StackEvent_DeploymentRequested, true
 	case *StackEventType_DeploymentCompleted_:
 		return StackEvent_DeploymentCompleted, true
 	case *StackEventType_DeploymentFailed_:
 		return StackEvent_DeploymentFailed, true
-	case *StackEventType_Available_:
-		return StackEvent_Available, true
+	case *StackEventType_RunDeployment_:
+		return StackEvent_RunDeployment, true
 	default:
 		return "", false
 	}
@@ -83,28 +83,28 @@ func (x *StackEventType) Set(val IsStackEventTypeWrappedType) {
 	switch v := val.(type) {
 	case *StackEventType_Configured:
 		x.Type = &StackEventType_Configured_{Configured: v}
-	case *StackEventType_Triggered:
-		x.Type = &StackEventType_Triggered_{Triggered: v}
+	case *StackEventType_DeploymentRequested:
+		x.Type = &StackEventType_DeploymentRequested_{DeploymentRequested: v}
 	case *StackEventType_DeploymentCompleted:
 		x.Type = &StackEventType_DeploymentCompleted_{DeploymentCompleted: v}
 	case *StackEventType_DeploymentFailed:
 		x.Type = &StackEventType_DeploymentFailed_{DeploymentFailed: v}
-	case *StackEventType_Available:
-		x.Type = &StackEventType_Available_{Available: v}
+	case *StackEventType_RunDeployment:
+		x.Type = &StackEventType_RunDeployment_{RunDeployment: v}
 	}
 }
 func (x *StackEventType) Get() IsStackEventTypeWrappedType {
 	switch v := x.Type.(type) {
 	case *StackEventType_Configured_:
 		return v.Configured
-	case *StackEventType_Triggered_:
-		return v.Triggered
+	case *StackEventType_DeploymentRequested_:
+		return v.DeploymentRequested
 	case *StackEventType_DeploymentCompleted_:
 		return v.DeploymentCompleted
 	case *StackEventType_DeploymentFailed_:
 		return v.DeploymentFailed
-	case *StackEventType_Available_:
-		return v.Available
+	case *StackEventType_RunDeployment_:
+		return v.RunDeployment
 	default:
 		return nil
 	}
@@ -112,8 +112,8 @@ func (x *StackEventType) Get() IsStackEventTypeWrappedType {
 func (x *StackEventType_Configured) TypeKey() StackEventTypeKey {
 	return StackEvent_Configured
 }
-func (x *StackEventType_Triggered) TypeKey() StackEventTypeKey {
-	return StackEvent_Triggered
+func (x *StackEventType_DeploymentRequested) TypeKey() StackEventTypeKey {
+	return StackEvent_DeploymentRequested
 }
 func (x *StackEventType_DeploymentCompleted) TypeKey() StackEventTypeKey {
 	return StackEvent_DeploymentCompleted
@@ -121,8 +121,8 @@ func (x *StackEventType_DeploymentCompleted) TypeKey() StackEventTypeKey {
 func (x *StackEventType_DeploymentFailed) TypeKey() StackEventTypeKey {
 	return StackEvent_DeploymentFailed
 }
-func (x *StackEventType_Available) TypeKey() StackEventTypeKey {
-	return StackEvent_Available
+func (x *StackEventType_RunDeployment) TypeKey() StackEventTypeKey {
+	return StackEvent_RunDeployment
 }
 
 type IsStackEventType_Type = isStackEventType_Type
@@ -130,43 +130,28 @@ type IsStackEventType_Type = isStackEventType_Type
 // StackStatus
 const (
 	StackStatus_UNSPECIFIED StackStatus = 0
-	StackStatus_CREATING    StackStatus = 1
-	StackStatus_STABLE      StackStatus = 2
-	StackStatus_AVAILABLE   StackStatus = 3
-	StackStatus_MIGRATING   StackStatus = 4
-	StackStatus_BROKEN      StackStatus = 5
+	StackStatus_MIGRATING   StackStatus = 1
+	StackStatus_AVAILABLE   StackStatus = 2
 )
 
 var (
 	StackStatus_name_short = map[int32]string{
 		0: "UNSPECIFIED",
-		1: "CREATING",
-		2: "STABLE",
-		3: "AVAILABLE",
-		4: "MIGRATING",
-		5: "BROKEN",
+		1: "MIGRATING",
+		2: "AVAILABLE",
 	}
 	StackStatus_value_short = map[string]int32{
 		"UNSPECIFIED": 0,
-		"CREATING":    1,
-		"STABLE":      2,
-		"AVAILABLE":   3,
-		"MIGRATING":   4,
-		"BROKEN":      5,
+		"MIGRATING":   1,
+		"AVAILABLE":   2,
 	}
 	StackStatus_value_either = map[string]int32{
 		"UNSPECIFIED":              0,
 		"STACK_STATUS_UNSPECIFIED": 0,
-		"CREATING":                 1,
-		"STACK_STATUS_CREATING":    1,
-		"STABLE":                   2,
-		"STACK_STATUS_STABLE":      2,
-		"AVAILABLE":                3,
-		"STACK_STATUS_AVAILABLE":   3,
-		"MIGRATING":                4,
-		"STACK_STATUS_MIGRATING":   4,
-		"BROKEN":                   5,
-		"STACK_STATUS_BROKEN":      5,
+		"MIGRATING":                1,
+		"STACK_STATUS_MIGRATING":   1,
+		"AVAILABLE":                2,
+		"STACK_STATUS_AVAILABLE":   2,
 	}
 )
 

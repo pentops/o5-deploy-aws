@@ -35,7 +35,7 @@ type EventLoop struct {
 }
 
 type IInfra interface {
-	HandleMessage(ctx context.Context, msg proto.Message) (deployer_pb.DeploymentPSMEvent, error)
+	HandleMessage(ctx context.Context, msg proto.Message) (*deployer_pb.DeploymentPSMEventSpec, error)
 }
 
 func NewEventLoop(awsRunner IInfra, stateStore *StateStore, specBuilder *deployer.SpecBuilder) *EventLoop {
@@ -54,10 +54,10 @@ func NewEventLoop(awsRunner IInfra, stateStore *StateStore, specBuilder *deploye
 type TransitionData struct {
 	CausedBy    *deployer_pb.DeploymentEvent
 	SideEffects []outbox.OutboxMessage
-	ChainEvents []*deployer_pb.DeploymentEvent
+	ChainEvents []deployer_pb.DeploymentPSMEvent
 }
 
-func (td *TransitionData) ChainEvent(event *deployer_pb.DeploymentEvent) {
+func (td *TransitionData) ChainEvent(event deployer_pb.DeploymentPSMEvent) {
 	td.ChainEvents = append(td.ChainEvents, event)
 }
 
@@ -65,8 +65,16 @@ func (td *TransitionData) SideEffect(msg outbox.OutboxMessage) {
 	td.SideEffects = append(td.SideEffects, msg)
 }
 
-func (td *TransitionData) ChainDerived(inner deployer_pb.DeploymentPSMEvent) {
-	panic("ChainDerived not implemented")
+func (td *TransitionData) AsCause() *psm_pb.Cause {
+	return &psm_pb.Cause{
+		Type: &psm_pb.Cause_PsmEvent{
+			PsmEvent: &psm_pb.PSMEventCause{
+				EventId:      td.CausedBy.Metadata.EventId,
+				StateMachine: td.CausedBy.Keys.PSMFullName(),
+			},
+		},
+	}
+
 }
 
 func (td *TransitionData) FullCause() *deployer_pb.DeploymentEvent {
@@ -205,7 +213,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 			evt := baton.ChainEvents[0]
 
 			if lel.confirmPlan {
-				if _, ok := evt.Event.Type.(*deployer_pb.DeploymentEventType_RunSteps_); ok {
+				if evt.PSMEventKey() == deployer_pb.DeploymentPSMEventRunSteps {
 					if !confirmPlan(deployment) {
 						return nil
 					}
@@ -213,7 +221,15 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 				}
 			}
 			log.WithField(ctx, "chainEvent", protojson.Format(evt)).Debug("Chain Event")
-			eventQueue = append(eventQueue, evt)
+			wrapped := &deployer_pb.DeploymentEvent{
+				Keys: innerEvent.Keys,
+				Metadata: &psm_pb.EventMetadata{
+					EventId:   uuid.NewString(),
+					Timestamp: timestamppb.Now(),
+				},
+			}
+			wrapped.SetPSMEvent(evt)
+			eventQueue = append(eventQueue, wrapped)
 			continue
 		}
 
@@ -236,7 +252,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 						Timestamp: timestamppb.Now(),
 					},
 				}
-				mapped.SetPSMEvent(result)
+				mapped.SetPSMEvent(result.Event)
 				log.WithField(ctx, "nextEvent", protojson.Format(mapped)).Debug("Side Effect Result")
 				eventQueue = append(eventQueue, mapped)
 			}
@@ -269,10 +285,10 @@ func AskBool(prompt string) bool {
 func confirmPlan(deployment *deployer_pb.DeploymentState) bool {
 	fmt.Printf("CONFIRM STEPS\n")
 	stepMap := make(map[string]*deployer_pb.DeploymentStep)
-	for _, step := range deployment.Steps {
+	for _, step := range deployment.Data.Steps {
 		stepMap[step.Id] = step
 	}
-	for _, step := range deployment.Steps {
+	for _, step := range deployment.Data.Steps {
 		typeKey, _ := step.Request.TypeKey()
 		fmt.Printf("- %s (%s)\n", step.Name, typeKey)
 		for _, dep := range step.DependsOn {

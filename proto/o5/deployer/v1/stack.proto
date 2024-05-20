@@ -29,6 +29,10 @@ message StackState {
 
   StackStatus status = 3 [(psm.list.v1.field).enum.filtering.filterable = true];
 
+  StackStateData data = 4;
+}
+
+message StackStateData {
   optional StackDeployment current_deployment = 4;
 
   string stack_name = 5 [
@@ -65,11 +69,8 @@ message StackConfig {
 
 enum StackStatus {
   STACK_STATUS_UNSPECIFIED = 0;
-  STACK_STATUS_CREATING = 1;
-  STACK_STATUS_STABLE = 2;
-  STACK_STATUS_AVAILABLE = 3;
-  STACK_STATUS_MIGRATING = 4;
-  STACK_STATUS_BROKEN = 5;
+  STACK_STATUS_MIGRATING = 1;
+  STACK_STATUS_AVAILABLE = 2;
 }
 
 message StackDeployment {
@@ -105,10 +106,10 @@ message StackEventType {
     option (psm.list.v1.oneof).filtering.filterable = true;
 
     Configured configured = 2;
-    Triggered triggered = 3;
+    DeploymentRequested deployment_requested = 3;
     DeploymentCompleted deployment_completed = 4;
     DeploymentFailed deployment_failed = 5;
-    Available available = 6;
+    RunDeployment run_deployment = 7;
   }
 
   message Configured {
@@ -118,7 +119,7 @@ message StackEventType {
     StackConfig config = 4;
   }
 
-  message Triggered {
+  message DeploymentRequested {
     StackDeployment deployment = 1;
     string application_name = 2;
     string environment_name = 3;
@@ -134,5 +135,7 @@ message StackEventType {
     string error = 2;
   }
 
-  message Available {}
+  message RunDeployment {
+    string deployment_id = 1;
+  }
 }

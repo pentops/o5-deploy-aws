@@ -6,12 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/pentops/flowtest"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
+	"github.com/pentops/protostate/gen/state/v1/psm_pb"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -30,14 +32,20 @@ type MockInfra struct {
 	outgoing chan deployer_pb.DeploymentPSMEvent
 }
 
-func (m *MockInfra) HandleMessage(ctx context.Context, msg proto.Message) (deployer_pb.DeploymentPSMEvent, error) {
+func (m *MockInfra) HandleMessage(ctx context.Context, msg proto.Message) (*deployer_pb.DeploymentPSMEventSpec, error) {
 	fmt.Printf("MSG: %s\n", msg.ProtoReflect().Descriptor().FullName())
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case m.incoming <- msg:
 		fmt.Printf("Released\n")
-		return <-m.outgoing, nil
+		msg := <-m.outgoing
+		return &deployer_pb.DeploymentPSMEventSpec{
+			Keys:    &deployer_pb.DeploymentKeys{},
+			EventID: uuid.NewString(),
+			Cause:   &psm_pb.Cause{},
+			Event:   msg,
+		}, nil
 	}
 }
 
