@@ -228,7 +228,10 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 					Timestamp: timestamppb.Now(),
 				},
 			}
-			wrapped.SetPSMEvent(evt)
+			if err := wrapped.SetPSMEvent(evt); err != nil {
+				return err
+			}
+
 			eventQueue = append(eventQueue, wrapped)
 			continue
 		}
@@ -252,7 +255,9 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 						Timestamp: timestamppb.Now(),
 					},
 				}
-				mapped.SetPSMEvent(result.Event)
+				if err := mapped.SetPSMEvent(result.Event); err != nil {
+					return err
+				}
 				log.WithField(ctx, "nextEvent", protojson.Format(mapped)).Debug("Side Effect Result")
 				eventQueue = append(eventQueue, mapped)
 			}
