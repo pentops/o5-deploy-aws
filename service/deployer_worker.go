@@ -206,6 +206,73 @@ func StackStatusToEvent(msg *deployer_tpb.StackStatusChangedMessage) (*deployer_
 	return event, nil
 }
 
+func ChangeSetStatusToEvent(msg *deployer_tpb.ChangeSetStatusChangedMessage) (*deployer_pb.DeploymentPSMEventSpec, error) {
+	stepContext := &deployer_pb.StepContext{}
+	if err := proto.Unmarshal(msg.Request.Context, stepContext); err != nil {
+		return nil, err
+	}
+
+	event := &deployer_pb.DeploymentPSMEventSpec{
+		Keys: &deployer_pb.DeploymentKeys{
+			DeploymentId: stepContext.DeploymentId,
+		},
+		EventID:   msg.EventId,
+		Timestamp: time.Now(),
+		Cause: &psm_pb.Cause{
+			Type: &psm_pb.Cause_ExternalEvent{
+				ExternalEvent: &psm_pb.ExternalEventCause{
+					SystemName: "deployer",
+					EventName:  "PlanStatusChanged",
+					ExternalId: &msg.EventId,
+				},
+			},
+		},
+	}
+
+	if stepContext.Phase != deployer_pb.StepPhase_STEPS || stepContext.StepId == nil {
+		return nil, fmt.Errorf("Plan context expects STEPS and an ID")
+	}
+
+	changesetStatus := &deployer_pb.CFChangesetOutput{
+		Lifecycle: msg.Lifecycle,
+	}
+	stepStatus := &deployer_pb.DeploymentEventType_StepResult{
+		StepId: *stepContext.StepId,
+		Output: &deployer_pb.StepOutputType{
+			Type: &deployer_pb.StepOutputType_CfPlanStatus{
+				CfPlanStatus: &deployer_pb.StepOutputType_CFPlanStatus{
+					Output: changesetStatus,
+				},
+			},
+		},
+	}
+	event.Event = stepStatus
+
+	return event, nil
+}
+
+func (dw *DeployerWorker) ChangeSetStatusChanged(ctx context.Context, msg *deployer_tpb.ChangeSetStatusChangedMessage) (*emptypb.Empty, error) {
+	event, err := ChangeSetStatusToEvent(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	if event == nil {
+		return &emptypb.Empty{}, nil
+	}
+
+	if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
+		if _, err := dw.deploymentEventer.TransitionInTx(ctx, tx, event); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
 func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *deployer_tpb.StackStatusChangedMessage) (*emptypb.Empty, error) {
 
 	event, err := StackStatusToEvent(msg)

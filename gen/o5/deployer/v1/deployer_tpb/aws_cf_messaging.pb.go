@@ -31,6 +31,34 @@ func (msg *UpdateStackMessage) MessagingHeaders() map[string]string {
 	return headers
 }
 
+// Method: CreateChangeSet
+
+func (msg *CreateChangeSetMessage) MessagingTopic() string {
+	return "o5-aws-command_request"
+}
+func (msg *CreateChangeSetMessage) MessagingHeaders() map[string]string {
+	headers := map[string]string{
+		"grpc-service":        "/o5.deployer.v1.topic.CloudFormationRequestTopic/CreateChangeSet",
+		"grpc-message":        "o5.deployer.v1.topic.CreateChangeSetMessage",
+		"o5-request-reply-to": msg.Request.ReplyTo,
+	}
+	return headers
+}
+
+// Method: ApplyChangeSet
+
+func (msg *ApplyChangeSetMessage) MessagingTopic() string {
+	return "o5-aws-command_request"
+}
+func (msg *ApplyChangeSetMessage) MessagingHeaders() map[string]string {
+	headers := map[string]string{
+		"grpc-service":        "/o5.deployer.v1.topic.CloudFormationRequestTopic/ApplyChangeSet",
+		"grpc-message":        "o5.deployer.v1.topic.ApplyChangeSetMessage",
+		"o5-request-reply-to": msg.Request.ReplyTo,
+	}
+	return headers
+}
+
 // Method: DeleteStack
 
 func (msg *DeleteStackMessage) MessagingTopic() string {
@@ -97,6 +125,20 @@ func (msg *StackStatusChangedMessage) MessagingHeaders() map[string]string {
 	headers := map[string]string{
 		"grpc-service":      "/o5.deployer.v1.topic.CloudFormationReplyTopic/StackStatusChanged",
 		"grpc-message":      "o5.deployer.v1.topic.StackStatusChangedMessage",
+		"o5-reply-reply-to": msg.Request.ReplyTo,
+	}
+	return headers
+}
+
+// Method: ChangeSetStatusChanged
+
+func (msg *ChangeSetStatusChangedMessage) MessagingTopic() string {
+	return "o5-aws-command_reply"
+}
+func (msg *ChangeSetStatusChangedMessage) MessagingHeaders() map[string]string {
+	headers := map[string]string{
+		"grpc-service":      "/o5.deployer.v1.topic.CloudFormationReplyTopic/ChangeSetStatusChanged",
+		"grpc-message":      "o5.deployer.v1.topic.ChangeSetStatusChangedMessage",
 		"o5-reply-reply-to": msg.Request.ReplyTo,
 	}
 	return headers

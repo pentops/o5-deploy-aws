@@ -23,10 +23,29 @@ type TemplateStore interface {
 
 type S3TemplateStore struct {
 	s3Client         awsinfra.S3API
+	region           string
 	cfTemplateBucket string
 }
 
-func (s3ts *S3TemplateStore) PutTemplate(ctx context.Context, envName string, appName string, deploymentID string, templateJSON []byte) (string, error) {
+func NewS3TemplateStore(ctx context.Context, s3Client awsinfra.S3API, cfTemplateBucket string) (*S3TemplateStore, error) {
+	cfTemplateBucket = strings.TrimPrefix(cfTemplateBucket, "s3://")
+
+	regionRes, err := s3Client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+		Bucket: aws.String(cfTemplateBucket),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	region := string(regionRes.LocationConstraint)
+	return &S3TemplateStore{
+		s3Client:         s3Client,
+		cfTemplateBucket: cfTemplateBucket,
+		region:           region,
+	}, nil
+}
+
+func (s3ts *S3TemplateStore) PutTemplate(ctx context.Context, envName string, appName string, deploymentID string, templateJSON []byte) (*deployer_pb.S3Template, error) {
 
 	templateKey := fmt.Sprintf("%s/%s/%s.json", envName, appName, deploymentID)
 	_, err := s3ts.s3Client.PutObject(ctx, &s3.PutObjectInput{
@@ -35,19 +54,14 @@ func (s3ts *S3TemplateStore) PutTemplate(ctx context.Context, envName string, ap
 		Body:   bytes.NewReader(templateJSON),
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	templateURL := fmt.Sprintf("https://s3.us-east-1.amazonaws.com/%s/%s", s3ts.cfTemplateBucket, templateKey)
-	return templateURL, nil
-}
-
-func NewS3TemplateStore(s3Client awsinfra.S3API, cfTemplateBucket string) *S3TemplateStore {
-	cfTemplateBucket = strings.TrimPrefix(cfTemplateBucket, "s3://")
-	return &S3TemplateStore{
-		s3Client:         s3Client,
-		cfTemplateBucket: cfTemplateBucket,
-	}
+	return &deployer_pb.S3Template{
+		Bucket: s3ts.cfTemplateBucket,
+		Key:    templateKey,
+		Region: s3ts.region,
+	}, nil
 }
 
 type SpecBuilder struct {

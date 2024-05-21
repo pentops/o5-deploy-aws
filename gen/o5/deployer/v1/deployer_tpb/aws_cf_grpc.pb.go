@@ -25,6 +25,8 @@ const _ = grpc.SupportPackageIsVersion7
 type CloudFormationRequestTopicClient interface {
 	CreateNewStack(ctx context.Context, in *CreateNewStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	UpdateStack(ctx context.Context, in *UpdateStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	CreateChangeSet(ctx context.Context, in *CreateChangeSetMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ApplyChangeSet(ctx context.Context, in *ApplyChangeSetMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeleteStack(ctx context.Context, in *DeleteStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ScaleStack(ctx context.Context, in *ScaleStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	CancelStackUpdate(ctx context.Context, in *CancelStackUpdateMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -51,6 +53,24 @@ func (c *cloudFormationRequestTopicClient) CreateNewStack(ctx context.Context, i
 func (c *cloudFormationRequestTopicClient) UpdateStack(ctx context.Context, in *UpdateStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, "/o5.deployer.v1.topic.CloudFormationRequestTopic/UpdateStack", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *cloudFormationRequestTopicClient) CreateChangeSet(ctx context.Context, in *CreateChangeSetMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/o5.deployer.v1.topic.CloudFormationRequestTopic/CreateChangeSet", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *cloudFormationRequestTopicClient) ApplyChangeSet(ctx context.Context, in *ApplyChangeSetMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/o5.deployer.v1.topic.CloudFormationRequestTopic/ApplyChangeSet", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -99,6 +119,8 @@ func (c *cloudFormationRequestTopicClient) StabalizeStack(ctx context.Context, i
 type CloudFormationRequestTopicServer interface {
 	CreateNewStack(context.Context, *CreateNewStackMessage) (*emptypb.Empty, error)
 	UpdateStack(context.Context, *UpdateStackMessage) (*emptypb.Empty, error)
+	CreateChangeSet(context.Context, *CreateChangeSetMessage) (*emptypb.Empty, error)
+	ApplyChangeSet(context.Context, *ApplyChangeSetMessage) (*emptypb.Empty, error)
 	DeleteStack(context.Context, *DeleteStackMessage) (*emptypb.Empty, error)
 	ScaleStack(context.Context, *ScaleStackMessage) (*emptypb.Empty, error)
 	CancelStackUpdate(context.Context, *CancelStackUpdateMessage) (*emptypb.Empty, error)
@@ -115,6 +137,12 @@ func (UnimplementedCloudFormationRequestTopicServer) CreateNewStack(context.Cont
 }
 func (UnimplementedCloudFormationRequestTopicServer) UpdateStack(context.Context, *UpdateStackMessage) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateStack not implemented")
+}
+func (UnimplementedCloudFormationRequestTopicServer) CreateChangeSet(context.Context, *CreateChangeSetMessage) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateChangeSet not implemented")
+}
+func (UnimplementedCloudFormationRequestTopicServer) ApplyChangeSet(context.Context, *ApplyChangeSetMessage) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ApplyChangeSet not implemented")
 }
 func (UnimplementedCloudFormationRequestTopicServer) DeleteStack(context.Context, *DeleteStackMessage) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteStack not implemented")
@@ -174,6 +202,42 @@ func _CloudFormationRequestTopic_UpdateStack_Handler(srv interface{}, ctx contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CloudFormationRequestTopicServer).UpdateStack(ctx, req.(*UpdateStackMessage))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CloudFormationRequestTopic_CreateChangeSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateChangeSetMessage)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CloudFormationRequestTopicServer).CreateChangeSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/o5.deployer.v1.topic.CloudFormationRequestTopic/CreateChangeSet",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CloudFormationRequestTopicServer).CreateChangeSet(ctx, req.(*CreateChangeSetMessage))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CloudFormationRequestTopic_ApplyChangeSet_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApplyChangeSetMessage)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CloudFormationRequestTopicServer).ApplyChangeSet(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/o5.deployer.v1.topic.CloudFormationRequestTopic/ApplyChangeSet",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CloudFormationRequestTopicServer).ApplyChangeSet(ctx, req.(*ApplyChangeSetMessage))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -266,6 +330,14 @@ var CloudFormationRequestTopic_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _CloudFormationRequestTopic_UpdateStack_Handler,
 		},
 		{
+			MethodName: "CreateChangeSet",
+			Handler:    _CloudFormationRequestTopic_CreateChangeSet_Handler,
+		},
+		{
+			MethodName: "ApplyChangeSet",
+			Handler:    _CloudFormationRequestTopic_ApplyChangeSet_Handler,
+		},
+		{
 			MethodName: "DeleteStack",
 			Handler:    _CloudFormationRequestTopic_DeleteStack_Handler,
 		},
@@ -291,6 +363,7 @@ var CloudFormationRequestTopic_ServiceDesc = grpc.ServiceDesc{
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type CloudFormationReplyTopicClient interface {
 	StackStatusChanged(ctx context.Context, in *StackStatusChangedMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ChangeSetStatusChanged(ctx context.Context, in *ChangeSetStatusChangedMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type cloudFormationReplyTopicClient struct {
@@ -310,11 +383,21 @@ func (c *cloudFormationReplyTopicClient) StackStatusChanged(ctx context.Context,
 	return out, nil
 }
 
+func (c *cloudFormationReplyTopicClient) ChangeSetStatusChanged(ctx context.Context, in *ChangeSetStatusChangedMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, "/o5.deployer.v1.topic.CloudFormationReplyTopic/ChangeSetStatusChanged", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CloudFormationReplyTopicServer is the server API for CloudFormationReplyTopic service.
 // All implementations must embed UnimplementedCloudFormationReplyTopicServer
 // for forward compatibility
 type CloudFormationReplyTopicServer interface {
 	StackStatusChanged(context.Context, *StackStatusChangedMessage) (*emptypb.Empty, error)
+	ChangeSetStatusChanged(context.Context, *ChangeSetStatusChangedMessage) (*emptypb.Empty, error)
 	mustEmbedUnimplementedCloudFormationReplyTopicServer()
 }
 
@@ -324,6 +407,9 @@ type UnimplementedCloudFormationReplyTopicServer struct {
 
 func (UnimplementedCloudFormationReplyTopicServer) StackStatusChanged(context.Context, *StackStatusChangedMessage) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StackStatusChanged not implemented")
+}
+func (UnimplementedCloudFormationReplyTopicServer) ChangeSetStatusChanged(context.Context, *ChangeSetStatusChangedMessage) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ChangeSetStatusChanged not implemented")
 }
 func (UnimplementedCloudFormationReplyTopicServer) mustEmbedUnimplementedCloudFormationReplyTopicServer() {
 }
@@ -357,6 +443,24 @@ func _CloudFormationReplyTopic_StackStatusChanged_Handler(srv interface{}, ctx c
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CloudFormationReplyTopic_ChangeSetStatusChanged_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ChangeSetStatusChangedMessage)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CloudFormationReplyTopicServer).ChangeSetStatusChanged(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/o5.deployer.v1.topic.CloudFormationReplyTopic/ChangeSetStatusChanged",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CloudFormationReplyTopicServer).ChangeSetStatusChanged(ctx, req.(*ChangeSetStatusChangedMessage))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CloudFormationReplyTopic_ServiceDesc is the grpc.ServiceDesc for CloudFormationReplyTopic service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -367,6 +471,10 @@ var CloudFormationReplyTopic_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "StackStatusChanged",
 			Handler:    _CloudFormationReplyTopic_StackStatusChanged_Handler,
+		},
+		{
+			MethodName: "ChangeSetStatusChanged",
+			Handler:    _CloudFormationReplyTopic_ChangeSetStatusChanged_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

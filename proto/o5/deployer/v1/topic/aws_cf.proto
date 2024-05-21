@@ -15,6 +15,8 @@ service CloudFormationRequestTopic {
 
   rpc CreateNewStack(CreateNewStackMessage) returns (google.protobuf.Empty) {}
   rpc UpdateStack(UpdateStackMessage) returns (google.protobuf.Empty) {}
+  rpc CreateChangeSet(CreateChangeSetMessage) returns (google.protobuf.Empty) {}
+  rpc ApplyChangeSet(ApplyChangeSetMessage) returns (google.protobuf.Empty) {}
   rpc DeleteStack(DeleteStackMessage) returns (google.protobuf.Empty) {}
   rpc ScaleStack(ScaleStackMessage) returns (google.protobuf.Empty) {}
   rpc CancelStackUpdate(CancelStackUpdateMessage) returns (google.protobuf.Empty) {}
@@ -25,6 +27,7 @@ service CloudFormationRequestTopic {
 service CloudFormationReplyTopic {
   option (o5.messaging.v1.config).reply.name = "o5-aws-command";
   rpc StackStatusChanged(StackStatusChangedMessage) returns (google.protobuf.Empty) {}
+  rpc ChangeSetStatusChanged(ChangeSetStatusChangedMessage) returns (google.protobuf.Empty) {}
 }
 
 message StabalizeStackMessage {
@@ -36,11 +39,27 @@ message StabalizeStackMessage {
 message CreateNewStackMessage {
   o5.messaging.v1.RequestMetadata request = 1;
   o5.deployer.v1.CFStackInput spec = 2;
+
+  // Create a stack with no resources (uses a fake resource placeholder)
+  bool empty_stack = 3;
 }
 
 message UpdateStackMessage {
   o5.messaging.v1.RequestMetadata request = 1;
   o5.deployer.v1.CFStackInput spec = 2;
+}
+
+message CreateChangeSetMessage {
+  o5.messaging.v1.RequestMetadata request = 1;
+  o5.deployer.v1.CFStackInput spec = 2;
+
+  repeated o5.deployer.v1.CFImport import_resources = 3;
+}
+
+message ApplyChangeSetMessage {
+  o5.messaging.v1.RequestMetadata request = 1;
+  string stack_name = 2;
+  string change_set_name = 3;
 }
 
 message DeleteStackMessage {
@@ -66,4 +85,13 @@ message StackStatusChangedMessage {
   string status = 4 [(buf.validate.field).required = true];
   repeated o5.deployer.v1.KeyValue outputs = 5;
   deployer.v1.CFLifecycle lifecycle = 6 [(buf.validate.field).required = true];
+}
+
+message ChangeSetStatusChangedMessage {
+  o5.messaging.v1.RequestMetadata request = 1;
+  string event_id = 2 [(buf.validate.field).string = {pattern: "^[a-zA-Z0-9-]+$"}];
+  string stack_name = 3 [(buf.validate.field).required = true];
+  string change_set_name = 4 [(buf.validate.field).required = true];
+  string status = 5 [(buf.validate.field).required = true];
+  deployer.v1.CFChangesetLifecycle lifecycle = 6 [(buf.validate.field).required = true];
 }

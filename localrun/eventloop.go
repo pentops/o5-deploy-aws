@@ -214,7 +214,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 
 			if lel.confirmPlan {
 				if evt.PSMEventKey() == deployer_pb.DeploymentPSMEventRunSteps {
-					if !confirmPlan(deployment) {
+					if !confirmPlan(evt.(*deployer_pb.DeploymentEventType_RunSteps)) {
 						return nil
 					}
 
@@ -287,13 +287,13 @@ func AskBool(prompt string) bool {
 	return strings.HasPrefix(strings.ToLower(answer), "y")
 }
 
-func confirmPlan(deployment *deployer_pb.DeploymentState) bool {
+func confirmPlan(deployment *deployer_pb.DeploymentEventType_RunSteps) bool {
 	fmt.Printf("CONFIRM STEPS\n")
 	stepMap := make(map[string]*deployer_pb.DeploymentStep)
-	for _, step := range deployment.Data.Steps {
+	for _, step := range deployment.Steps {
 		stepMap[step.Id] = step
 	}
-	for _, step := range deployment.Data.Steps {
+	for _, step := range deployment.Steps {
 		typeKey, _ := step.Request.TypeKey()
 		fmt.Printf("- %s (%s)\n", step.Name, typeKey)
 		for _, dep := range step.DependsOn {

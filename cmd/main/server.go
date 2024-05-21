@@ -229,7 +229,10 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	templateStore := deployer.NewS3TemplateStore(s3Client, cfg.CFTemplates)
+	templateStore, err := deployer.NewS3TemplateStore(ctx, s3Client, cfg.CFTemplates)
+	if err != nil {
+		return err
+	}
 
 	infraStore, err := awsinfra.NewStorage(db)
 	if err != nil {
@@ -335,17 +338,18 @@ func runServe(ctx context.Context, cfg struct {
 }
 
 func runLocalDeploy(ctx context.Context, cfg struct {
-	EnvFilename   string `flag:"env" description:"environment file"`
-	AppFilename   string `flag:"app" description:"application file"`
-	Version       string `flag:"version" description:"version tag"`
-	DryRun        bool   `flag:"dry" description:"dry run - print template and exit"`
-	RotateSecrets bool   `flag:"rotate-secrets" description:"rotate secrets - rotate any existing secrets (e.g. db creds)"`
-	CancelUpdate  bool   `flag:"cancel-update" description:"cancel update - cancel any ongoing update prior to deployment"`
-	ScratchBucket string `flag:"scratch-bucket" env:"O5_DEPLOYER_SCRATCH_BUCKET" description:"An S3 bucket name to upload templates"`
-	QuickMode     bool   `flag:"quick" description:"Skips scale down/up, calls stack update with all changes once, and skips DB migration"`
-	InfraOnly     bool   `flag:"infra-only" description:"Deploy with scale at 0"`
-	DBOnly        bool   `flag:"db-only" description:"Only migrate database"`
-	Auto          bool   `flag:"auto" description:"Automatically approve plan"`
+	EnvFilename     string `flag:"env" description:"environment file"`
+	AppFilename     string `flag:"app" description:"application file"`
+	Version         string `flag:"version" description:"version tag"`
+	DryRun          bool   `flag:"dry" description:"dry run - print template and exit"`
+	RotateSecrets   bool   `flag:"rotate-secrets" description:"rotate secrets - rotate any existing secrets (e.g. db creds)"`
+	CancelUpdate    bool   `flag:"cancel-update" description:"cancel update - cancel any ongoing update prior to deployment"`
+	ScratchBucket   string `flag:"scratch-bucket" env:"O5_DEPLOYER_SCRATCH_BUCKET" description:"An S3 bucket name to upload templates"`
+	QuickMode       bool   `flag:"quick" description:"Skips scale down/up, calls stack update with all changes once, and skips DB migration"`
+	InfraOnly       bool   `flag:"infra-only" description:"Deploy with scale at 0"`
+	DBOnly          bool   `flag:"db-only" description:"Only migrate database"`
+	ImportResources bool   `flag:"import-resources" description:"Import resources, implies infra-only"`
+	Auto            bool   `flag:"auto" description:"Automatically approve plan"`
 }) error {
 
 	if cfg.AppFilename == "" {
@@ -412,7 +416,10 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		return fmt.Errorf("AWS Deployer requires the type of environment provider to be AWS")
 	}
 
-	templateStore := deployer.NewS3TemplateStore(s3Client, cfg.ScratchBucket)
+	templateStore, err := deployer.NewS3TemplateStore(ctx, s3Client, cfg.ScratchBucket)
+	if err != nil {
+		return err
+	}
 
 	infra, err := localrun.NewInfraAdapterFromConfig(ctx, awsConfig)
 	if err != nil {
@@ -430,6 +437,7 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 			QuickMode:         cfg.QuickMode,
 			InfraOnly:         cfg.InfraOnly,
 			DbOnly:            cfg.DBOnly,
+			ImportResources:   cfg.ImportResources,
 		},
 	})
 

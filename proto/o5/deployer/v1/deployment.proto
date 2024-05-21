@@ -103,6 +103,8 @@ message DeploymentFlags {
   bool cancel_updates = 8 [(psm.list.v1.field).bool.filtering.filterable = true];
   bool db_only = 9 [(psm.list.v1.field).bool.filtering.filterable = true];
   bool infra_only = 10 [(psm.list.v1.field).bool.filtering.filterable = true];
+
+  bool import_resources = 13;
 }
 
 enum DeploymentStatus {
