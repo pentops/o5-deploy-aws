@@ -4,59 +4,57 @@ package o5.deployer.v1;
 
 import "buf/validate/validate.proto";
 import "j5/ext/v1/annotations.proto";
-import "o5/environment/v1/environment.proto";
+import "o5/environment/v1/cluster.proto";
 import "psm/list/v1/annotations.proto";
 import "psm/state/v1/annotations.proto";
 import "psm/state/v1/metadata.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb";
 
-message EnvironmentKeys {
-  option (psm.state.v1.psm).name = "environment";
+message ClusterKeys {
+  option (psm.state.v1.psm).name = "cluster";
 
-  string environment_id = 1 [
+  string cluster_id = 1 [
     (buf.validate.field).string.uuid = true,
     (psm.state.v1.field).primary_key = true
   ];
-
-  string cluster_id = 2 [(buf.validate.field).string.uuid = true];
 }
 
-message EnvironmentState {
+message ClusterState {
   psm.state.v1.StateMetadata metadata = 1 [(buf.validate.field).required = true];
 
-  EnvironmentKeys keys = 2 [
+  ClusterKeys keys = 2 [
     (j5.ext.v1.field).message.flatten = true,
     (buf.validate.field).required = true
   ];
 
-  EnvironmentStatus status = 3 [(psm.list.v1.field).enum.filtering = {
+  ClusterStatus status = 3 [(psm.list.v1.field).enum.filtering = {
     filterable: true,
-    default_filters: ["ENVIRONMENT_STATUS_ACTIVE"],
+    default_filters: ["CLUSTER_STATUS_ACTIVE"],
   }];
 
-  EnvironmentStateData data = 4;
+  ClusterStateData data = 4;
 }
 
-message EnvironmentStateData {
-  o5.environment.v1.Environment config = 4;
+message ClusterStateData {
+  o5.environment.v1.Cluster config = 4;
 }
 
-enum EnvironmentStatus {
-  ENVIRONMENT_STATUS_UNSPECIFIED = 0;
-  ENVIRONMENT_STATUS_ACTIVE = 1;
+enum ClusterStatus {
+  CLUSTER_STATUS_UNSPECIFIED = 0;
+  CLUSTER_STATUS_ACTIVE = 1;
 }
 
-message EnvironmentEvent {
+message ClusterEvent {
   psm.state.v1.EventMetadata metadata = 1 [(buf.validate.field).required = true];
-  EnvironmentKeys keys = 2 [
+  ClusterKeys keys = 2 [
     (buf.validate.field).required = true,
     (j5.ext.v1.field).message.flatten = true
   ];
-  EnvironmentEventType event = 3 [(buf.validate.field).required = true];
+  ClusterEventType event = 3 [(buf.validate.field).required = true];
 }
 
-message EnvironmentEventType {
+message ClusterEventType {
   oneof type {
     option (psm.list.v1.oneof).filtering.filterable = true;
 
@@ -64,6 +62,6 @@ message EnvironmentEventType {
   }
 
   message Configured {
-    o5.environment.v1.Environment config = 1;
+    o5.environment.v1.Cluster config = 1;
   }
 }

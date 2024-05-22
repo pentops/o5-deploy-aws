@@ -4,4 +4,5 @@ package deployer_spb
 
 type IsTriggerSource_Type = isTriggerSource_Type
 type IsTriggerSource_GithubSource_Ref = isTriggerSource_GithubSource_Ref
+type IsUpsertClusterRequest_Src = isUpsertClusterRequest_Src
 type IsUpsertEnvironmentRequest_Src = isUpsertEnvironmentRequest_Src

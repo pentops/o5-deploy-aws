@@ -24,6 +24,7 @@ const _ = grpc.SupportPackageIsVersion7
 type DeploymentCommandServiceClient interface {
 	TriggerDeployment(ctx context.Context, in *TriggerDeploymentRequest, opts ...grpc.CallOption) (*TriggerDeploymentResponse, error)
 	TerminateDeployment(ctx context.Context, in *TerminateDeploymentRequest, opts ...grpc.CallOption) (*TerminateDeploymentResponse, error)
+	UpsertCluster(ctx context.Context, in *UpsertClusterRequest, opts ...grpc.CallOption) (*UpsertClusterResponse, error)
 	UpsertEnvironment(ctx context.Context, in *UpsertEnvironmentRequest, opts ...grpc.CallOption) (*UpsertEnvironmentResponse, error)
 	UpsertStack(ctx context.Context, in *UpsertStackRequest, opts ...grpc.CallOption) (*UpsertStackResponse, error)
 }
@@ -54,6 +55,15 @@ func (c *deploymentCommandServiceClient) TerminateDeployment(ctx context.Context
 	return out, nil
 }
 
+func (c *deploymentCommandServiceClient) UpsertCluster(ctx context.Context, in *UpsertClusterRequest, opts ...grpc.CallOption) (*UpsertClusterResponse, error) {
+	out := new(UpsertClusterResponse)
+	err := c.cc.Invoke(ctx, "/o5.deployer.v1.service.DeploymentCommandService/UpsertCluster", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *deploymentCommandServiceClient) UpsertEnvironment(ctx context.Context, in *UpsertEnvironmentRequest, opts ...grpc.CallOption) (*UpsertEnvironmentResponse, error) {
 	out := new(UpsertEnvironmentResponse)
 	err := c.cc.Invoke(ctx, "/o5.deployer.v1.service.DeploymentCommandService/UpsertEnvironment", in, out, opts...)
@@ -78,6 +88,7 @@ func (c *deploymentCommandServiceClient) UpsertStack(ctx context.Context, in *Up
 type DeploymentCommandServiceServer interface {
 	TriggerDeployment(context.Context, *TriggerDeploymentRequest) (*TriggerDeploymentResponse, error)
 	TerminateDeployment(context.Context, *TerminateDeploymentRequest) (*TerminateDeploymentResponse, error)
+	UpsertCluster(context.Context, *UpsertClusterRequest) (*UpsertClusterResponse, error)
 	UpsertEnvironment(context.Context, *UpsertEnvironmentRequest) (*UpsertEnvironmentResponse, error)
 	UpsertStack(context.Context, *UpsertStackRequest) (*UpsertStackResponse, error)
 	mustEmbedUnimplementedDeploymentCommandServiceServer()
@@ -92,6 +103,9 @@ func (UnimplementedDeploymentCommandServiceServer) TriggerDeployment(context.Con
 }
 func (UnimplementedDeploymentCommandServiceServer) TerminateDeployment(context.Context, *TerminateDeploymentRequest) (*TerminateDeploymentResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TerminateDeployment not implemented")
+}
+func (UnimplementedDeploymentCommandServiceServer) UpsertCluster(context.Context, *UpsertClusterRequest) (*UpsertClusterResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpsertCluster not implemented")
 }
 func (UnimplementedDeploymentCommandServiceServer) UpsertEnvironment(context.Context, *UpsertEnvironmentRequest) (*UpsertEnvironmentResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpsertEnvironment not implemented")
@@ -149,6 +163,24 @@ func _DeploymentCommandService_TerminateDeployment_Handler(srv interface{}, ctx 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DeploymentCommandService_UpsertCluster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpsertClusterRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DeploymentCommandServiceServer).UpsertCluster(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/o5.deployer.v1.service.DeploymentCommandService/UpsertCluster",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DeploymentCommandServiceServer).UpsertCluster(ctx, req.(*UpsertClusterRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _DeploymentCommandService_UpsertEnvironment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(UpsertEnvironmentRequest)
 	if err := dec(in); err != nil {
@@ -199,6 +231,10 @@ var DeploymentCommandService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TerminateDeployment",
 			Handler:    _DeploymentCommandService_TerminateDeployment_Handler,
+		},
+		{
+			MethodName: "UpsertCluster",
+			Handler:    _DeploymentCommandService_UpsertCluster_Handler,
 		},
 		{
 			MethodName: "UpsertEnvironment",

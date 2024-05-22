@@ -238,7 +238,11 @@ func runServe(ctx context.Context, cfg struct {
 	if err != nil {
 		return err
 	}
-	cfAdapter := awsinfra.NewCFAdapterFromConfig(awsConfig, []string{cfg.CallbackARN})
+	cfAdapter, err := awsinfra.NewCFAdapterFromConfig(ctx, awsConfig, []string{cfg.CallbackARN})
+	if err != nil {
+		return err
+	}
+
 	awsInfraRunner := awsinfra.NewInfraWorker(infraStore, cfAdapter)
 
 	ecsWorker, err := awsinfra.NewECSWorker(infraStore, ecs.NewFromConfig(awsConfig))
@@ -338,7 +342,8 @@ func runServe(ctx context.Context, cfg struct {
 }
 
 func runLocalDeploy(ctx context.Context, cfg struct {
-	EnvFilename     string `flag:"env" description:"environment file"`
+	ClusterFilename string `flag:"cluster" description:"cluster file"`
+	EnvName         string `flag:"envname" description:"environment name"`
 	AppFilename     string `flag:"app" description:"application file"`
 	Version         string `flag:"version" description:"version tag"`
 	DryRun          bool   `flag:"dry" description:"dry run - print template and exit"`
@@ -361,8 +366,12 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 	}
 
 	if !cfg.DryRun {
-		if cfg.EnvFilename == "" {
+		if cfg.ClusterFilename == "" {
 			return fmt.Errorf("missing environment file (-env)")
+		}
+
+		if cfg.EnvName == "" {
+			return fmt.Errorf("missing environment name (-env)")
 		}
 
 		if cfg.Version == "" {
@@ -406,9 +415,34 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		return nil
 	}
 
-	env := &environment_pb.Environment{}
-	if err := protoread.PullAndParse(ctx, s3Client, cfg.EnvFilename, env); err != nil {
+	clusterFile := &environment_pb.CombinedConfig{}
+	if err := protoread.PullAndParse(ctx, s3Client, cfg.ClusterFilename, clusterFile); err != nil {
 		return err
+	}
+
+	cluster := &environment_pb.Cluster{
+		Name: clusterFile.Name,
+	}
+	switch et := clusterFile.Provider.(type) {
+	case *environment_pb.CombinedConfig_EcsCluster:
+		cluster.Provider = &environment_pb.Cluster_EcsCluster{
+			EcsCluster: et.EcsCluster,
+		}
+	default:
+		return fmt.Errorf("unsupported provider %T", clusterFile.Provider)
+	}
+
+	var env *environment_pb.Environment
+
+	for _, e := range clusterFile.Environments {
+		if e.FullName == cfg.EnvName {
+			env = e
+			break
+		}
+	}
+
+	if env == nil {
+		return fmt.Errorf("environment %s not found in cluster", cfg.EnvName)
 	}
 
 	awsTarget := env.GetAws()
@@ -427,10 +461,11 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 	}
 
 	return localrun.RunLocalDeploy(ctx, templateStore, infra, localrun.Spec{
-		Version:     cfg.Version,
-		AppConfig:   appConfig,
-		EnvConfig:   env,
-		ConfirmPlan: !cfg.Auto,
+		Version:       cfg.Version,
+		AppConfig:     appConfig,
+		EnvConfig:     env,
+		ClusterConfig: cluster,
+		ConfirmPlan:   !cfg.Auto,
 		Flags: &deployer_pb.DeploymentFlags{
 			RotateCredentials: cfg.RotateSecrets,
 			CancelUpdates:     cfg.CancelUpdate,

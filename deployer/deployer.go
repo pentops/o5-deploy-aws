@@ -18,7 +18,7 @@ import (
 )
 
 type TemplateStore interface {
-	PutTemplate(ctx context.Context, envName, appName, deploymentID string, template []byte) (string, error)
+	PutTemplate(ctx context.Context, envName, appName, deploymentID string, template []byte) (*deployer_pb.S3Template, error)
 }
 
 type S3TemplateStore struct {
@@ -74,7 +74,7 @@ func NewSpecBuilder(templateStore TemplateStore) (*SpecBuilder, error) {
 	}, nil
 }
 
-func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage, environment *environment_pb.Environment) (*deployer_pb.DeploymentSpec, error) {
+func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage, cluster *environment_pb.Cluster, environment *environment_pb.Environment) (*deployer_pb.DeploymentSpec, error) {
 	app, err := app.BuildApplication(trigger.Application, trigger.Version)
 	if err != nil {
 		return nil, err
@@ -90,13 +90,18 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		return nil, fmt.Errorf("environment %s is not an AWS environment", environment.FullName)
 	}
 
+	ecsCluster := cluster.GetEcsCluster()
+	if ecsCluster == nil {
+		return nil, fmt.Errorf("cluster %s is not an ECS cluster", cluster.Name)
+	}
+
 	deploymentID := uuid.NewString()
 
 	templateJSON, err := app.TemplateJSON()
 	if err != nil {
 		return nil, err
 	}
-	templateURL, err := dd.templateStore.PutTemplate(ctx, environment.FullName, app.Name, deploymentID, templateJSON)
+	templateLocation, err := dd.templateStore.PutTemplate(ctx, environment.FullName, app.Name, deploymentID, templateJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +114,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 			MigrationTaskOutputName: db.MigrationTaskOutputName,
 			SecretOutputName:        db.SecretOutputName,
 		}
-		for _, host := range awsEnv.RdsHosts {
+		for _, host := range ecsCluster.RdsHosts {
 			if host.ServerGroup == db.ServerGroup {
 				dbSpec.RootSecretName = host.SecretName
 				break
@@ -122,7 +127,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		dbSpecs[idx] = dbSpec
 	}
 
-	deployerResolver, err := BuildParameterResolver(ctx, environment)
+	deployerResolver, err := BuildParameterResolver(ctx, cluster, environment)
 	if err != nil {
 		return nil, err
 	}
@@ -153,14 +158,14 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		Version:         app.Version,
 		EnvironmentName: environment.FullName,
 		EnvironmentId:   trigger.EnvironmentId,
-		TemplateUrl:     templateURL,
+		Template:        templateLocation,
 		Databases:       dbSpecs,
 		Parameters:      parameters,
 		SnsTopics:       snsTopics,
 		Flags:           trigger.Flags,
 		Source:          trigger.Source,
 
-		EcsCluster: awsEnv.EcsClusterName,
+		EcsCluster: ecsCluster.EcsClusterName,
 	}
 
 	return spec, nil

@@ -81,24 +81,30 @@ func (td *TransitionData) FullCause() *deployer_pb.DeploymentEvent {
 	return td.CausedBy
 }
 
-func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage, environment *environment_pb.Environment) error {
+func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage, cluster *environment_pb.Cluster, environment *environment_pb.Environment) error {
 	if err := lel.validator.Validate(trigger); err != nil {
 		return err
 	}
 
-	spec, err := lel.specBuilder.BuildSpec(ctx, trigger, environment)
+	spec, err := lel.specBuilder.BuildSpec(ctx, trigger, cluster, environment)
 	if err != nil {
 		return err
 	}
 
 	deploymentId := trigger.DeploymentId
 
+	deploymentKeys := &deployer_pb.DeploymentKeys{
+		DeploymentId:  trigger.DeploymentId,
+		EnvironmentId: trigger.EnvironmentId,
+		// These don't mean anything locally.
+		StackId:   uuid.NewString(),
+		ClusterId: uuid.NewString(),
+	}
+
 	tx := lel.storage
 
 	eventQueue := []*deployer_pb.DeploymentEvent{{
-		Keys: &deployer_pb.DeploymentKeys{
-			DeploymentId: trigger.DeploymentId,
-		},
+		Keys: deploymentKeys,
 		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
@@ -111,9 +117,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 			},
 		},
 	}, {
-		Keys: &deployer_pb.DeploymentKeys{
-			DeploymentId: trigger.DeploymentId,
-		},
+		Keys: deploymentKeys,
 		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
@@ -144,13 +148,12 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		if errors.Is(err, deployer.DeploymentNotFoundError) {
 			deployment = &deployer_pb.DeploymentState{
 				Metadata: &psm_pb.StateMetadata{},
-				Keys: &deployer_pb.DeploymentKeys{
-					DeploymentId: deploymentId,
-				},
+				Keys:     deploymentKeys,
 			}
 		} else if err != nil {
 			return err
 		}
+		innerEvent.Keys = deploymentKeys
 
 		baton := &TransitionData{
 			CausedBy: innerEvent,
@@ -247,9 +250,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 
 			if result != nil {
 				mapped := &deployer_pb.DeploymentEvent{
-					Keys: &deployer_pb.DeploymentKeys{
-						DeploymentId: deploymentId,
-					},
+					Keys: deploymentKeys,
 					Metadata: &psm_pb.EventMetadata{
 						EventId:   uuid.NewString(),
 						Timestamp: timestamppb.Now(),

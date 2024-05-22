@@ -81,7 +81,7 @@ message StepRequestType {
 
   message CFPlan {
     CFStackInput spec = 1;
-    repeated CFImport import_resources = 2;
+    bool import_resources = 2;
   }
 
   message CFUpdate {

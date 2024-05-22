@@ -43,3 +43,9 @@ func (s3m *S3) PutObject(ctx context.Context, input *s3.PutObjectInput, optFns .
 	s3m.files[fullPath] = bodyBytes
 	return &s3.PutObjectOutput{}, nil
 }
+
+func (s3m *S3) GetBucketLocation(ctx context.Context, input *s3.GetBucketLocationInput, optFns ...func(*s3.Options)) (*s3.GetBucketLocationOutput, error) {
+	return &s3.GetBucketLocationOutput{
+		LocationConstraint: "us-east-1",
+	}, nil
+}

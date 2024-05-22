@@ -41,13 +41,6 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 
 			return mm, nil
 		}).
-		StoreExtraEventColumns(func(e *deployer_pb.StackEvent) (map[string]interface{}, error) {
-			return map[string]interface{}{
-				"id":        e.Metadata.EventId,
-				"stack_id":  e.Keys.StackId,
-				"timestamp": e.Metadata.Timestamp,
-			}, nil
-		}).
 		SystemActor(psm.MustSystemActor("0F34118E-6263-4634-A5FB-5C04D71203D2"))
 
 	sm, err := config.NewStateMachine()

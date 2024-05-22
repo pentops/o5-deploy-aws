@@ -9,7 +9,7 @@ deps:
   - remote: buf.build
     owner: googleapis
     repository: googleapis
-    commit: 9475e2896f8a46d09806149f9382e538
+    commit: 4383c33e6c714f8bb30a26a6d838e217
     digest: shake256:de26a277fc28b8b411ecf58729d78d32fcf15090ffd998a4469225b17889bfb51442eaab04bb7a8d88d203ecdf0a9febd4ffd52c18ed1c2229160c7bd353ca95
   - remote: buf.build
     owner: pentops
@@ -24,8 +24,8 @@ deps:
   - remote: buf.build
     owner: pentops
     repository: o5
-    commit: cde1326f73924954909e4487d461b4f3
-    digest: shake256:b06bd869405b74f39a5b173d8d58abe82afcb9d97c2a4b849fe0b63086429e9dbf5951d4bbecbc53b9fad9a555714cce46520cf694dcff8980fc7693c97949a6
+    commit: e3c2a17d45d0438dbb88bfb110311aae
+    digest: shake256:d822e3a6b4d4905d288918061e4506fdffca0200ca98d5ccf20b9ef26b57b4541f4328a61799a82af8e6381beec5e684b8e9db30b7d0dec2817be9d8f24df875
   - remote: buf.build
     owner: pentops
     repository: protostate

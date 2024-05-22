@@ -25,8 +25,8 @@ type InfraAdapter struct {
 	ecsClient *ecsRunner
 }
 
-func NewInfraAdapter(ctx context.Context, cl awsinfra.DeployerClients) (*InfraAdapter, error) {
-	cfClient := awsinfra.NewCFAdapter(cl.CloudFormation, cl.ELB, cl.SNS, []string{})
+func NewInfraAdapter(ctx context.Context, cl *awsinfra.DeployerClients) (*InfraAdapter, error) {
+	cfClient := awsinfra.NewCFAdapter(cl, []string{})
 	dbMigrator := awsinfra.NewDBMigrator(cl.SecretsManager)
 	ecsClient := &ecsRunner{
 		ecsClient: cl.ECS,
@@ -40,7 +40,11 @@ func NewInfraAdapter(ctx context.Context, cl awsinfra.DeployerClients) (*InfraAd
 }
 
 func NewInfraAdapterFromConfig(ctx context.Context, config aws.Config) (*InfraAdapter, error) {
-	cfClient := awsinfra.NewCFAdapterFromConfig(config, []string{})
+	cfClient, err := awsinfra.NewCFAdapterFromConfig(ctx, config, []string{})
+	if err != nil {
+		return nil, err
+	}
+
 	dbMigrator := awsinfra.NewDBMigrator(secretsmanager.NewFromConfig(config))
 	ecsClient := &ecsRunner{
 		ecsClient: ecs.NewFromConfig(config),

@@ -16,6 +16,7 @@ import (
 type Spec struct {
 	Version       string
 	AppConfig     *application_pb.Application
+	ClusterConfig *environment_pb.Cluster
 	EnvConfig     *environment_pb.Environment
 	ScratchBucket string
 	Flags         *deployer_pb.DeploymentFlags
@@ -42,7 +43,14 @@ func RunLocalDeploy(ctx context.Context, templateStore deployer.TemplateStore, i
 		Flags:         spec.Flags,
 	}
 
-	err = eventLoop.Run(ctx, trigger, spec.EnvConfig)
+	if spec.EnvConfig == nil {
+		return fmt.Errorf("Environment config is required")
+	}
+	if spec.ClusterConfig == nil {
+		return fmt.Errorf("Cluster config is required")
+	}
+
+	err = eventLoop.Run(ctx, trigger, spec.ClusterConfig, spec.EnvConfig)
 	if err != nil {
 		return fmt.Errorf("Error *running* event loop (errors are not expected): %w", err)
 	}

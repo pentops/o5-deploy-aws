@@ -3,12 +3,14 @@ package awsinfra
 import (
 	"context"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 type CloudFormationAPI interface {
@@ -29,6 +31,7 @@ type ELBV2API interface {
 type SecretsManagerAPI interface {
 	GetSecretValue(ctx context.Context, params *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)
 	UpdateSecret(ctx context.Context, params *secretsmanager.UpdateSecretInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.UpdateSecretOutput, error)
+	DescribeSecret(ctx context.Context, params *secretsmanager.DescribeSecretInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.DescribeSecretOutput, error)
 }
 
 type ECSAPI interface {
@@ -55,4 +58,29 @@ type DeployerClients struct {
 	SecretsManager SecretsManagerAPI
 	ECS            ECSAPI
 	S3             S3API
+	Region         string
+	AccountID      string
+}
+
+func NewDeployerClientsFromConfig(ctx context.Context, config aws.Config) (*DeployerClients, error) {
+
+	region := config.Region
+
+	stsClient := sts.NewFromConfig(config)
+	callerIdentity, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return nil, err
+	}
+
+	return &DeployerClients{
+		CloudFormation: cloudformation.NewFromConfig(config),
+		SNS:            sns.NewFromConfig(config),
+		ELB:            elbv2.NewFromConfig(config),
+		SecretsManager: secretsmanager.NewFromConfig(config),
+		ECS:            ecs.NewFromConfig(config),
+		S3:             s3.NewFromConfig(config),
+		Region:         region,
+		AccountID:      *callerIdentity.Account,
+	}, nil
+
 }

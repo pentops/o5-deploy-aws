@@ -249,7 +249,10 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tplStore := deployer.NewS3TemplateStore(uu.S3, "bucket")
+	tplStore, err := deployer.NewS3TemplateStore(ctx, uu.S3, "bucket")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	trigger, err := deployer.NewSpecBuilder(tplStore)
 	if err != nil {

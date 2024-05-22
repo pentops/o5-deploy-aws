@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/google/uuid"
 	"github.com/pentops/o5-deploy-aws/gen/o5/github/v1/github_pb"
 	"github.com/pentops/o5-deploy-aws/states"
@@ -23,15 +24,32 @@ func TestDeploymentFlow(t *testing.T) {
 	defer ss.RunSteps(t)
 
 	var environmentID string
-	ss.Step("Configure Environment", func(t UniverseAsserter) {
-		_, err := t.DeployerCommand.UpsertEnvironment(ctx, &deployer_spb.UpsertEnvironmentRequest{
+	ss.Step("Configure Stack", func(t UniverseAsserter) {
+
+		_, err := t.DeployerCommand.UpsertCluster(ctx, &deployer_spb.UpsertClusterRequest{
+			ClusterId: "cluster",
+			Src: &deployer_spb.UpsertClusterRequest_Config{
+				Config: &environment_pb.CombinedConfig{
+					Name: "cluster",
+					Provider: &environment_pb.CombinedConfig_EcsCluster{
+						EcsCluster: &environment_pb.ECSCluster{
+							EcsClusterName: "cluster",
+						},
+					},
+				},
+			},
+		})
+		t.NoError(err)
+
+		_, err = t.DeployerCommand.UpsertEnvironment(ctx, &deployer_spb.UpsertEnvironmentRequest{
 			EnvironmentId: "env",
+			ClusterId:     "cluster",
 			Src: &deployer_spb.UpsertEnvironmentRequest_Config{
 				Config: &environment_pb.Environment{
 					FullName: "env",
 					Provider: &environment_pb.Environment_Aws{
-						Aws: &environment_pb.AWS{
-							ListenerArn: "arn:listener",
+						Aws: &environment_pb.AWSEnvironment{
+							HostHeader: aws.String("host"),
 						},
 					},
 				},
@@ -220,14 +238,30 @@ func TestStackLock(t *testing.T) {
 	secondDeploymentID := uuid.NewString()
 
 	ss.StepC("setup", func(ctx context.Context, t UniverseAsserter) {
+		_, err := t.DeployerCommand.UpsertCluster(ctx, &deployer_spb.UpsertClusterRequest{
+			ClusterId: "cluster",
+			Src: &deployer_spb.UpsertClusterRequest_Config{
+				Config: &environment_pb.CombinedConfig{
+					Name: "cluster",
+					Provider: &environment_pb.CombinedConfig_EcsCluster{
+						EcsCluster: &environment_pb.ECSCluster{
+							EcsClusterName: "cluster",
+						},
+					},
+				},
+			},
+		})
+		t.NoError(err)
+
 		res, err := t.DeployerCommand.UpsertEnvironment(ctx, &deployer_spb.UpsertEnvironmentRequest{
 			EnvironmentId: "env",
+			ClusterId:     "cluster",
 			Src: &deployer_spb.UpsertEnvironmentRequest_Config{
 				Config: &environment_pb.Environment{
 					FullName: "env",
 					Provider: &environment_pb.Environment_Aws{
-						Aws: &environment_pb.AWS{
-							ListenerArn: "arn:listener",
+						Aws: &environment_pb.AWSEnvironment{
+							HostHeader: aws.String("host"),
 						},
 					},
 				},

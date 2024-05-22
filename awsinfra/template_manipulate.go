@@ -10,6 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
 )
 
@@ -47,6 +49,16 @@ func EmptyTemplate() string {
 
 }
 
+func (cf *CFClient) findSecret(ctx context.Context, secretName string) (string, error) {
+	secret, err := cf.secretsManagerClient.DescribeSecret(ctx, &secretsmanager.DescribeSecretInput{
+		SecretId: aws.String(secretName),
+	})
+	if err != nil {
+		return "", err
+	}
+	return *secret.ARN, nil
+}
+
 func (cf *CFClient) downloadCFTemplate(ctx context.Context, location *deployer_pb.S3Template) (string, error) {
 	// TODO: This ignores the region in the template location, assuming it is
 	// the same region the worker is running. There is probably an easy way to
@@ -66,7 +78,12 @@ func (cf *CFClient) downloadCFTemplate(ctx context.Context, location *deployer_p
 	return buf.String(), nil
 }
 
-func (cf *CFClient) ImportResources(ctx context.Context, templateBody string) ([]types.ResourceToImport, error) {
+type ImportOutput struct {
+	Imports     []types.ResourceToImport
+	NewTemplate string
+}
+
+func (cf *CFClient) ImportResources(ctx context.Context, templateBody string, params []types.Parameter) (*ImportOutput, error) {
 
 	builtTemplate := &Template{}
 	err := json.Unmarshal([]byte(templateBody), builtTemplate)
@@ -78,7 +95,14 @@ func (cf *CFClient) ImportResources(ctx context.Context, templateBody string) ([
 
 	imports := []types.ResourceToImport{}
 
-	paramMap := map[string]string{}
+	paramMap := map[string]string{
+		"AWS::Region":  cf.region, //"us-east-1",
+		"AWS::Account": cf.accountID,
+	}
+
+	for _, param := range params {
+		paramMap[*param.ParameterKey] = *param.ParameterValue
+	}
 
 	for resourceName, resource := range builtTemplate.Resources {
 
@@ -93,7 +117,6 @@ func (cf *CFClient) ImportResources(ctx context.Context, templateBody string) ([
 				return nil, fmt.Errorf("failed to resolve property %s.%s: %w", resourceName, "BucketName", err)
 			}
 
-			fmt.Printf("Import %s: BucketName: %s\n", resourceName, bucketName)
 			imports = append(imports, types.ResourceToImport{
 				LogicalResourceId:  aws.String(resourceName),
 				ResourceType:       aws.String(resource.Type),
@@ -113,13 +136,12 @@ func (cf *CFClient) ImportResources(ctx context.Context, templateBody string) ([
 			secretArn, err := cf.findSecret(ctx, secretName)
 			if err != nil {
 				if strings.Contains(err.Error(), "Secrets Manager can't find the specified secret") {
-					fmt.Printf("Secret %s not found, skipping\n", secretName)
 					delete(builtTemplate.Resources, resourceName)
+					log.WithField(ctx, "secretName", secretName).Info("Secret not found for import, removing resource")
 					continue
 				}
 				return nil, fmt.Errorf("failed to find secret %s: %w", secretName, err)
 			}
-			fmt.Printf("Import %s: Name: %s, id: %s\n", resourceName, secretName, secretArn)
 
 			imports = append(imports, types.ResourceToImport{
 				LogicalResourceId:  aws.String(resourceName),
@@ -132,6 +154,113 @@ func (cf *CFClient) ImportResources(ctx context.Context, templateBody string) ([
 		}
 	}
 
-	return imports, nil
+	builtTemplate.Resources["NullResource"] = Resource{
+		Type: "AWS::CloudFormation::WaitConditionHandle",
+	}
+	newTemplate, err := json.Marshal(builtTemplate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal new template: %w", err)
+	}
 
+	return &ImportOutput{
+		Imports:     imports,
+		NewTemplate: string(newTemplate),
+	}, nil
+
+}
+
+type FuncJoin struct {
+	Join   string
+	Values []interface{}
+}
+
+func (f *FuncJoin) MarshalJSON() ([]byte, error) {
+	out := make([]interface{}, 2)
+	out[0] = f.Join
+	out[1] = f.Values
+	return json.Marshal(out)
+}
+
+func (f *FuncJoin) UnmarshalJSON(data []byte) error {
+	var out []interface{}
+	err := json.Unmarshal(data, &out)
+	if err != nil {
+		return err
+	}
+	if len(out) != 2 {
+		return fmt.Errorf("expected 2 elements, got %d", len(out))
+	}
+	var ok bool
+	f.Join, ok = out[0].(string)
+	if !ok {
+		return fmt.Errorf("expected string, got %T", out[0])
+	}
+
+	f.Values, ok = out[1].([]interface{})
+	if !ok {
+		return fmt.Errorf("expected []interface{}, got %T", out[1])
+	}
+	return err
+}
+
+func ResolveFunc(raw interface{}, params map[string]string) (string, error) {
+	if stringVal, ok := raw.(string); ok {
+		return stringVal, nil
+	}
+
+	mapStringInterface, ok := raw.(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("expected map[string]interface{}, got %T", raw)
+	}
+	var fnName string
+	var fnValue interface{}
+
+	if len(mapStringInterface) != 1 {
+		return "", fmt.Errorf("expected 1 key, got %d", len(mapStringInterface))
+	}
+	for key, value := range mapStringInterface {
+		fnName = key
+		fnValue = value
+	}
+
+	switch fnName {
+	case "Ref":
+		refName, ok := fnValue.(string)
+		if !ok {
+			return "", fmt.Errorf("ref value should be string, got %T", fnValue)
+		}
+		if val, ok := params[refName]; ok {
+			return val, nil
+		}
+		return "", fmt.Errorf("ref %s not found in params", refName)
+
+	case "Fn::Join":
+		joiner := &FuncJoin{}
+		joinerValues, ok := fnValue.([]interface{})
+		if !ok {
+			return "", fmt.Errorf("expected []interface{}, got %T", fnValue)
+		}
+		if len(joinerValues) != 2 {
+			return "", fmt.Errorf("expected 2 elements, got %d", len(joinerValues))
+		}
+		joiner.Join, ok = joinerValues[0].(string)
+		if !ok {
+			return "", fmt.Errorf("expected string, got %T", joinerValues[0])
+		}
+		joiner.Values, ok = joinerValues[1].([]interface{})
+		if !ok {
+			return "", fmt.Errorf("expected []interface{}, got %T", joinerValues[1])
+		}
+		parts := make([]string, 0, len(joiner.Values))
+		for _, rawValue := range joiner.Values {
+			resolvedValue, err := ResolveFunc(rawValue, params)
+			if err != nil {
+				return "", fmt.Errorf("resolving value: %w", err)
+			}
+			parts = append(parts, resolvedValue)
+		}
+		return strings.Join(parts, joiner.Join), nil
+	default:
+		return "", fmt.Errorf("unknown function: %s", fnName)
+	}
 }

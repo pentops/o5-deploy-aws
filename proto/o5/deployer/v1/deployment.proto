@@ -3,7 +3,6 @@ syntax = "proto3";
 package o5.deployer.v1;
 
 import "buf/validate/validate.proto";
-import "google/protobuf/timestamp.proto";
 import "j5/ext/v1/annotations.proto";
 import "o5/deployer/v1/pgmigrate.proto";
 import "o5/deployer/v1/steps.proto";
@@ -20,6 +19,10 @@ message DeploymentKeys {
     (buf.validate.field).string.uuid = true,
     (psm.state.v1.field).primary_key = true
   ];
+
+  string stack_id = 2 [(buf.validate.field).string.uuid = true];
+  string environment_id = 3 [(buf.validate.field).string.uuid = true];
+  string cluster_id = 4 [(buf.validate.field).string.uuid = true];
 }
 
 message DeploymentState {
@@ -43,11 +46,6 @@ message DeploymentStateData {
     field_identifier: "tsv_stack_name"
   }];
 
-  string stack_id = 6 [
-    (buf.validate.field).string.uuid = true,
-    (psm.list.v1.field).string.foreign_key.uuid.filtering.filterable = true
-  ];
-
   repeated DeploymentStep steps = 10;
 }
 
@@ -65,10 +63,7 @@ message DeploymentSpec {
     field_identifier: "tsv_environment_name"
   }];
   string environment_id = 9 [(buf.validate.field).string.uuid = true];
-  string template_url = 4 [(psm.list.v1.field).string.open_text.searching = {
-    searchable: true,
-    field_identifier: "tsv_template_url"
-  }];
+  S3Template template = 4;
 
   string ecs_cluster = 10 [(psm.list.v1.field).string.open_text.searching = {
     searchable: true,

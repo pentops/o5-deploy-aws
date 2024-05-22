@@ -9,9 +9,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
-	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	snstypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 	"github.com/aws/smithy-go"
@@ -26,28 +23,31 @@ type CFClient struct {
 	elbClient            ELBV2API
 	snsClient            SNSAPI
 	s3Client             S3API
-	secretsmanagerClient SecretsManagerAPI
+	secretsManagerClient SecretsManagerAPI
+	region               string
+	accountID            string
 	CallbackARNs         []string
 }
 
-func NewCFAdapter(cfClient CloudFormationAPI, elbClient ELBV2API, snsClient SNSAPI, s3Client S3API, secretsmanagerClient SecretsManagerAPI, callbackARNs []string) *CFClient {
+func NewCFAdapter(clients *DeployerClients, callbackARNs []string) *CFClient {
 	return &CFClient{
-		cfClient:     cfClient,
-		elbClient:    elbClient,
-		snsClient:    snsClient,
-		CallbackARNs: callbackARNs,
+		cfClient:             clients.CloudFormation,
+		elbClient:            clients.ELB,
+		snsClient:            clients.SNS,
+		s3Client:             clients.S3,
+		secretsManagerClient: clients.SecretsManager,
+		region:               clients.Region,
+		accountID:            clients.AccountID,
+		CallbackARNs:         callbackARNs,
 	}
 }
 
-func NewCFAdapterFromConfig(config aws.Config, callbackARNs []string) *CFClient {
-	return NewCFAdapter(
-		cloudformation.NewFromConfig(config),
-		elasticloadbalancingv2.NewFromConfig(config),
-		sns.NewFromConfig(config),
-		s3.NewFromConfig(config),
-		secretsmanager.NewFromConfig(config),
-		callbackARNs,
-	)
+func NewCFAdapterFromConfig(ctx context.Context, config aws.Config, callbackARNs []string) (*CFClient, error) {
+	clients, err := NewDeployerClientsFromConfig(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	return NewCFAdapter(clients, callbackARNs), nil
 }
 
 func templateURL(tpl *deployer_pb.S3Template) string {
@@ -59,6 +59,7 @@ func (cf *CFClient) GetOneStack(ctx context.Context, stackName string) (*StackSt
 	if err != nil {
 		return nil, err
 	}
+
 	summary, err := summarizeStackStatus(stack)
 	if err != nil {
 		return nil, err
@@ -263,44 +264,48 @@ func (cf *CFClient) CreateChangeSet(ctx context.Context, reqToken string, msg *d
 		NotificationARNs: cf.CallbackARNs,
 	}
 
-	switch tpl := msg.Spec.Template.(type) {
-	case *deployer_pb.CFStackInput_TemplateBody:
-		input.TemplateBody = aws.String(tpl.TemplateBody)
-	case *deployer_pb.CFStackInput_S3Template:
-		input.TemplateURL = aws.String(templateURL(tpl.S3Template))
-	case *deployer_pb.CFStackInput_EmptyStack:
-		input.TemplateBody = aws.String(EmptyTemplate())
-	default:
-		return fmt.Errorf("unknown template type: %T", tpl)
-	}
-
-	if len(msg.ImportResources) > 0 {
-
-		templateJSON := ""
-		if input.TemplateBody != nil {
-			templateJSON = *input.TemplateBody
-		} else {
-			template, err := cf.downloadCFTemplate(ctx, *input.TemplateURL)
+	if msg.ImportResources {
+		templateBody := ""
+		switch tpl := msg.Spec.Template.(type) {
+		case *deployer_pb.CFStackInput_TemplateBody:
+			templateBody = tpl.TemplateBody
+		case *deployer_pb.CFStackInput_S3Template:
+			template, err := cf.downloadCFTemplate(ctx, tpl.S3Template)
 			if err != nil {
 				return err
 			}
-			templateJSON = template
+			templateBody = template
+		case *deployer_pb.CFStackInput_EmptyStack:
+			return fmt.Errorf("cannot import resources with empty stack")
+		default:
+			return fmt.Errorf("unknown template type: %T", tpl)
 		}
 
-		for _, resource := range msg.ImportResources {
-			input.ImportExistingResources = aws.Bool(true)
-
-			toImport := types.ResourceToImport{
-				ResourceType:       aws.String(resource.ResourceType),
-				LogicalResourceId:  aws.String(resource.LogicalId),
-				ResourceIdentifier: make(map[string]string),
-			}
-			for k, v := range resource.PhysicalId {
-				toImport.ResourceIdentifier[k] = v
-			}
-			input.ResourcesToImport = append(input.ResourcesToImport, toImport)
+		importResult, err := cf.ImportResources(ctx, templateBody, parameters)
+		if err != nil {
+			return err
 		}
 
+		if len(importResult.Imports) == 0 {
+			return fmt.Errorf("no resources to import")
+		}
+
+		input.ResourcesToImport = importResult.Imports
+		input.TemplateBody = aws.String(importResult.NewTemplate)
+		//input.ImportExistingResources = aws.Bool(true)
+		input.ChangeSetType = types.ChangeSetTypeImport
+
+	} else {
+		switch tpl := msg.Spec.Template.(type) {
+		case *deployer_pb.CFStackInput_TemplateBody:
+			input.TemplateBody = aws.String(tpl.TemplateBody)
+		case *deployer_pb.CFStackInput_S3Template:
+			input.TemplateURL = aws.String(templateURL(tpl.S3Template))
+		case *deployer_pb.CFStackInput_EmptyStack:
+			input.TemplateBody = aws.String(EmptyTemplate())
+		default:
+			return fmt.Errorf("unknown template type: %T", tpl)
+		}
 	}
 
 	_, err = cf.cfClient.CreateChangeSet(ctx, input)

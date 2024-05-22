@@ -87,3 +87,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/pentops/o5-go => /Users/daemonl/pentops/o5-go
+
+replace github.com/pentops/protostate => /Users/daemonl/pentops/protostate

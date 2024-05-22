@@ -24,8 +24,8 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 		return &deployer_pb.CFStackInput{
 			StackName:    deployment.StackName,
 			DesiredCount: desiredCount,
-			Template: &deployer_pb.CFStackInput_TemplateUrl{
-				TemplateUrl: deployment.Spec.TemplateUrl,
+			Template: &deployer_pb.CFStackInput_S3Template{
+				S3Template: deployment.Spec.Template,
 			},
 			Parameters: deployment.Spec.Parameters,
 			SnsTopics:  deployment.Spec.SnsTopics,
@@ -66,7 +66,8 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 			Request: &deployer_pb.StepRequestType{
 				Type: &deployer_pb.StepRequestType_CfPlan{
 					CfPlan: &deployer_pb.StepRequestType_CFPlan{
-						Spec: stackInput(0),
+						Spec:            stackInput(0),
+						ImportResources: true,
 					},
 				},
 			},
