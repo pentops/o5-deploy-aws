@@ -13,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	sq "github.com/elgris/sqrl"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
@@ -31,14 +30,10 @@ import (
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_tpb"
-	"github.com/pentops/protostate/gen/list/v1/psml_pb"
-	"github.com/pentops/protostate/psm"
 	"github.com/pentops/runner/commander"
-	"github.com/pentops/sqrlx.go/sqrlx"
 	"github.com/pressly/goose"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 var Version string
@@ -49,7 +44,6 @@ func main() {
 
 	cmdGroup.Add("serve", commander.NewCommand(runServe))
 	cmdGroup.Add("migrate", commander.NewCommand(runMigrate))
-	cmdGroup.Add("data-pass", commander.NewCommand(runDataPass))
 	cmdGroup.Add("local-deploy", commander.NewCommand(runLocalDeploy))
 
 	cmdGroup.RunMain("o5-deploy-aws", Version)
@@ -65,116 +59,6 @@ func runMigrate(ctx context.Context, config struct {
 	}
 
 	return goose.Up(db, "/migrations")
-}
-
-func runDataPass(ctx context.Context, config struct{}) error {
-	conn, err := service.OpenDatabase(ctx)
-	if err != nil {
-		return err
-	}
-
-	db, err := sqrlx.New(conn, sq.Dollar)
-	if err != nil {
-		return err
-	}
-
-	stateMachines, err := states.NewStateMachines()
-	if err != nil {
-		return err
-	}
-
-	{
-		stackQuery, err := deployer_spb.NewStackPSMQuerySet(
-			deployer_spb.DefaultStackPSMQuerySpec(stateMachines.Stack.StateTableSpec()),
-			psm.StateQueryOptions{},
-		)
-		if err != nil {
-			return fmt.Errorf("failed to build stack query: %w", err)
-		}
-
-		page := &psml_pb.PageRequest{}
-		for {
-			res := &deployer_spb.ListStacksResponse{}
-			if err := stackQuery.List(ctx, db, &deployer_spb.ListStacksRequest{
-				Page: page,
-			}, res); err != nil {
-				return err
-			}
-			if res.Page != nil && res.Page.NextToken != nil {
-				page.Token = res.Page.NextToken
-			} else {
-				break
-			}
-
-			for _, stack := range res.Stacks {
-				fmt.Printf("stack %s\n", protojson.Format(stack))
-				eventPage := &psml_pb.PageRequest{}
-				for {
-					res := &deployer_spb.ListStackEventsResponse{}
-					if err := stackQuery.ListEvents(ctx, db, &deployer_spb.ListStackEventsRequest{
-						StackId: stack.Keys.StackId,
-						Page:    eventPage,
-					}, res); err != nil {
-						return err
-					}
-
-					if res.Page != nil && res.Page.NextToken != nil {
-						eventPage.Token = res.Page.NextToken
-					} else {
-						break
-					}
-				}
-
-			}
-		}
-	}
-
-	{
-		deploymentQuery, err := deployer_spb.NewDeploymentPSMQuerySet(
-			deployer_spb.DefaultDeploymentPSMQuerySpec(stateMachines.Deployment.StateTableSpec()),
-			psm.StateQueryOptions{},
-		)
-		if err != nil {
-			return fmt.Errorf("failed to build deployment query: %w", err)
-		}
-		page := &psml_pb.PageRequest{}
-		for {
-			res := &deployer_spb.ListDeploymentsResponse{}
-			if err := deploymentQuery.List(ctx, db, &deployer_spb.ListDeploymentsRequest{
-				Page: page,
-			}, res); err != nil {
-				return err
-			}
-			if res.Page != nil && res.Page.NextToken != nil {
-				page.Token = res.Page.NextToken
-			} else {
-				break
-			}
-
-			for _, deployment := range res.Deployments {
-				fmt.Printf("deployment %s\n", protojson.Format(deployment))
-				eventPage := &psml_pb.PageRequest{}
-				for {
-					res := &deployer_spb.ListDeploymentEventsResponse{}
-					if err := deploymentQuery.ListEvents(ctx, db, &deployer_spb.ListDeploymentEventsRequest{
-						DeploymentId: deployment.Keys.DeploymentId,
-						Page:         eventPage,
-					}, res); err != nil {
-						return err
-					}
-
-					if res.Page != nil && res.Page.NextToken != nil {
-						eventPage.Token = res.Page.NextToken
-					} else {
-						break
-					}
-				}
-
-			}
-		}
-
-	}
-	return nil
 }
 
 func runServe(ctx context.Context, cfg struct {
