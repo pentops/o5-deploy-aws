@@ -14,7 +14,7 @@ import (
 
 const (
 	DefaultO5SidecarImageName = "ghcr.io/pentops/o5-runtime-sidecar"
-	DefaultO5SidecarVersion   = "4c267599d1b1b3c1a36de9696759a0b307301de6"
+	DefaultO5SidecarVersion   = "caf90778fed19e761e2c93128d6c2986c4ddcb84"
 )
 
 type ParameterResolver interface {

@@ -40,8 +40,8 @@ runtimes:
         port: 8080
 
     subscriptions:
-      #- name: "webhook-github"
-      #  envName: "publicweb"
+      #- name: "github"
+      #  envName: "webhook"
       - name: "o5-deployer-input"
       - name: "o5-aws-command_request"
       - name: "o5-aws-command_reply"
