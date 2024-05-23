@@ -46,10 +46,15 @@ enum StepOutcome {
 message StepOutputType {
   oneof type {
     CFStatus cf_status = 1;
+    CFPlanStatus cf_plan_status = 2;
   }
 
   message CFStatus {
     CFStackOutput output = 1;
+  }
+
+  message CFPlanStatus {
+    CFChangesetOutput output = 1;
   }
 }
 
@@ -71,10 +76,12 @@ message StepRequestType {
   message CFCreate {
     CFStackInput spec = 1;
     CFStackOutput output = 2;
+    bool empty_stack = 3;
   }
 
   message CFPlan {
     CFStackInput spec = 1;
+    bool import_resources = 2;
   }
 
   message CFUpdate {
@@ -126,10 +133,26 @@ enum StepPhase {
 
 message CFStackInput {
   string stack_name = 1;
-  string template_url = 2;
-  int32 desired_count = 3;
-  repeated CloudFormationStackParameter parameters = 4;
-  repeated string sns_topics = 5;
+  oneof template {
+    S3Template s3_template = 20;
+    string template_body = 21;
+    bool empty_stack = 22;
+  }
+  int32 desired_count = 4;
+  repeated CloudFormationStackParameter parameters = 5;
+  repeated string sns_topics = 6;
+}
+
+message S3Template {
+  string bucket = 1;
+  string key = 2;
+  string region = 3;
+}
+
+message CFImport {
+  string resource_type = 1;
+  string logical_id = 2;
+  map<string, string> physical_id = 3;
 }
 
 message CloudFormationStackParameter {
@@ -157,6 +180,10 @@ message CFStackOutput {
   repeated KeyValue outputs = 2;
 }
 
+message CFChangesetOutput {
+  CFChangesetLifecycle lifecycle = 1;
+}
+
 enum CFLifecycle {
   CF_LIFECYCLE_UNSPECIFIED = 0;
 
@@ -182,6 +209,23 @@ enum CFLifecycle {
   // Missing, not present currently, either never created or deleted, not not
   // 'rolled back'
   CF_LIFECYCLE_MISSING = 6;
+}
+
+enum CFChangesetLifecycle {
+  CF_CHANGESET_LIFECYCLE_UNSPECIFIED = 0;
+
+  // Progressing well, no errors, no rollback
+  CF_CHANGESET_LIFECYCLE_UNAVAILABLE = 1;
+
+  // Plan Completed successfully
+  CF_CHANGESET_LIFECYCLE_AVAILABLE = 2;
+
+  // Plan has been executed, and is either executing, completed or failed,
+  // either way, the stack itself now has the status.
+  CF_CHANGESET_LIFECYCLE_EXECUTION = 3;
+
+  // Plan failure
+  CF_CHANGESET_LIFECYCLE_TERMINAL = 4;
 }
 
 message KeyValue {

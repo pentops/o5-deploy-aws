@@ -65,7 +65,37 @@ func TestConfiguration(t *testing.T) {
 		assertCodeError(t, err, codes.NotFound)
 	}
 
+	{ // Attempt to upsert the environment before the cluster exists
+		_, err = ds.UpsertEnvironment(ctx, &deployer_spb.UpsertEnvironmentRequest{
+			EnvironmentId: "test",
+			ClusterId:     "cluster",
+			Src: &deployer_spb.UpsertEnvironmentRequest_Config{
+				Config: &environment_pb.Environment{
+					FullName: "test",
+				},
+			},
+		})
+		assertCodeError(t, err, codes.NotFound)
+	}
+
+	_, err = ds.UpsertCluster(ctx, &deployer_spb.UpsertClusterRequest{
+		ClusterId: "cluster",
+		Src: &deployer_spb.UpsertClusterRequest_Config{
+			Config: &environment_pb.CombinedConfig{
+				Name: "cluster",
+				Provider: &environment_pb.CombinedConfig_EcsCluster{
+					EcsCluster: &environment_pb.ECSCluster{},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	_, err = ds.UpsertEnvironment(ctx, &deployer_spb.UpsertEnvironmentRequest{
+		EnvironmentId: "test",
+		ClusterId:     "cluster",
 		Src: &deployer_spb.UpsertEnvironmentRequest_Config{
 			Config: &environment_pb.Environment{
 				FullName: "test",
@@ -114,10 +144,17 @@ func TestTriggerDeployment(t *testing.T) {
 		Actor:  actorExtractor(context.Background()),
 	})
 
-	_, err = ds.UpsertEnvironment(ctx, &deployer_spb.UpsertEnvironmentRequest{
-		Src: &deployer_spb.UpsertEnvironmentRequest_Config{
-			Config: &environment_pb.Environment{
-				FullName: "test",
+	_, err = ds.UpsertCluster(ctx, &deployer_spb.UpsertClusterRequest{
+		ClusterId: "cluster",
+		Src: &deployer_spb.UpsertClusterRequest_Config{
+			Config: &environment_pb.CombinedConfig{
+				Name: "cluster",
+				Provider: &environment_pb.CombinedConfig_EcsCluster{
+					EcsCluster: &environment_pb.ECSCluster{},
+				},
+				Environments: []*environment_pb.Environment{{
+					FullName: "test",
+				}},
 			},
 		},
 	})

@@ -7,6 +7,8 @@ package deployer_spb
 
 // Method: TerminateDeployment
 
+// Method: UpsertCluster
+
 // Method: UpsertEnvironment
 
 // Method: UpsertStack

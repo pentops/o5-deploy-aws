@@ -81,24 +81,30 @@ func (td *TransitionData) FullCause() *deployer_pb.DeploymentEvent {
 	return td.CausedBy
 }
 
-func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage, environment *environment_pb.Environment) error {
+func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage, cluster *environment_pb.Cluster, environment *environment_pb.Environment) error {
 	if err := lel.validator.Validate(trigger); err != nil {
 		return err
 	}
 
-	spec, err := lel.specBuilder.BuildSpec(ctx, trigger, environment)
+	spec, err := lel.specBuilder.BuildSpec(ctx, trigger, cluster, environment)
 	if err != nil {
 		return err
 	}
 
 	deploymentId := trigger.DeploymentId
 
+	deploymentKeys := &deployer_pb.DeploymentKeys{
+		DeploymentId:  trigger.DeploymentId,
+		EnvironmentId: trigger.EnvironmentId,
+		// These don't mean anything locally.
+		StackId:   uuid.NewString(),
+		ClusterId: uuid.NewString(),
+	}
+
 	tx := lel.storage
 
 	eventQueue := []*deployer_pb.DeploymentEvent{{
-		Keys: &deployer_pb.DeploymentKeys{
-			DeploymentId: trigger.DeploymentId,
-		},
+		Keys: deploymentKeys,
 		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
@@ -111,9 +117,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 			},
 		},
 	}, {
-		Keys: &deployer_pb.DeploymentKeys{
-			DeploymentId: trigger.DeploymentId,
-		},
+		Keys: deploymentKeys,
 		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
@@ -144,13 +148,12 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 		if errors.Is(err, deployer.DeploymentNotFoundError) {
 			deployment = &deployer_pb.DeploymentState{
 				Metadata: &psm_pb.StateMetadata{},
-				Keys: &deployer_pb.DeploymentKeys{
-					DeploymentId: deploymentId,
-				},
+				Keys:     deploymentKeys,
 			}
 		} else if err != nil {
 			return err
 		}
+		innerEvent.Keys = deploymentKeys
 
 		baton := &TransitionData{
 			CausedBy: innerEvent,
@@ -214,7 +217,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 
 			if lel.confirmPlan {
 				if evt.PSMEventKey() == deployer_pb.DeploymentPSMEventRunSteps {
-					if !confirmPlan(deployment) {
+					if !confirmPlan(evt.(*deployer_pb.DeploymentEventType_RunSteps)) {
 						return nil
 					}
 
@@ -247,9 +250,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 
 			if result != nil {
 				mapped := &deployer_pb.DeploymentEvent{
-					Keys: &deployer_pb.DeploymentKeys{
-						DeploymentId: deploymentId,
-					},
+					Keys: deploymentKeys,
 					Metadata: &psm_pb.EventMetadata{
 						EventId:   uuid.NewString(),
 						Timestamp: timestamppb.Now(),
@@ -287,13 +288,13 @@ func AskBool(prompt string) bool {
 	return strings.HasPrefix(strings.ToLower(answer), "y")
 }
 
-func confirmPlan(deployment *deployer_pb.DeploymentState) bool {
+func confirmPlan(deployment *deployer_pb.DeploymentEventType_RunSteps) bool {
 	fmt.Printf("CONFIRM STEPS\n")
 	stepMap := make(map[string]*deployer_pb.DeploymentStep)
-	for _, step := range deployment.Data.Steps {
+	for _, step := range deployment.Steps {
 		stepMap[step.Id] = step
 	}
-	for _, step := range deployment.Data.Steps {
+	for _, step := range deployment.Steps {
 		typeKey, _ := step.Request.TypeKey()
 		fmt.Printf("- %s (%s)\n", step.Name, typeKey)
 		for _, dep := range step.DependsOn {

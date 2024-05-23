@@ -3,9 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	sq "github.com/elgris/sqrl"
@@ -59,9 +57,12 @@ type CommandService struct {
 	deploymentStateMachine  *deployer_pb.DeploymentPSM
 	environmentStateMachine *deployer_pb.EnvironmentPSM
 	stackStateMachine       *deployer_pb.StackPSM
+	clusterStateMachine     *deployer_pb.ClusterPSM
 
 	db     *sqrlx.Wrapper
 	github github.IClient
+
+	*LookupProvider
 
 	*deployer_spb.UnimplementedDeploymentCommandServiceServer
 }
@@ -72,145 +73,21 @@ func NewCommandService(conn sqrlx.Connection, github github.IClient, stateMachin
 		return nil, err
 	}
 
+	lookupProvider, err := NewLookupProvider(conn)
+	if err != nil {
+		return nil, err
+	}
+
 	return &CommandService{
 		deploymentStateMachine:  stateMachines.Deployment,
 		environmentStateMachine: stateMachines.Environment,
 		stackStateMachine:       stateMachines.Stack,
+		clusterStateMachine:     stateMachines.Cluster,
+		LookupProvider:          lookupProvider,
 
 		db:     db,
 		github: github,
 	}, nil
-}
-
-type environmentIdentifiers struct {
-	fullName string
-	id       string
-}
-
-type stackIdentifiers struct {
-	environment environmentIdentifiers
-	appName     string
-	stackID     string
-}
-
-func (ds *CommandService) lookupStack(ctx context.Context, presented string) (stackIdentifiers, error) {
-
-	query := sq.
-		Select(
-			"id",
-			"state->'data'->>'applicationName'",
-			"state->'data'->>'environmentId'",
-			"state->'data'->>'environmentName'",
-		).From("stack")
-
-	fallbackAppName := ""
-	fallbackEnvName := ""
-
-	parts := strings.Split(presented, "-")
-	if len(parts) == 2 {
-		query.Where("env_name = ?", parts[0])
-		query.Where("app_name = ?", parts[1])
-		fallbackEnvName = parts[0]
-		fallbackAppName = parts[1]
-	} else if _, err := uuid.Parse(presented); err == nil {
-		query = query.Where("id = ?", presented)
-	} else {
-		return stackIdentifiers{}, status.Error(codes.InvalidArgument, "invalid stack id")
-	}
-
-	res := stackIdentifiers{}
-
-	err := ds.db.Transact(ctx, &sqrlx.TxOptions{
-		Isolation: sql.LevelReadCommitted,
-		ReadOnly:  true,
-		Retryable: true,
-	}, func(ctx context.Context, tx sqrlx.Transaction) error {
-		err := tx.SelectRow(ctx, query).Scan(
-			&res.stackID,
-			&res.appName,
-			&res.environment.id,
-			&res.environment.fullName,
-		)
-		if err == nil { // HAPPY SAD FLIP
-			return nil
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-
-		if fallbackAppName == "" {
-			return status.Error(codes.NotFound, "stack not found")
-		}
-
-		res.appName = fallbackAppName
-		res.environment.fullName = fallbackEnvName
-
-		err = tx.SelectRow(ctx, sq.Select("id").
-			From("environment").Where("state->'data'->'config'->>'fullName' = ?", fallbackEnvName)).
-			Scan(&res.environment.id)
-
-		if errors.Is(err, sql.ErrNoRows) {
-			return status.Errorf(codes.NotFound, "environment %s not found", fallbackEnvName)
-		} else if err != nil {
-			return err
-		}
-
-		return nil
-	})
-	if err != nil {
-		return res, err
-	}
-
-	if res.stackID == "" {
-		res.stackID = states.StackID(fallbackEnvName, fallbackAppName)
-		log.WithFields(ctx, map[string]interface{}{
-			"stack_id":    res.stackID,
-			"environment": fallbackEnvName,
-			"application": fallbackAppName,
-		}).Debug("derived stack id")
-	}
-
-	return res, nil
-
-}
-
-var environmentIDNamespace = uuid.MustParse("0D783718-F8FD-4543-AE3D-6382AB0B8178")
-
-func (ds *CommandService) lookupEnvironment(ctx context.Context, presented string) (environmentIdentifiers, error) {
-	query := sq.
-		Select("id", "state->'data'->'config'->>'fullName'").
-		From("environment")
-
-	fallbackToName := ""
-	if _, err := uuid.Parse(presented); err == nil {
-		query = query.Where("id = ?", presented)
-	} else {
-		query = query.Where("state->'data'->'config'->>'fullName' = ?", presented)
-		fallbackToName = presented
-	}
-
-	res := environmentIdentifiers{}
-	err := ds.db.Transact(ctx, &sqrlx.TxOptions{
-		Isolation: sql.LevelReadCommitted,
-		ReadOnly:  true,
-		Retryable: true,
-	}, func(ctx context.Context, tx sqrlx.Transaction) error {
-		return tx.SelectRow(ctx, query).Scan(&res.id, &res.fullName)
-	})
-	if errors.Is(err, sql.ErrNoRows) {
-		if fallbackToName == "" {
-			return res, status.Error(codes.NotFound, "environment not found")
-		}
-		id := uuid.NewSHA1(environmentIDNamespace, []byte(fallbackToName)).String()
-		return environmentIdentifiers{
-			fullName: fallbackToName,
-			id:       id,
-		}, nil
-
-	} else if err != nil {
-		return res, err
-	}
-	return res, nil
 }
 
 func (ds *CommandService) TriggerDeployment(ctx context.Context, req *deployer_spb.TriggerDeploymentRequest) (*deployer_spb.TriggerDeploymentResponse, error) {
@@ -238,7 +115,7 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *deployer_s
 		return nil, fmt.Errorf("multiple applications found in push event, not yet supported")
 	}
 
-	environmentID, err := ds.lookupEnvironment(ctx, req.Environment)
+	environmentID, err := ds.lookupEnvironment(ctx, req.Environment, "")
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +124,7 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *deployer_s
 		DeploymentId:  req.DeploymentId,
 		Application:   apps[0],
 		Version:       gh.GetCommit(),
-		EnvironmentId: environmentID.id,
+		EnvironmentId: environmentID.environmentID,
 		Flags:         req.Flags,
 		Source: &deployer_pb.CodeSourceType{
 			Type: &deployer_pb.CodeSourceType_Github_{
@@ -270,9 +147,8 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *deployer_s
 	}
 
 	return &deployer_spb.TriggerDeploymentResponse{
-		DeploymentId:    req.DeploymentId,
-		EnvironmentId:   environmentID.id,
-		EnvironmentName: environmentID.fullName,
+		DeploymentId:  req.DeploymentId,
+		EnvironmentId: environmentID.environmentID,
 	}, nil
 }
 
@@ -322,10 +198,17 @@ func (ds *CommandService) UpsertEnvironment(ctx context.Context, req *deployer_s
 	if req.EnvironmentId == "" || req.EnvironmentId == "-" {
 		req.EnvironmentId = config.FullName
 	}
-	identifiers, err := ds.lookupEnvironment(ctx, req.EnvironmentId)
+	identifiers, err := ds.lookupEnvironment(ctx, req.EnvironmentId, req.ClusterId)
 	if err != nil {
 		return nil, err
 	}
+
+	log.WithFields(ctx, map[string]interface{}{
+		"environmentID": identifiers.environmentID,
+		"clusterID":     identifiers.clusterID,
+		"envName":       identifiers.fullName,
+	}).Debug("environment identifiers")
+
 	cause := CommandCause(ctx)
 	if cause == nil {
 		return nil, status.Error(codes.Internal, "no actor")
@@ -333,7 +216,8 @@ func (ds *CommandService) UpsertEnvironment(ctx context.Context, req *deployer_s
 
 	event := &deployer_pb.EnvironmentPSMEventSpec{
 		Keys: &deployer_pb.EnvironmentKeys{
-			EnvironmentId: identifiers.id,
+			EnvironmentId: identifiers.environmentID,
+			ClusterId:     identifiers.clusterID,
 		},
 		EventID:   uuid.NewString(),
 		Timestamp: time.Now(),
@@ -362,14 +246,16 @@ func (ds *CommandService) UpsertStack(ctx context.Context, req *deployer_spb.Ups
 
 	event := &deployer_pb.StackPSMEventSpec{
 		Keys: &deployer_pb.StackKeys{
-			StackId: identifiers.stackID,
+			StackId:       identifiers.stackID,
+			EnvironmentId: identifiers.environment.environmentID,
+			ClusterId:     identifiers.environment.clusterID,
 		},
 		EventID:   uuid.NewString(),
 		Timestamp: time.Now(),
 		Cause:     CommandCause(ctx),
 		Event: &deployer_pb.StackEventType_Configured{
 			Config:          req.Config,
-			EnvironmentId:   identifiers.environment.id,
+			EnvironmentId:   identifiers.environment.environmentID,
 			ApplicationName: identifiers.appName,
 			EnvironmentName: identifiers.environment.fullName,
 		},
@@ -383,4 +269,108 @@ func (ds *CommandService) UpsertStack(ctx context.Context, req *deployer_spb.Ups
 	return &deployer_spb.UpsertStackResponse{
 		State: newState,
 	}, nil
+}
+
+func (ds *CommandService) UpsertCluster(ctx context.Context, req *deployer_spb.UpsertClusterRequest) (*deployer_spb.UpsertClusterResponse, error) {
+
+	var config *environment_pb.CombinedConfig
+	switch src := req.Src.(type) {
+	case *deployer_spb.UpsertClusterRequest_Config:
+		config = src.Config
+
+	case *deployer_spb.UpsertClusterRequest_ConfigYaml:
+		config = &environment_pb.CombinedConfig{}
+		if err := protoread.Parse("env.yaml", src.ConfigYaml, config); err != nil {
+			return nil, fmt.Errorf("unmarshal: %w", err)
+		}
+
+	case *deployer_spb.UpsertClusterRequest_ConfigJson:
+		config = &environment_pb.CombinedConfig{}
+		if err := protoread.Parse("env.json", src.ConfigJson, config); err != nil {
+			return nil, fmt.Errorf("unmarshal: %w", err)
+		}
+
+	default:
+		return nil, status.Error(codes.InvalidArgument, "invalid config type")
+	}
+
+	if req.ClusterId == "" {
+		req.ClusterId = config.Name
+	}
+
+	identifiers, err := ds.lookupCluster(ctx, req.ClusterId)
+	if err != nil {
+		return nil, err
+	}
+	cause := CommandCause(ctx)
+	if cause == nil {
+		return nil, status.Error(codes.Internal, "no actor")
+	}
+
+	cluster := &environment_pb.Cluster{
+		Name: config.Name,
+	}
+	switch et := config.Provider.(type) {
+	case *environment_pb.CombinedConfig_EcsCluster:
+		cluster.Provider = &environment_pb.Cluster_EcsCluster{
+			EcsCluster: et.EcsCluster,
+		}
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "unsupported provider %T", config.Provider)
+	}
+
+	event := &deployer_pb.ClusterPSMEventSpec{
+		Keys: &deployer_pb.ClusterKeys{
+			ClusterId: identifiers.clusterID,
+		},
+		EventID:   uuid.NewString(),
+		Timestamp: time.Now(),
+		Cause:     cause,
+		Event: &deployer_pb.ClusterEventType_Configured{
+			Config: cluster,
+		},
+	}
+
+	envEvents := make([]*deployer_pb.EnvironmentPSMEventSpec, 0, len(config.Environments))
+
+	for _, envConfig := range config.Environments {
+		event := &deployer_pb.EnvironmentPSMEventSpec{
+			Keys: &deployer_pb.EnvironmentKeys{
+				EnvironmentId: environmentNameID(envConfig.FullName),
+				ClusterId:     identifiers.clusterID,
+			},
+			EventID:   uuid.NewString(),
+			Timestamp: time.Now(),
+			Cause:     cause,
+			Event: &deployer_pb.EnvironmentEventType_Configured{
+				Config: envConfig,
+			},
+		}
+		envEvents = append(envEvents, event)
+	}
+	response := &deployer_spb.UpsertClusterResponse{}
+
+	if err := ds.db.Transact(ctx, &sqrlx.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+		ReadOnly:  false,
+	}, func(ctx context.Context, tx sqrlx.Transaction) error {
+		state, err := ds.clusterStateMachine.TransitionInTx(ctx, tx, event)
+		if err != nil {
+			return fmt.Errorf("cluster transition: %w", err)
+		}
+		response.State = state
+
+		for _, evt := range envEvents {
+			_, err := ds.environmentStateMachine.TransitionInTx(ctx, tx, evt)
+			if err != nil {
+				return fmt.Errorf("environment transition: %w", err)
+			}
+
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return response, nil
 }

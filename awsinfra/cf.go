@@ -9,7 +9,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
-	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	snstypes "github.com/aws/aws-sdk-go-v2/service/sns/types"
 	"github.com/aws/smithy-go"
@@ -20,34 +19,47 @@ import (
 )
 
 type CFClient struct {
-	cfClient     CloudFormationAPI
-	elbClient    ELBV2API
-	snsClient    SNSAPI
-	CallbackARNs []string
+	cfClient             CloudFormationAPI
+	elbClient            ELBV2API
+	snsClient            SNSAPI
+	s3Client             S3API
+	secretsManagerClient SecretsManagerAPI
+	region               string
+	accountID            string
+	CallbackARNs         []string
 }
 
-func NewCFAdapter(cfClient CloudFormationAPI, elbClient ELBV2API, snsClient SNSAPI, callbackARNs []string) *CFClient {
+func NewCFAdapter(clients *DeployerClients, callbackARNs []string) *CFClient {
 	return &CFClient{
-		cfClient:     cfClient,
-		elbClient:    elbClient,
-		snsClient:    snsClient,
-		CallbackARNs: callbackARNs,
+		cfClient:             clients.CloudFormation,
+		elbClient:            clients.ELB,
+		snsClient:            clients.SNS,
+		s3Client:             clients.S3,
+		secretsManagerClient: clients.SecretsManager,
+		region:               clients.Region,
+		accountID:            clients.AccountID,
+		CallbackARNs:         callbackARNs,
 	}
 }
 
-func NewCFAdapterFromConfig(config aws.Config, callbackARNs []string) *CFClient {
-	return NewCFAdapter(
-		cloudformation.NewFromConfig(config),
-		elasticloadbalancingv2.NewFromConfig(config),
-		sns.NewFromConfig(config),
-		callbackARNs,
-	)
+func NewCFAdapterFromConfig(ctx context.Context, config aws.Config, callbackARNs []string) (*CFClient, error) {
+	clients, err := NewDeployerClientsFromConfig(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	return NewCFAdapter(clients, callbackARNs), nil
 }
+
+func templateURL(tpl *deployer_pb.S3Template) string {
+	return fmt.Sprintf("https://s3.%s.amazonaws.com/%s/%s", tpl.Region, tpl.Bucket, tpl.Key)
+}
+
 func (cf *CFClient) GetOneStack(ctx context.Context, stackName string) (*StackStatus, error) {
 	stack, err := cf.getOneStack(ctx, stackName)
 	if err != nil {
 		return nil, err
 	}
+
 	summary, err := summarizeStackStatus(stack)
 	if err != nil {
 		return nil, err
@@ -145,16 +157,27 @@ func (cf *CFClient) CreateNewStack(ctx context.Context, reqToken string, msg *de
 		return err
 	}
 
-	_, err = cf.cfClient.CreateStack(ctx, &cloudformation.CreateStackInput{
+	input := &cloudformation.CreateStackInput{
 		StackName:          aws.String(msg.Spec.StackName),
 		ClientRequestToken: aws.String(reqToken),
-		TemplateURL:        aws.String(msg.Spec.TemplateUrl),
 		Parameters:         parameters,
 		Capabilities: []types.Capability{
 			types.CapabilityCapabilityNamedIam,
 		},
 		NotificationARNs: cf.CallbackARNs,
-	})
+	}
+
+	switch tpl := msg.Spec.Template.(type) {
+	case *deployer_pb.CFStackInput_TemplateBody:
+		input.TemplateBody = aws.String(tpl.TemplateBody)
+	case *deployer_pb.CFStackInput_S3Template:
+		input.TemplateURL = aws.String(templateURL(tpl.S3Template))
+	case *deployer_pb.CFStackInput_EmptyStack:
+		input.TemplateBody = aws.String(EmptyTemplate())
+	default:
+		return fmt.Errorf("unknown template type: %T", tpl)
+	}
+	_, err = cf.cfClient.CreateStack(ctx, input)
 	if err != nil {
 		return err
 	}
@@ -178,22 +201,153 @@ func (cf *CFClient) UpdateStack(ctx context.Context, reqToken string, msg *deplo
 	if err != nil {
 		return err
 	}
-
-	_, err = cf.cfClient.UpdateStack(ctx, &cloudformation.UpdateStackInput{
+	input := &cloudformation.UpdateStackInput{
 		StackName:          aws.String(msg.Spec.StackName),
 		ClientRequestToken: aws.String(reqToken),
-		TemplateURL:        aws.String(msg.Spec.TemplateUrl),
 		Parameters:         parameters,
 		Capabilities: []types.Capability{
 			types.CapabilityCapabilityNamedIam,
 		},
 		NotificationARNs: cf.CallbackARNs,
-	})
+	}
+	switch tpl := msg.Spec.Template.(type) {
+	case *deployer_pb.CFStackInput_TemplateBody:
+		input.TemplateBody = aws.String(tpl.TemplateBody)
+	case *deployer_pb.CFStackInput_S3Template:
+		input.TemplateURL = aws.String(templateURL(tpl.S3Template))
+	case *deployer_pb.CFStackInput_EmptyStack:
+		input.TemplateBody = aws.String(EmptyTemplate())
+	default:
+		return fmt.Errorf("unknown template type: %T", tpl)
+	}
+
+	_, err = cf.cfClient.UpdateStack(ctx, input)
+
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (cf *CFClient) CreateChangeSet(ctx context.Context, reqToken string, msg *deployer_tpb.CreateChangeSetMessage) error {
+
+	if err := cf.upsertExtraResources(ctx, msg.Spec); err != nil {
+		return err
+	}
+
+	var currentParameters []types.Parameter
+	current, err := cf.getOneStack(ctx, msg.Spec.StackName)
+	if err != nil {
+		return err
+	}
+
+	if current != nil {
+		currentParameters = current.Parameters
+	}
+
+	// TODO: Re-use assigned priorities for routes by using the previous input
+	parameters, err := cf.resolveParameters(ctx, currentParameters, msg.Spec.Parameters, msg.Spec.DesiredCount)
+	if err != nil {
+		return err
+	}
+
+	changeSetID := fmt.Sprintf("%s-%s", msg.Spec.StackName, reqToken)
+
+	input := &cloudformation.CreateChangeSetInput{
+		StackName:     aws.String(msg.Spec.StackName),
+		ChangeSetName: aws.String(changeSetID),
+		Parameters:    parameters,
+		Capabilities: []types.Capability{
+			types.CapabilityCapabilityNamedIam,
+		},
+		NotificationARNs: cf.CallbackARNs,
+	}
+
+	if msg.ImportResources {
+		templateBody := ""
+		switch tpl := msg.Spec.Template.(type) {
+		case *deployer_pb.CFStackInput_TemplateBody:
+			templateBody = tpl.TemplateBody
+		case *deployer_pb.CFStackInput_S3Template:
+			template, err := cf.downloadCFTemplate(ctx, tpl.S3Template)
+			if err != nil {
+				return err
+			}
+			templateBody = template
+		case *deployer_pb.CFStackInput_EmptyStack:
+			return fmt.Errorf("cannot import resources with empty stack")
+		default:
+			return fmt.Errorf("unknown template type: %T", tpl)
+		}
+
+		importResult, err := cf.ImportResources(ctx, templateBody, parameters)
+		if err != nil {
+			return err
+		}
+
+		if len(importResult.Imports) == 0 {
+			return fmt.Errorf("no resources to import")
+		}
+
+		input.ResourcesToImport = importResult.Imports
+		input.TemplateBody = aws.String(importResult.NewTemplate)
+		//input.ImportExistingResources = aws.Bool(true)
+		input.ChangeSetType = types.ChangeSetTypeImport
+
+	} else {
+		switch tpl := msg.Spec.Template.(type) {
+		case *deployer_pb.CFStackInput_TemplateBody:
+			input.TemplateBody = aws.String(tpl.TemplateBody)
+		case *deployer_pb.CFStackInput_S3Template:
+			input.TemplateURL = aws.String(templateURL(tpl.S3Template))
+		case *deployer_pb.CFStackInput_EmptyStack:
+			input.TemplateBody = aws.String(EmptyTemplate())
+		default:
+			return fmt.Errorf("unknown template type: %T", tpl)
+		}
+	}
+
+	_, err = cf.cfClient.CreateChangeSet(ctx, input)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type ChangeSetStatus struct {
+	Status    string
+	Lifecycle deployer_pb.CFChangesetLifecycle
+}
+
+func (cf *CFClient) GetChangeSet(ctx context.Context, stackName, changeSetName string) (*ChangeSetStatus, error) {
+	res, err := cf.cfClient.DescribeChangeSet(ctx, &cloudformation.DescribeChangeSetInput{
+		ChangeSetName: aws.String(changeSetName),
+		StackName:     aws.String(stackName),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	lifecycle, ok := map[types.ChangeSetStatus]deployer_pb.CFChangesetLifecycle{
+		types.ChangeSetStatusCreatePending:    deployer_pb.CFChangesetLifecycle_UNSPECIFIED,
+		types.ChangeSetStatusCreateInProgress: deployer_pb.CFChangesetLifecycle_UNSPECIFIED,
+		types.ChangeSetStatusCreateComplete:   deployer_pb.CFChangesetLifecycle_AVAILABLE,
+		types.ChangeSetStatusDeletePending:    deployer_pb.CFChangesetLifecycle_UNSPECIFIED,
+		types.ChangeSetStatusDeleteInProgress: deployer_pb.CFChangesetLifecycle_UNSPECIFIED,
+		types.ChangeSetStatusDeleteComplete:   deployer_pb.CFChangesetLifecycle_TERMINAL,
+		types.ChangeSetStatusDeleteFailed:     deployer_pb.CFChangesetLifecycle_TERMINAL,
+		types.ChangeSetStatusFailed:           deployer_pb.CFChangesetLifecycle_TERMINAL,
+	}[res.Status]
+	if !ok {
+		return nil, fmt.Errorf("unknown changeset status: %s", res.Status)
+	}
+
+	return &ChangeSetStatus{
+		Status:    string(res.Status),
+		Lifecycle: lifecycle,
+	}, nil
 }
 
 func (cf *CFClient) ScaleStack(ctx context.Context, reqToken string, msg *deployer_tpb.ScaleStackMessage) error {

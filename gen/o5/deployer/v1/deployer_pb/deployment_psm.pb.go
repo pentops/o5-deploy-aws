@@ -342,7 +342,11 @@ var DefaultDeploymentPSMTableSpec = DeploymentPSMTableSpec{
 		TableName:  "deployment",
 		DataColumn: "state",
 		StoreExtraColumns: func(state *DeploymentState) (map[string]interface{}, error) {
-			return map[string]interface{}{}, nil
+			return map[string]interface{}{
+				"stack_id":       state.Keys.StackId,
+				"environment_id": state.Keys.EnvironmentId,
+				"cluster_id":     state.Keys.ClusterId,
+			}, nil
 		},
 		PKFieldPaths: []string{
 			"keys.deployment_id",
@@ -354,11 +358,14 @@ var DefaultDeploymentPSMTableSpec = DeploymentPSMTableSpec{
 		StoreExtraColumns: func(event *DeploymentEvent) (map[string]interface{}, error) {
 			metadata := event.Metadata
 			return map[string]interface{}{
-				"id":            metadata.EventId,
-				"timestamp":     metadata.Timestamp,
-				"cause":         metadata.Cause,
-				"sequence":      metadata.Sequence,
-				"deployment_id": event.Keys.DeploymentId,
+				"id":             metadata.EventId,
+				"timestamp":      metadata.Timestamp,
+				"cause":          metadata.Cause,
+				"sequence":       metadata.Sequence,
+				"deployment_id":  event.Keys.DeploymentId,
+				"stack_id":       event.Keys.StackId,
+				"environment_id": event.Keys.EnvironmentId,
+				"cluster_id":     event.Keys.ClusterId,
 			}, nil
 		},
 		PKFieldPaths: []string{

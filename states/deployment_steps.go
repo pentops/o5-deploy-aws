@@ -24,10 +24,59 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 		return &deployer_pb.CFStackInput{
 			StackName:    deployment.StackName,
 			DesiredCount: desiredCount,
-			TemplateUrl:  deployment.Spec.TemplateUrl,
-			Parameters:   deployment.Spec.Parameters,
-			SnsTopics:    deployment.Spec.SnsTopics,
+			Template: &deployer_pb.CFStackInput_S3Template{
+				S3Template: deployment.Spec.Template,
+			},
+			Parameters: deployment.Spec.Parameters,
+			SnsTopics:  deployment.Spec.SnsTopics,
 		}
+	}
+
+	if input.flags.ImportResources {
+
+		if input.stackStatus != nil {
+			return nil, fmt.Errorf("cannot import resources into an existing stack")
+		}
+		spec := stackInput(0)
+		spec.Template = &deployer_pb.CFStackInput_EmptyStack{
+			EmptyStack: true,
+		}
+		spec.Parameters = nil
+
+		createEmptyStack := &deployer_pb.DeploymentStep{
+			Id:     uuid.NewString(),
+			Name:   "CFCreate",
+			Status: deployer_pb.StepStatus_UNSPECIFIED,
+			Request: &deployer_pb.StepRequestType{
+				Type: &deployer_pb.StepRequestType_CfCreate{
+					CfCreate: &deployer_pb.StepRequestType_CFCreate{
+						Spec:       spec,
+						EmptyStack: true,
+					},
+				},
+			},
+		}
+
+		plan = append(plan, createEmptyStack)
+
+		createChangeset := &deployer_pb.DeploymentStep{
+			Id:     uuid.NewString(),
+			Name:   "CFPlan",
+			Status: deployer_pb.StepStatus_UNSPECIFIED,
+			Request: &deployer_pb.StepRequestType{
+				Type: &deployer_pb.StepRequestType_CfPlan{
+					CfPlan: &deployer_pb.StepRequestType_CFPlan{
+						Spec:            stackInput(0),
+						ImportResources: true,
+					},
+				},
+			},
+		}
+
+		plan = append(plan, createChangeset)
+
+		return plan, nil
+
 	}
 
 	if input.flags.QuickMode || input.flags.InfraOnly {
@@ -328,8 +377,16 @@ func stepToSideEffect(step *deployer_pb.DeploymentStep, deployment *deployer_pb.
 
 	case *deployer_pb.StepRequestType_CfCreate:
 		return &deployer_tpb.CreateNewStackMessage{
-			Request: requestMetadata,
-			Spec:    st.CfCreate.Spec,
+			Request:    requestMetadata,
+			Spec:       st.CfCreate.Spec,
+			EmptyStack: st.CfCreate.EmptyStack,
+		}, nil
+
+	case *deployer_pb.StepRequestType_CfPlan:
+		return &deployer_tpb.CreateChangeSetMessage{
+			Request:         requestMetadata,
+			Spec:            st.CfPlan.Spec,
+			ImportResources: st.CfPlan.ImportResources,
 		}, nil
 
 	case *deployer_pb.StepRequestType_PgUpsert:

@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
@@ -24,8 +25,8 @@ type InfraAdapter struct {
 	ecsClient *ecsRunner
 }
 
-func NewInfraAdapter(ctx context.Context, cl awsinfra.DeployerClients) (*InfraAdapter, error) {
-	cfClient := awsinfra.NewCFAdapter(cl.CloudFormation, cl.ELB, cl.SNS, []string{})
+func NewInfraAdapter(ctx context.Context, cl *awsinfra.DeployerClients) (*InfraAdapter, error) {
+	cfClient := awsinfra.NewCFAdapter(cl, []string{})
 	dbMigrator := awsinfra.NewDBMigrator(cl.SecretsManager)
 	ecsClient := &ecsRunner{
 		ecsClient: cl.ECS,
@@ -39,7 +40,11 @@ func NewInfraAdapter(ctx context.Context, cl awsinfra.DeployerClients) (*InfraAd
 }
 
 func NewInfraAdapterFromConfig(ctx context.Context, config aws.Config) (*InfraAdapter, error) {
-	cfClient := awsinfra.NewCFAdapterFromConfig(config, []string{})
+	cfClient, err := awsinfra.NewCFAdapterFromConfig(ctx, config, []string{})
+	if err != nil {
+		return nil, err
+	}
+
 	dbMigrator := awsinfra.NewDBMigrator(secretsmanager.NewFromConfig(config))
 	ecsClient := &ecsRunner{
 		ecsClient: ecs.NewFromConfig(config),
@@ -61,7 +66,7 @@ func stackEvent(msg *deployer_tpb.StackStatusChangedMessage, err error) (*deploy
 		return nil, err
 	}
 	if msg == nil {
-		return nil, fmt.Errorf("missing message")
+		return nil, fmt.Errorf("stackEvent: msg and error are nil")
 	}
 	if msg.Request == nil {
 		return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
@@ -87,8 +92,29 @@ func dbEvent(msg *deployer_tpb.PostgresDatabaseStatusMessage, err error) (*deplo
 	return event, nil
 }
 
+func changesetEvent(msg *deployer_tpb.ChangeSetStatusChangedMessage, err error) (*deployer_pb.DeploymentPSMEventSpec, error) {
+	if err != nil {
+		return nil, err
+	}
+
+	if msg == nil {
+		return nil, fmt.Errorf("changesetEvent: msg and error are nil")
+	}
+
+	if msg.Request == nil {
+		return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
+	}
+
+	event, err := service.ChangeSetStatusToEvent(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	return event, nil
+}
+
 func (cf *InfraAdapter) HandleMessage(ctx context.Context, msg proto.Message) (*deployer_pb.DeploymentPSMEventSpec, error) {
-	log.WithField(ctx, "infraReq", msg).Debug("InfraHandleMessage")
+	log.WithField(ctx, "infraReq", msg.ProtoReflect().Descriptor().FullName()).Debug("InfraHandleMessage")
 	switch msg := msg.(type) {
 	case *deployer_tpb.UpdateStackMessage:
 		if msg.Request == nil {
@@ -101,6 +127,9 @@ func (cf *InfraAdapter) HandleMessage(ctx context.Context, msg proto.Message) (*
 			return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
 		}
 		return stackEvent(cf.CreateNewStack(ctx, msg))
+
+	case *deployer_tpb.CreateChangeSetMessage:
+		return changesetEvent(cf.CreateChangeSet(ctx, msg))
 
 	case *deployer_tpb.ScaleStackMessage:
 		if msg.Request == nil {
@@ -250,6 +279,24 @@ func (cf *InfraAdapter) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleS
 	return cf.pollStack(ctx, msg.StackName, reqToken, msg.Request)
 }
 
+func (cf *InfraAdapter) CreateChangeSet(ctx context.Context, msg *deployer_tpb.CreateChangeSetMessage) (*deployer_tpb.ChangeSetStatusChangedMessage, error) {
+
+	reqToken := newToken()
+
+	err := cf.cfClient.CreateChangeSet(ctx, reqToken, msg)
+	if err != nil {
+		if awsinfra.IsNoUpdatesError(err) {
+			return &deployer_tpb.ChangeSetStatusChangedMessage{
+				Request: msg.Request,
+				Status:  "NO UPDATES TO BE PERFORMED",
+			}, nil
+		}
+		return nil, err
+	}
+
+	return cf.pollChangeSet(ctx, msg.Spec.StackName, reqToken, msg.Request)
+}
+
 type pgRequest interface {
 	GetRequest() *messaging_pb.RequestMetadata
 	GetMigrationId() string
@@ -367,5 +414,49 @@ func (cf *InfraAdapter) pollStack(
 		}, nil
 
 	}
+}
 
+func (cf *InfraAdapter) pollChangeSet(
+	ctx context.Context,
+	stackName string,
+	reqToken string,
+	request *messaging_pb.RequestMetadata,
+) (*deployer_tpb.ChangeSetStatusChangedMessage, error) {
+
+	changeSetID := fmt.Sprintf("%s-%s", stackName, reqToken)
+
+	ctx = log.WithFields(ctx, map[string]interface{}{
+		"stackName":   stackName,
+		"changeSetID": changeSetID,
+	})
+	log.Debug(ctx, "PollChangeSet Begin")
+
+	for {
+		remoteChangeSet, err := cf.cfClient.GetChangeSet(ctx, stackName, changeSetID)
+		if err != nil {
+			return nil, err
+		}
+
+		if remoteChangeSet == nil {
+			return nil, fmt.Errorf("missing changeset %s", changeSetID)
+		}
+
+		if remoteChangeSet.Lifecycle == deployer_pb.CFChangesetLifecycle_AVAILABLE {
+			return &deployer_tpb.ChangeSetStatusChangedMessage{
+				Request:       request,
+				StackName:     stackName,
+				Status:        remoteChangeSet.Status,
+				Lifecycle:     remoteChangeSet.Lifecycle,
+				EventId:       uuid.New().String(),
+				ChangeSetName: changeSetID,
+			}, nil
+		}
+
+		log.WithFields(ctx, map[string]interface{}{
+			"lifecycle": remoteChangeSet.Lifecycle.ShortString(),
+			"status":    remoteChangeSet.Status,
+		}).Debug("PollChangeSet Intermediate Result")
+		time.Sleep(1 * time.Second)
+
+	}
 }

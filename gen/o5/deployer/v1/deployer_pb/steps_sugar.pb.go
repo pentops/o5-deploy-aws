@@ -11,13 +11,16 @@ import (
 type StepOutputTypeKey string
 
 const (
-	StepOutput_CfStatus StepOutputTypeKey = "cfStatus"
+	StepOutput_CfStatus     StepOutputTypeKey = "cfStatus"
+	StepOutput_CfPlanStatus StepOutputTypeKey = "cfPlanStatus"
 )
 
 func (x *StepOutputType) TypeKey() (StepOutputTypeKey, bool) {
 	switch x.Type.(type) {
 	case *StepOutputType_CfStatus:
 		return StepOutput_CfStatus, true
+	case *StepOutputType_CfPlanStatus:
+		return StepOutput_CfPlanStatus, true
 	default:
 		return "", false
 	}
@@ -31,18 +34,25 @@ func (x *StepOutputType) Set(val IsStepOutputTypeWrappedType) {
 	switch v := val.(type) {
 	case *StepOutputType_CFStatus:
 		x.Type = &StepOutputType_CfStatus{CfStatus: v}
+	case *StepOutputType_CFPlanStatus:
+		x.Type = &StepOutputType_CfPlanStatus{CfPlanStatus: v}
 	}
 }
 func (x *StepOutputType) Get() IsStepOutputTypeWrappedType {
 	switch v := x.Type.(type) {
 	case *StepOutputType_CfStatus:
 		return v.CfStatus
+	case *StepOutputType_CfPlanStatus:
+		return v.CfPlanStatus
 	default:
 		return nil
 	}
 }
 func (x *StepOutputType_CFStatus) TypeKey() StepOutputTypeKey {
 	return StepOutput_CfStatus
+}
+func (x *StepOutputType_CFPlanStatus) TypeKey() StepOutputTypeKey {
+	return StepOutput_CfPlanStatus
 }
 
 type IsStepOutputType_Type = isStepOutputType_Type
@@ -166,6 +176,7 @@ func (x *StepRequestType_PGMigrate) TypeKey() StepRequestTypeKey {
 }
 
 type IsStepRequestType_Type = isStepRequestType_Type
+type IsCFStackInput_Template = isCFStackInput_Template
 type IsCloudFormationStackParameter_Source = isCloudFormationStackParameter_Source
 
 // CloudFormationStackParameterType is a oneof wrapper
@@ -460,5 +471,65 @@ func (x *CFLifecycle) Scan(value interface{}) error {
 	}
 	val := CFLifecycle_value_either[strVal]
 	*x = CFLifecycle(val)
+	return nil
+}
+
+// CFChangesetLifecycle
+const (
+	CFChangesetLifecycle_UNSPECIFIED CFChangesetLifecycle = 0
+	CFChangesetLifecycle_UNAVAILABLE CFChangesetLifecycle = 1
+	CFChangesetLifecycle_AVAILABLE   CFChangesetLifecycle = 2
+	CFChangesetLifecycle_EXECUTION   CFChangesetLifecycle = 3
+	CFChangesetLifecycle_TERMINAL    CFChangesetLifecycle = 4
+)
+
+var (
+	CFChangesetLifecycle_name_short = map[int32]string{
+		0: "UNSPECIFIED",
+		1: "UNAVAILABLE",
+		2: "AVAILABLE",
+		3: "EXECUTION",
+		4: "TERMINAL",
+	}
+	CFChangesetLifecycle_value_short = map[string]int32{
+		"UNSPECIFIED": 0,
+		"UNAVAILABLE": 1,
+		"AVAILABLE":   2,
+		"EXECUTION":   3,
+		"TERMINAL":    4,
+	}
+	CFChangesetLifecycle_value_either = map[string]int32{
+		"UNSPECIFIED":                        0,
+		"CF_CHANGESET_LIFECYCLE_UNSPECIFIED": 0,
+		"UNAVAILABLE":                        1,
+		"CF_CHANGESET_LIFECYCLE_UNAVAILABLE": 1,
+		"AVAILABLE":                          2,
+		"CF_CHANGESET_LIFECYCLE_AVAILABLE":   2,
+		"EXECUTION":                          3,
+		"CF_CHANGESET_LIFECYCLE_EXECUTION":   3,
+		"TERMINAL":                           4,
+		"CF_CHANGESET_LIFECYCLE_TERMINAL":    4,
+	}
+)
+
+// ShortString returns the un-prefixed string representation of the enum value
+func (x CFChangesetLifecycle) ShortString() string {
+	return CFChangesetLifecycle_name_short[int32(x)]
+}
+func (x CFChangesetLifecycle) Value() (driver.Value, error) {
+	return []uint8(x.ShortString()), nil
+}
+func (x *CFChangesetLifecycle) Scan(value interface{}) error {
+	var strVal string
+	switch vt := value.(type) {
+	case []uint8:
+		strVal = string(vt)
+	case string:
+		strVal = vt
+	default:
+		return fmt.Errorf("invalid type %T", value)
+	}
+	val := CFChangesetLifecycle_value_either[strVal]
+	*x = CFChangesetLifecycle(val)
 	return nil
 }

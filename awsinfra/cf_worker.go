@@ -154,6 +154,20 @@ func (cf *InfraWorker) UpdateStack(ctx context.Context, msg *deployer_tpb.Update
 	return &emptypb.Empty{}, nil
 }
 
+func (cf *InfraWorker) CreateChangeSet(ctx context.Context, msg *deployer_tpb.CreateChangeSetMessage) (*emptypb.Empty, error) {
+	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
+	if err != nil {
+		return nil, err
+	}
+
+	err = cf.CFClient.CreateChangeSet(ctx, reqToken, msg)
+	if err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
 func (cf *InfraWorker) CancelStackUpdate(ctx context.Context, msg *deployer_tpb.CancelStackUpdateMessage) (*emptypb.Empty, error) {
 	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
 	if err != nil {

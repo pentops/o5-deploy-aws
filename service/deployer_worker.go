@@ -53,43 +53,69 @@ func (dw *DeployerWorker) doDeploymentEvent(ctx context.Context, event *deployer
 	return err
 }
 
-func (dw *DeployerWorker) getEnvironment(ctx context.Context, environmentId string) (*environment_pb.Environment, error) {
+type appStack struct {
+	environment   *environment_pb.Environment
+	cluster       *environment_pb.Cluster
+	environmentID string
+	clusterID     string
+	stackID       string
+}
+
+func (dw *DeployerWorker) getEnvironment(ctx context.Context, environmentId string, appName string) (*appStack, error) {
 	var envJSON []byte
+	var clusterJSON []byte
 
 	err := dw.db.Transact(ctx, &sqrlx.TxOptions{
 		Isolation: sql.LevelReadCommitted,
 		ReadOnly:  true,
 		Retryable: true,
 	}, func(ctx context.Context, tx sqrlx.Transaction) error {
-
-		return tx.SelectRow(ctx, sq.Select("state").From("environment").Where("id = ?", environmentId)).Scan(&envJSON)
+		return tx.SelectRow(ctx, sq.Select("cluster.state", "environment.state").
+			From("environment").
+			LeftJoin("cluster ON cluster.id = environment.cluster_id").
+			Where("environment.id = ?", environmentId)).Scan(&clusterJSON, &envJSON)
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("environment %q not found", environmentId)
 	} else if err != nil {
 		return nil, err
 	}
+
+	cluster := &deployer_pb.ClusterState{}
+	if err := protojson.Unmarshal(clusterJSON, cluster); err != nil {
+		return nil, fmt.Errorf("unmarshal cluster: %w", err)
+	}
+
 	env := &deployer_pb.EnvironmentState{}
 	if err := protojson.Unmarshal(envJSON, env); err != nil {
 		return nil, fmt.Errorf("unmarshal environment: %w", err)
 	}
-	return env.Data.Config, nil
+	return &appStack{
+		environment:   env.Data.Config,
+		cluster:       cluster.Data.Config,
+		environmentID: env.Keys.EnvironmentId,
+		clusterID:     cluster.Keys.ClusterId,
+		stackID:       states.StackID(env.Data.Config.FullName, appName),
+	}, nil
 }
 
 func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_tpb.RequestDeploymentMessage) (*emptypb.Empty, error) {
-	environment, err := dw.getEnvironment(ctx, msg.EnvironmentId)
+	appID, err := dw.getEnvironment(ctx, msg.EnvironmentId, msg.Application.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	spec, err := dw.specBuilder.BuildSpec(ctx, msg, environment)
+	spec, err := dw.specBuilder.BuildSpec(ctx, msg, appID.cluster, appID.environment)
 	if err != nil {
 		return nil, err
 	}
 
 	createDeploymentEvent := &deployer_pb.DeploymentPSMEventSpec{
 		Keys: &deployer_pb.DeploymentKeys{
-			DeploymentId: msg.DeploymentId,
+			DeploymentId:  msg.DeploymentId,
+			EnvironmentId: appID.environmentID,
+			StackId:       appID.stackID,
+			ClusterId:     appID.clusterID,
 		},
 		EventID:   msg.DeploymentId,
 		Timestamp: time.Now(),
@@ -204,6 +230,78 @@ func StackStatusToEvent(msg *deployer_tpb.StackStatusChangedMessage) (*deployer_
 	}
 
 	return event, nil
+}
+
+func ChangeSetStatusToEvent(msg *deployer_tpb.ChangeSetStatusChangedMessage) (*deployer_pb.DeploymentPSMEventSpec, error) {
+	stepContext := &deployer_pb.StepContext{}
+	if err := proto.Unmarshal(msg.Request.Context, stepContext); err != nil {
+		return nil, err
+	}
+
+	event := &deployer_pb.DeploymentPSMEventSpec{
+		Keys: &deployer_pb.DeploymentKeys{
+			DeploymentId: stepContext.DeploymentId,
+		},
+		EventID:   msg.EventId,
+		Timestamp: time.Now(),
+		Cause: &psm_pb.Cause{
+			Type: &psm_pb.Cause_ExternalEvent{
+				ExternalEvent: &psm_pb.ExternalEventCause{
+					SystemName: "deployer",
+					EventName:  "PlanStatusChanged",
+					ExternalId: &msg.EventId,
+				},
+			},
+		},
+	}
+
+	if stepContext.Phase != deployer_pb.StepPhase_STEPS || stepContext.StepId == nil {
+		return nil, fmt.Errorf("Plan context expects STEPS and an ID")
+	}
+
+	status := deployer_pb.StepStatus_DONE
+	if msg.Lifecycle != deployer_pb.CFChangesetLifecycle_AVAILABLE {
+		status = deployer_pb.StepStatus_FAILED
+	}
+	changesetStatus := &deployer_pb.CFChangesetOutput{
+		Lifecycle: msg.Lifecycle,
+	}
+	stepStatus := &deployer_pb.DeploymentEventType_StepResult{
+		StepId: *stepContext.StepId,
+		Status: status,
+		Output: &deployer_pb.StepOutputType{
+			Type: &deployer_pb.StepOutputType_CfPlanStatus{
+				CfPlanStatus: &deployer_pb.StepOutputType_CFPlanStatus{
+					Output: changesetStatus,
+				},
+			},
+		},
+	}
+	event.Event = stepStatus
+
+	return event, nil
+}
+
+func (dw *DeployerWorker) ChangeSetStatusChanged(ctx context.Context, msg *deployer_tpb.ChangeSetStatusChangedMessage) (*emptypb.Empty, error) {
+	event, err := ChangeSetStatusToEvent(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	if event == nil {
+		return &emptypb.Empty{}, nil
+	}
+
+	if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
+		if _, err := dw.deploymentEventer.TransitionInTx(ctx, tx, event); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
 }
 
 func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *deployer_tpb.StackStatusChangedMessage) (*emptypb.Empty, error) {

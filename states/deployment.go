@@ -27,18 +27,6 @@ func buildRequestMetadata(contextMessage proto.Message) (*messaging_pb.RequestMe
 
 func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 	config := deployer_pb.DefaultDeploymentPSMConfig().
-		StoreExtraStateColumns(func(s *deployer_pb.DeploymentState) (map[string]interface{}, error) {
-			return map[string]interface{}{
-				"stack_id": s.Data.StackId,
-			}, nil
-		}).
-		StoreExtraEventColumns(func(e *deployer_pb.DeploymentEvent) (map[string]interface{}, error) {
-			return map[string]interface{}{
-				"id":            e.Metadata.EventId,
-				"deployment_id": e.Keys.DeploymentId,
-				"timestamp":     e.Metadata.Timestamp,
-			}, nil
-		}).
 		SystemActor(psm.MustSystemActor("9C88DF5B-6ED0-46DF-A389-474F27A7395F"))
 
 	sm, err := config.NewStateMachine()
@@ -56,7 +44,6 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		) error {
 			deployment.Spec = event.Spec
 			deployment.StackName = fmt.Sprintf("%s-%s", event.Spec.EnvironmentName, event.Spec.AppName)
-			deployment.StackId = StackID(event.Spec.EnvironmentName, event.Spec.AppName)
 
 			// No follow on, the stack state will trigger
 
@@ -172,8 +159,7 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 			deployment *deployer_pb.DeploymentStateData,
 			event *deployer_pb.DeploymentEventType_StepResult,
 		) error {
-			updateDeploymentStep(deployment, event)
-			return nil
+			return updateDeploymentStep(deployment, event)
 		})).
 		Hook(deployer_pb.DeploymentPSMHook(func(
 			ctx context.Context,
@@ -213,20 +199,21 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 			deployment *deployer_pb.DeploymentStateData,
 			event *deployer_pb.DeploymentEventType_StepResult,
 		) error {
-			updateDeploymentStep(deployment, event)
-			return nil
+			return updateDeploymentStep(deployment, event)
 		}))
 
 	return sm, nil
 }
 
-func updateDeploymentStep(deployment *deployer_pb.DeploymentStateData, event *deployer_pb.DeploymentEventType_StepResult) {
+func updateDeploymentStep(deployment *deployer_pb.DeploymentStateData, event *deployer_pb.DeploymentEventType_StepResult) error {
 	for _, step := range deployment.Steps {
 		if step.Id == event.StepId {
 			step.Status = event.Status
 			step.Output = event.Output
 			step.Error = event.Error
-			return
+			return nil
 		}
 	}
+
+	return fmt.Errorf("step %s not found", event.StepId)
 }

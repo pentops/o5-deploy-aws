@@ -262,7 +262,10 @@ var DefaultStackPSMTableSpec = StackPSMTableSpec{
 		TableName:  "stack",
 		DataColumn: "state",
 		StoreExtraColumns: func(state *StackState) (map[string]interface{}, error) {
-			return map[string]interface{}{}, nil
+			return map[string]interface{}{
+				"environment_id": state.Keys.EnvironmentId,
+				"cluster_id":     state.Keys.ClusterId,
+			}, nil
 		},
 		PKFieldPaths: []string{
 			"keys.stack_id",
@@ -274,11 +277,13 @@ var DefaultStackPSMTableSpec = StackPSMTableSpec{
 		StoreExtraColumns: func(event *StackEvent) (map[string]interface{}, error) {
 			metadata := event.Metadata
 			return map[string]interface{}{
-				"id":        metadata.EventId,
-				"timestamp": metadata.Timestamp,
-				"cause":     metadata.Cause,
-				"sequence":  metadata.Sequence,
-				"stack_id":  event.Keys.StackId,
+				"id":             metadata.EventId,
+				"timestamp":      metadata.Timestamp,
+				"cause":          metadata.Cause,
+				"sequence":       metadata.Sequence,
+				"stack_id":       event.Keys.StackId,
+				"environment_id": event.Keys.EnvironmentId,
+				"cluster_id":     event.Keys.ClusterId,
 			}, nil
 		},
 		PKFieldPaths: []string{

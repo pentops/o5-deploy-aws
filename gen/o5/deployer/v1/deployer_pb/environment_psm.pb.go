@@ -198,7 +198,9 @@ var DefaultEnvironmentPSMTableSpec = EnvironmentPSMTableSpec{
 		TableName:  "environment",
 		DataColumn: "state",
 		StoreExtraColumns: func(state *EnvironmentState) (map[string]interface{}, error) {
-			return map[string]interface{}{}, nil
+			return map[string]interface{}{
+				"cluster_id": state.Keys.ClusterId,
+			}, nil
 		},
 		PKFieldPaths: []string{
 			"keys.environment_id",
@@ -215,6 +217,7 @@ var DefaultEnvironmentPSMTableSpec = EnvironmentPSMTableSpec{
 				"cause":          metadata.Cause,
 				"sequence":       metadata.Sequence,
 				"environment_id": event.Keys.EnvironmentId,
+				"cluster_id":     event.Keys.ClusterId,
 			}, nil
 		},
 		PKFieldPaths: []string{

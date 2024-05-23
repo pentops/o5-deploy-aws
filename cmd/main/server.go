@@ -13,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	sq "github.com/elgris/sqrl"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
@@ -31,14 +30,10 @@ import (
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_tpb"
-	"github.com/pentops/protostate/gen/list/v1/psml_pb"
-	"github.com/pentops/protostate/psm"
 	"github.com/pentops/runner/commander"
-	"github.com/pentops/sqrlx.go/sqrlx"
 	"github.com/pressly/goose"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 var Version string
@@ -49,7 +44,6 @@ func main() {
 
 	cmdGroup.Add("serve", commander.NewCommand(runServe))
 	cmdGroup.Add("migrate", commander.NewCommand(runMigrate))
-	cmdGroup.Add("data-pass", commander.NewCommand(runDataPass))
 	cmdGroup.Add("local-deploy", commander.NewCommand(runLocalDeploy))
 
 	cmdGroup.RunMain("o5-deploy-aws", Version)
@@ -65,116 +59,6 @@ func runMigrate(ctx context.Context, config struct {
 	}
 
 	return goose.Up(db, "/migrations")
-}
-
-func runDataPass(ctx context.Context, config struct{}) error {
-	conn, err := service.OpenDatabase(ctx)
-	if err != nil {
-		return err
-	}
-
-	db, err := sqrlx.New(conn, sq.Dollar)
-	if err != nil {
-		return err
-	}
-
-	stateMachines, err := states.NewStateMachines()
-	if err != nil {
-		return err
-	}
-
-	{
-		stackQuery, err := deployer_spb.NewStackPSMQuerySet(
-			deployer_spb.DefaultStackPSMQuerySpec(stateMachines.Stack.StateTableSpec()),
-			psm.StateQueryOptions{},
-		)
-		if err != nil {
-			return fmt.Errorf("failed to build stack query: %w", err)
-		}
-
-		page := &psml_pb.PageRequest{}
-		for {
-			res := &deployer_spb.ListStacksResponse{}
-			if err := stackQuery.List(ctx, db, &deployer_spb.ListStacksRequest{
-				Page: page,
-			}, res); err != nil {
-				return err
-			}
-			if res.Page != nil && res.Page.NextToken != nil {
-				page.Token = res.Page.NextToken
-			} else {
-				break
-			}
-
-			for _, stack := range res.Stacks {
-				fmt.Printf("stack %s\n", protojson.Format(stack))
-				eventPage := &psml_pb.PageRequest{}
-				for {
-					res := &deployer_spb.ListStackEventsResponse{}
-					if err := stackQuery.ListEvents(ctx, db, &deployer_spb.ListStackEventsRequest{
-						StackId: stack.Keys.StackId,
-						Page:    eventPage,
-					}, res); err != nil {
-						return err
-					}
-
-					if res.Page != nil && res.Page.NextToken != nil {
-						eventPage.Token = res.Page.NextToken
-					} else {
-						break
-					}
-				}
-
-			}
-		}
-	}
-
-	{
-		deploymentQuery, err := deployer_spb.NewDeploymentPSMQuerySet(
-			deployer_spb.DefaultDeploymentPSMQuerySpec(stateMachines.Deployment.StateTableSpec()),
-			psm.StateQueryOptions{},
-		)
-		if err != nil {
-			return fmt.Errorf("failed to build deployment query: %w", err)
-		}
-		page := &psml_pb.PageRequest{}
-		for {
-			res := &deployer_spb.ListDeploymentsResponse{}
-			if err := deploymentQuery.List(ctx, db, &deployer_spb.ListDeploymentsRequest{
-				Page: page,
-			}, res); err != nil {
-				return err
-			}
-			if res.Page != nil && res.Page.NextToken != nil {
-				page.Token = res.Page.NextToken
-			} else {
-				break
-			}
-
-			for _, deployment := range res.Deployments {
-				fmt.Printf("deployment %s\n", protojson.Format(deployment))
-				eventPage := &psml_pb.PageRequest{}
-				for {
-					res := &deployer_spb.ListDeploymentEventsResponse{}
-					if err := deploymentQuery.ListEvents(ctx, db, &deployer_spb.ListDeploymentEventsRequest{
-						DeploymentId: deployment.Keys.DeploymentId,
-						Page:         eventPage,
-					}, res); err != nil {
-						return err
-					}
-
-					if res.Page != nil && res.Page.NextToken != nil {
-						eventPage.Token = res.Page.NextToken
-					} else {
-						break
-					}
-				}
-
-			}
-		}
-
-	}
-	return nil
 }
 
 func runServe(ctx context.Context, cfg struct {
@@ -229,13 +113,20 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	templateStore := deployer.NewS3TemplateStore(s3Client, cfg.CFTemplates)
+	templateStore, err := deployer.NewS3TemplateStore(ctx, s3Client, cfg.CFTemplates)
+	if err != nil {
+		return err
+	}
 
 	infraStore, err := awsinfra.NewStorage(db)
 	if err != nil {
 		return err
 	}
-	cfAdapter := awsinfra.NewCFAdapterFromConfig(awsConfig, []string{cfg.CallbackARN})
+	cfAdapter, err := awsinfra.NewCFAdapterFromConfig(ctx, awsConfig, []string{cfg.CallbackARN})
+	if err != nil {
+		return err
+	}
+
 	awsInfraRunner := awsinfra.NewInfraWorker(infraStore, cfAdapter)
 
 	ecsWorker, err := awsinfra.NewECSWorker(infraStore, ecs.NewFromConfig(awsConfig))
@@ -335,17 +226,19 @@ func runServe(ctx context.Context, cfg struct {
 }
 
 func runLocalDeploy(ctx context.Context, cfg struct {
-	EnvFilename   string `flag:"env" description:"environment file"`
-	AppFilename   string `flag:"app" description:"application file"`
-	Version       string `flag:"version" description:"version tag"`
-	DryRun        bool   `flag:"dry" description:"dry run - print template and exit"`
-	RotateSecrets bool   `flag:"rotate-secrets" description:"rotate secrets - rotate any existing secrets (e.g. db creds)"`
-	CancelUpdate  bool   `flag:"cancel-update" description:"cancel update - cancel any ongoing update prior to deployment"`
-	ScratchBucket string `flag:"scratch-bucket" env:"O5_DEPLOYER_SCRATCH_BUCKET" description:"An S3 bucket name to upload templates"`
-	QuickMode     bool   `flag:"quick" description:"Skips scale down/up, calls stack update with all changes once, and skips DB migration"`
-	InfraOnly     bool   `flag:"infra-only" description:"Deploy with scale at 0"`
-	DBOnly        bool   `flag:"db-only" description:"Only migrate database"`
-	Auto          bool   `flag:"auto" description:"Automatically approve plan"`
+	ClusterFilename string `flag:"cluster" description:"cluster file"`
+	EnvName         string `flag:"envname" description:"environment name"`
+	AppFilename     string `flag:"app" description:"application file"`
+	Version         string `flag:"version" description:"version tag"`
+	DryRun          bool   `flag:"dry" description:"dry run - print template and exit"`
+	RotateSecrets   bool   `flag:"rotate-secrets" description:"rotate secrets - rotate any existing secrets (e.g. db creds)"`
+	CancelUpdate    bool   `flag:"cancel-update" description:"cancel update - cancel any ongoing update prior to deployment"`
+	ScratchBucket   string `flag:"scratch-bucket" env:"O5_DEPLOYER_SCRATCH_BUCKET" description:"An S3 bucket name to upload templates"`
+	QuickMode       bool   `flag:"quick" description:"Skips scale down/up, calls stack update with all changes once, and skips DB migration"`
+	InfraOnly       bool   `flag:"infra-only" description:"Deploy with scale at 0"`
+	DBOnly          bool   `flag:"db-only" description:"Only migrate database"`
+	ImportResources bool   `flag:"import-resources" description:"Import resources, implies infra-only"`
+	Auto            bool   `flag:"auto" description:"Automatically approve plan"`
 }) error {
 
 	if cfg.AppFilename == "" {
@@ -357,8 +250,12 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 	}
 
 	if !cfg.DryRun {
-		if cfg.EnvFilename == "" {
+		if cfg.ClusterFilename == "" {
 			return fmt.Errorf("missing environment file (-env)")
+		}
+
+		if cfg.EnvName == "" {
+			return fmt.Errorf("missing environment name (-env)")
 		}
 
 		if cfg.Version == "" {
@@ -402,9 +299,34 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		return nil
 	}
 
-	env := &environment_pb.Environment{}
-	if err := protoread.PullAndParse(ctx, s3Client, cfg.EnvFilename, env); err != nil {
+	clusterFile := &environment_pb.CombinedConfig{}
+	if err := protoread.PullAndParse(ctx, s3Client, cfg.ClusterFilename, clusterFile); err != nil {
 		return err
+	}
+
+	cluster := &environment_pb.Cluster{
+		Name: clusterFile.Name,
+	}
+	switch et := clusterFile.Provider.(type) {
+	case *environment_pb.CombinedConfig_EcsCluster:
+		cluster.Provider = &environment_pb.Cluster_EcsCluster{
+			EcsCluster: et.EcsCluster,
+		}
+	default:
+		return fmt.Errorf("unsupported provider %T", clusterFile.Provider)
+	}
+
+	var env *environment_pb.Environment
+
+	for _, e := range clusterFile.Environments {
+		if e.FullName == cfg.EnvName {
+			env = e
+			break
+		}
+	}
+
+	if env == nil {
+		return fmt.Errorf("environment %s not found in cluster", cfg.EnvName)
 	}
 
 	awsTarget := env.GetAws()
@@ -412,7 +334,10 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		return fmt.Errorf("AWS Deployer requires the type of environment provider to be AWS")
 	}
 
-	templateStore := deployer.NewS3TemplateStore(s3Client, cfg.ScratchBucket)
+	templateStore, err := deployer.NewS3TemplateStore(ctx, s3Client, cfg.ScratchBucket)
+	if err != nil {
+		return err
+	}
 
 	infra, err := localrun.NewInfraAdapterFromConfig(ctx, awsConfig)
 	if err != nil {
@@ -420,16 +345,18 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 	}
 
 	return localrun.RunLocalDeploy(ctx, templateStore, infra, localrun.Spec{
-		Version:     cfg.Version,
-		AppConfig:   appConfig,
-		EnvConfig:   env,
-		ConfirmPlan: !cfg.Auto,
+		Version:       cfg.Version,
+		AppConfig:     appConfig,
+		EnvConfig:     env,
+		ClusterConfig: cluster,
+		ConfirmPlan:   !cfg.Auto,
 		Flags: &deployer_pb.DeploymentFlags{
 			RotateCredentials: cfg.RotateSecrets,
 			CancelUpdates:     cfg.CancelUpdate,
 			QuickMode:         cfg.QuickMode,
 			InfraOnly:         cfg.InfraOnly,
 			DbOnly:            cfg.DBOnly,
+			ImportResources:   cfg.ImportResources,
 		},
 	})
 

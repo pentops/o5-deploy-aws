@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/google/uuid"
 	"github.com/pentops/flowtest"
 	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
@@ -21,10 +22,14 @@ type MockTemplateStore struct {
 	Templates map[string]string
 }
 
-func (m *MockTemplateStore) PutTemplate(ctx context.Context, envName, appName, deploymentID string, template []byte) (string, error) {
+func (m *MockTemplateStore) PutTemplate(ctx context.Context, envName, appName, deploymentID string, template []byte) (*deployer_pb.S3Template, error) {
 	key := envName + appName + deploymentID
 	m.Templates[key] = string(template)
-	return key, nil
+	return &deployer_pb.S3Template{
+		Key:    key,
+		Bucket: "foo",
+		Region: "us-east-1",
+	}, nil
 }
 
 type MockInfra struct {
@@ -118,16 +123,24 @@ func TestLocalRun(t *testing.T) {
 				},
 			}},
 		},
-		EnvConfig: &environment_pb.Environment{
-			FullName: "env",
-			Provider: &environment_pb.Environment_Aws{
-				Aws: &environment_pb.AWS{
-					ListenerArn:    "arn:listener",
+		ClusterConfig: &environment_pb.Cluster{
+			Name: "cluster",
+			Provider: &environment_pb.Cluster_EcsCluster{
+				EcsCluster: &environment_pb.ECSCluster{
 					EcsClusterName: "ecs-cluster",
+					ListenerArn:    "arn:listener",
 					RdsHosts: []*environment_pb.RDSHost{{
 						ServerGroup: "default",
 						SecretName:  "secret",
 					}},
+				},
+			},
+		},
+		EnvConfig: &environment_pb.Environment{
+			FullName: "env",
+			Provider: &environment_pb.Environment_Aws{
+				Aws: &environment_pb.AWSEnvironment{
+					HostHeader: aws.String("host"),
 				},
 			},
 		},

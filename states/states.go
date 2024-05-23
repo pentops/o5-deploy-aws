@@ -15,6 +15,7 @@ import (
 type StateMachines struct {
 	Deployment  *deployer_pb.DeploymentPSM
 	Environment *deployer_pb.EnvironmentPSM
+	Cluster     *deployer_pb.ClusterPSM
 	Stack       *deployer_pb.StackPSM
 }
 
@@ -32,6 +33,11 @@ func NewStateMachines() (*StateMachines, error) {
 	stack, err := NewStackEventer()
 	if err != nil {
 		return nil, fmt.Errorf("NewStackEventer: %w", err)
+	}
+
+	cluster, err := NewClusterEventer()
+	if err != nil {
+		return nil, fmt.Errorf("NewClusterEventer: %w", err)
 	}
 
 	deployment.GeneralHook(deployer_pb.DeploymentPSMGeneralHook(func(
@@ -91,7 +97,10 @@ func NewStateMachines() (*StateMachines, error) {
 
 			triggerDeploymentEvent := &deployer_pb.DeploymentPSMEventSpec{
 				Keys: &deployer_pb.DeploymentKeys{
-					DeploymentId: event.DeploymentId,
+					DeploymentId:  event.DeploymentId,
+					StackId:       state.Keys.StackId,
+					EnvironmentId: state.Keys.EnvironmentId,
+					ClusterId:     state.Keys.ClusterId,
 				},
 				Cause:     tb.AsCause(),
 				Timestamp: time.Now(),
@@ -117,7 +126,9 @@ func NewStateMachines() (*StateMachines, error) {
 
 		stackEvent := &deployer_pb.StackPSMEventSpec{
 			Keys: &deployer_pb.StackKeys{
-				StackId: StackID(state.Data.Spec.EnvironmentName, state.Data.Spec.AppName),
+				StackId:       StackID(state.Data.Spec.EnvironmentName, state.Data.Spec.AppName),
+				EnvironmentId: state.Keys.EnvironmentId,
+				ClusterId:     state.Keys.ClusterId,
 			},
 			Timestamp: time.Now(),
 			Cause:     tb.AsCause(),
@@ -143,7 +154,9 @@ func NewStateMachines() (*StateMachines, error) {
 
 		stackEvent := &deployer_pb.StackPSMEventSpec{
 			Keys: &deployer_pb.StackKeys{
-				StackId: StackID(state.Data.Spec.EnvironmentName, state.Data.Spec.AppName),
+				StackId:       StackID(state.Data.Spec.EnvironmentName, state.Data.Spec.AppName),
+				EnvironmentId: state.Keys.EnvironmentId,
+				ClusterId:     state.Keys.ClusterId,
 			},
 			Timestamp: time.Now(),
 			Cause:     cause,
@@ -193,6 +206,7 @@ func NewStateMachines() (*StateMachines, error) {
 	return &StateMachines{
 		Deployment:  deployment,
 		Environment: environment,
+		Cluster:     cluster,
 		Stack:       stack,
 	}, nil
 }
