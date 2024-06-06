@@ -9,12 +9,13 @@ import (
 	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_spb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
-	"github.com/pentops/o5-deploy-aws/github"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_spb"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-deploy-aws/states"
+	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/outbox.pg.go/outbox"
 	"github.com/pentops/sqrlx.go/sqrlx"
@@ -22,6 +23,10 @@ import (
 	"google.golang.org/grpc/status"
 	"gopkg.daemonl.com/envconf"
 )
+
+type GithubClient interface {
+	PullO5Configs(ctx context.Context, owner, repo, commit string) ([]*application_pb.Application, error)
+}
 
 func OpenDatabase(ctx context.Context) (*sql.DB, error) {
 	var config = struct {
@@ -54,20 +59,20 @@ func OpenDatabase(ctx context.Context) (*sql.DB, error) {
 }
 
 type CommandService struct {
-	deploymentStateMachine  *deployer_pb.DeploymentPSM
-	environmentStateMachine *deployer_pb.EnvironmentPSM
-	stackStateMachine       *deployer_pb.StackPSM
-	clusterStateMachine     *deployer_pb.ClusterPSM
+	deploymentStateMachine  *awsdeployer_pb.DeploymentPSM
+	environmentStateMachine *awsdeployer_pb.EnvironmentPSM
+	stackStateMachine       *awsdeployer_pb.StackPSM
+	clusterStateMachine     *awsdeployer_pb.ClusterPSM
 
 	db     *sqrlx.Wrapper
-	github github.IClient
+	github GithubClient
 
 	*LookupProvider
 
-	*deployer_spb.UnimplementedDeploymentCommandServiceServer
+	*awsdeployer_spb.UnimplementedDeploymentCommandServiceServer
 }
 
-func NewCommandService(conn sqrlx.Connection, github github.IClient, stateMachines *states.StateMachines) (*CommandService, error) {
+func NewCommandService(conn sqrlx.Connection, github GithubClient, stateMachines *states.StateMachines) (*CommandService, error) {
 	db, err := sqrlx.New(conn, sq.Dollar)
 	if err != nil {
 		return nil, err
@@ -90,7 +95,7 @@ func NewCommandService(conn sqrlx.Connection, github github.IClient, stateMachin
 	}, nil
 }
 
-func (ds *CommandService) TriggerDeployment(ctx context.Context, req *deployer_spb.TriggerDeploymentRequest) (*deployer_spb.TriggerDeploymentResponse, error) {
+func (ds *CommandService) TriggerDeployment(ctx context.Context, req *awsdeployer_spb.TriggerDeploymentRequest) (*awsdeployer_spb.TriggerDeploymentResponse, error) {
 	if req.Source == nil || req.Source.GetGithub() == nil {
 		return nil, status.Error(codes.Unimplemented, "only github source is supported")
 	}
@@ -120,21 +125,26 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *deployer_s
 		return nil, err
 	}
 
+	if req.Flags == nil {
+		req.Flags = &deployer_pb.DeploymentFlags{}
+	}
+
 	requestMessage := &deployer_tpb.RequestDeploymentMessage{
 		DeploymentId:  req.DeploymentId,
 		Application:   apps[0],
 		Version:       gh.GetCommit(),
 		EnvironmentId: environmentID.environmentID,
 		Flags:         req.Flags,
-		Source: &deployer_pb.CodeSourceType{
-			Type: &deployer_pb.CodeSourceType_Github_{
-				Github: &deployer_pb.CodeSourceType_Github{
-					Owner:  gh.Owner,
-					Repo:   gh.Repo,
-					Commit: commitHash,
+		/*
+			Source: &awsdeployer_pb.CodeSourceType{
+				Type: &awsdeployer_pb.CodeSourceType_Github_{
+					Github: &awsdeployer_pb.CodeSourceType_Github{
+						Owner:  gh.Owner,
+						Repo:   gh.Repo,
+						Commit: commitHash,
+					},
 				},
-			},
-		},
+			},*/
 	}
 
 	if err := ds.db.Transact(ctx, &sqrlx.TxOptions{
@@ -146,21 +156,21 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *deployer_s
 		return nil, err
 	}
 
-	return &deployer_spb.TriggerDeploymentResponse{
+	return &awsdeployer_spb.TriggerDeploymentResponse{
 		DeploymentId:  req.DeploymentId,
 		EnvironmentId: environmentID.environmentID,
 	}, nil
 }
 
-func (ds *CommandService) TerminateDeployment(ctx context.Context, req *deployer_spb.TerminateDeploymentRequest) (*deployer_spb.TerminateDeploymentResponse, error) {
+func (ds *CommandService) TerminateDeployment(ctx context.Context, req *awsdeployer_spb.TerminateDeploymentRequest) (*awsdeployer_spb.TerminateDeploymentResponse, error) {
 
-	event := &deployer_pb.DeploymentPSMEventSpec{
-		Keys: &deployer_pb.DeploymentKeys{
+	event := &awsdeployer_pb.DeploymentPSMEventSpec{
+		Keys: &awsdeployer_pb.DeploymentKeys{
 			DeploymentId: req.DeploymentId,
 		},
 		EventID:   uuid.NewString(),
 		Timestamp: time.Now(),
-		Event:     &deployer_pb.DeploymentEventType_Terminated{},
+		Event:     &awsdeployer_pb.DeploymentEventType_Terminated{},
 		Cause:     CommandCause(ctx),
 	}
 
@@ -169,23 +179,23 @@ func (ds *CommandService) TerminateDeployment(ctx context.Context, req *deployer
 		return nil, err
 	}
 
-	return &deployer_spb.TerminateDeploymentResponse{}, nil
+	return &awsdeployer_spb.TerminateDeploymentResponse{}, nil
 }
 
-func (ds *CommandService) UpsertEnvironment(ctx context.Context, req *deployer_spb.UpsertEnvironmentRequest) (*deployer_spb.UpsertEnvironmentResponse, error) {
+func (ds *CommandService) UpsertEnvironment(ctx context.Context, req *awsdeployer_spb.UpsertEnvironmentRequest) (*awsdeployer_spb.UpsertEnvironmentResponse, error) {
 
 	var config *environment_pb.Environment
 	switch src := req.Src.(type) {
-	case *deployer_spb.UpsertEnvironmentRequest_Config:
+	case *awsdeployer_spb.UpsertEnvironmentRequest_Config:
 		config = src.Config
 
-	case *deployer_spb.UpsertEnvironmentRequest_ConfigYaml:
+	case *awsdeployer_spb.UpsertEnvironmentRequest_ConfigYaml:
 		config = &environment_pb.Environment{}
 		if err := protoread.Parse("env.yaml", src.ConfigYaml, config); err != nil {
 			return nil, fmt.Errorf("unmarshal: %w", err)
 		}
 
-	case *deployer_spb.UpsertEnvironmentRequest_ConfigJson:
+	case *awsdeployer_spb.UpsertEnvironmentRequest_ConfigJson:
 		config = &environment_pb.Environment{}
 		if err := protoread.Parse("env.json", src.ConfigJson, config); err != nil {
 			return nil, fmt.Errorf("unmarshal: %w", err)
@@ -214,15 +224,15 @@ func (ds *CommandService) UpsertEnvironment(ctx context.Context, req *deployer_s
 		return nil, status.Error(codes.Internal, "no actor")
 	}
 
-	event := &deployer_pb.EnvironmentPSMEventSpec{
-		Keys: &deployer_pb.EnvironmentKeys{
+	event := &awsdeployer_pb.EnvironmentPSMEventSpec{
+		Keys: &awsdeployer_pb.EnvironmentKeys{
 			EnvironmentId: identifiers.environmentID,
 			ClusterId:     identifiers.clusterID,
 		},
 		EventID:   uuid.NewString(),
 		Timestamp: time.Now(),
 		Cause:     cause,
-		Event: &deployer_pb.EnvironmentEventType_Configured{
+		Event: &awsdeployer_pb.EnvironmentEventType_Configured{
 			Config: config,
 		},
 	}
@@ -233,19 +243,19 @@ func (ds *CommandService) UpsertEnvironment(ctx context.Context, req *deployer_s
 		return nil, err
 	}
 
-	return &deployer_spb.UpsertEnvironmentResponse{
+	return &awsdeployer_spb.UpsertEnvironmentResponse{
 		State: state,
 	}, nil
 }
 
-func (ds *CommandService) UpsertStack(ctx context.Context, req *deployer_spb.UpsertStackRequest) (*deployer_spb.UpsertStackResponse, error) {
+func (ds *CommandService) UpsertStack(ctx context.Context, req *awsdeployer_spb.UpsertStackRequest) (*awsdeployer_spb.UpsertStackResponse, error) {
 	identifiers, err := ds.lookupStack(ctx, req.StackId)
 	if err != nil {
 		return nil, err
 	}
 
-	event := &deployer_pb.StackPSMEventSpec{
-		Keys: &deployer_pb.StackKeys{
+	event := &awsdeployer_pb.StackPSMEventSpec{
+		Keys: &awsdeployer_pb.StackKeys{
 			StackId:       identifiers.stackID,
 			EnvironmentId: identifiers.environment.environmentID,
 			ClusterId:     identifiers.environment.clusterID,
@@ -253,8 +263,7 @@ func (ds *CommandService) UpsertStack(ctx context.Context, req *deployer_spb.Ups
 		EventID:   uuid.NewString(),
 		Timestamp: time.Now(),
 		Cause:     CommandCause(ctx),
-		Event: &deployer_pb.StackEventType_Configured{
-			Config:          req.Config,
+		Event: &awsdeployer_pb.StackEventType_Configured{
 			EnvironmentId:   identifiers.environment.environmentID,
 			ApplicationName: identifiers.appName,
 			EnvironmentName: identifiers.environment.fullName,
@@ -266,25 +275,25 @@ func (ds *CommandService) UpsertStack(ctx context.Context, req *deployer_spb.Ups
 		return nil, err
 	}
 
-	return &deployer_spb.UpsertStackResponse{
+	return &awsdeployer_spb.UpsertStackResponse{
 		State: newState,
 	}, nil
 }
 
-func (ds *CommandService) UpsertCluster(ctx context.Context, req *deployer_spb.UpsertClusterRequest) (*deployer_spb.UpsertClusterResponse, error) {
+func (ds *CommandService) UpsertCluster(ctx context.Context, req *awsdeployer_spb.UpsertClusterRequest) (*awsdeployer_spb.UpsertClusterResponse, error) {
 
 	var config *environment_pb.CombinedConfig
 	switch src := req.Src.(type) {
-	case *deployer_spb.UpsertClusterRequest_Config:
+	case *awsdeployer_spb.UpsertClusterRequest_Config:
 		config = src.Config
 
-	case *deployer_spb.UpsertClusterRequest_ConfigYaml:
+	case *awsdeployer_spb.UpsertClusterRequest_ConfigYaml:
 		config = &environment_pb.CombinedConfig{}
 		if err := protoread.Parse("env.yaml", src.ConfigYaml, config); err != nil {
 			return nil, fmt.Errorf("unmarshal: %w", err)
 		}
 
-	case *deployer_spb.UpsertClusterRequest_ConfigJson:
+	case *awsdeployer_spb.UpsertClusterRequest_ConfigJson:
 		config = &environment_pb.CombinedConfig{}
 		if err := protoread.Parse("env.json", src.ConfigJson, config); err != nil {
 			return nil, fmt.Errorf("unmarshal: %w", err)
@@ -319,36 +328,36 @@ func (ds *CommandService) UpsertCluster(ctx context.Context, req *deployer_spb.U
 		return nil, status.Errorf(codes.InvalidArgument, "unsupported provider %T", config.Provider)
 	}
 
-	event := &deployer_pb.ClusterPSMEventSpec{
-		Keys: &deployer_pb.ClusterKeys{
+	event := &awsdeployer_pb.ClusterPSMEventSpec{
+		Keys: &awsdeployer_pb.ClusterKeys{
 			ClusterId: identifiers.clusterID,
 		},
 		EventID:   uuid.NewString(),
 		Timestamp: time.Now(),
 		Cause:     cause,
-		Event: &deployer_pb.ClusterEventType_Configured{
+		Event: &awsdeployer_pb.ClusterEventType_Configured{
 			Config: cluster,
 		},
 	}
 
-	envEvents := make([]*deployer_pb.EnvironmentPSMEventSpec, 0, len(config.Environments))
+	envEvents := make([]*awsdeployer_pb.EnvironmentPSMEventSpec, 0, len(config.Environments))
 
 	for _, envConfig := range config.Environments {
-		event := &deployer_pb.EnvironmentPSMEventSpec{
-			Keys: &deployer_pb.EnvironmentKeys{
+		event := &awsdeployer_pb.EnvironmentPSMEventSpec{
+			Keys: &awsdeployer_pb.EnvironmentKeys{
 				EnvironmentId: environmentNameID(envConfig.FullName),
 				ClusterId:     identifiers.clusterID,
 			},
 			EventID:   uuid.NewString(),
 			Timestamp: time.Now(),
 			Cause:     cause,
-			Event: &deployer_pb.EnvironmentEventType_Configured{
+			Event: &awsdeployer_pb.EnvironmentEventType_Configured{
 				Config: envConfig,
 			},
 		}
 		envEvents = append(envEvents, event)
 	}
-	response := &deployer_spb.UpsertClusterResponse{}
+	response := &awsdeployer_spb.UpsertClusterResponse{}
 
 	if err := ds.db.Transact(ctx, &sqrlx.TxOptions{
 		Isolation: sql.LevelReadCommitted,

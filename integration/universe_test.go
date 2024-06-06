@@ -11,15 +11,14 @@ import (
 	"github.com/pentops/flowtest"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/deployer"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_epb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_spb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/github/v1/github_pb"
-	"github.com/pentops/o5-deploy-aws/github"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_epb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_spb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/integration/mocks"
 	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-deploy-aws/states"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	"github.com/pentops/outbox.pg.go/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
@@ -42,21 +41,21 @@ func (ua *UniverseAsserter) afterEach(ctx context.Context) {
 	ua.Outbox.ForEachMessage(ua, func(topic, service string, data []byte) {
 
 		switch service {
-		case "/o5.deployer.v1.events.DeployerEvents/Stack":
-			event := &deployer_epb.StackEvent{}
+		case "/o5.awsdeployer.v1.events.DeployerEvents/Stack":
+			event := &awsdeployer_epb.StackEvent{}
 			if err := proto.Unmarshal(data, event); err != nil {
 				ua.Fatalf("unmarshal error: %v", err)
 			}
 			ua.Logf("Unexpected Stack Event: %s -> %s", event.Event.PSMEventKey(), event.Status.ShortString())
-			suggestions = append(suggestions, fmt.Sprintf("t.PopStackEvent(t, deployer_pb.StackPSMEvent%s, deployer_pb.StackStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.Status.ShortString()))
+			suggestions = append(suggestions, fmt.Sprintf("t.PopStackEvent(t, awsdeployer_pb.StackPSMEvent%s, awsdeployer_pb.StackStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.Status.ShortString()))
 
-		case "/o5.deployer.v1.events.DeployerEvents/Deployment":
-			event := &deployer_epb.DeploymentEvent{}
+		case "/o5.awsdeployer.v1.events.DeployerEvents/Deployment":
+			event := &awsdeployer_epb.DeploymentEvent{}
 			if err := proto.Unmarshal(data, event); err != nil {
 				ua.Fatalf("unmarshal error: %v", err)
 			}
 			ua.Logf("Unexpected Deployment Event: %s -> %s", event.Event.PSMEventKey(), event.Status.ShortString())
-			suggestions = append(suggestions, fmt.Sprintf("t.PopDeploymentEvent(t, deployer_pb.DeploymentPSMEvent%s, deployer_pb.DeploymentStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.Status.ShortString()))
+			suggestions = append(suggestions, fmt.Sprintf("t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEvent%s, awsdeployer_pb.DeploymentStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.Status.ShortString()))
 		default:
 			ua.Fatalf("unexpected message %s %s", topic, service)
 		}
@@ -76,20 +75,14 @@ type Stepper struct {
 	currentUniverse *Universe
 }
 
-func (uu *Stepper) StepC(name string, step func(ctx context.Context, t UniverseAsserter)) {
-	uu.stepper.StepC(name, func(ctx context.Context, t flowtest.Asserter) {
+func (uu *Stepper) Step(name string, step func(ctx context.Context, t UniverseAsserter)) {
+	uu.stepper.Step(name, func(ctx context.Context, t flowtest.Asserter) {
 		ua := UniverseAsserter{
 			Universe: uu.currentUniverse,
 			Asserter: t,
 		}
 		step(ctx, ua)
 		ua.afterEach(ctx)
-	})
-}
-
-func (uu *Stepper) Step(name string, step func(t UniverseAsserter)) {
-	uu.StepC(name, func(_ context.Context, t UniverseAsserter) {
-		step(t)
 	})
 }
 
@@ -103,12 +96,11 @@ func NewStepper(ctx context.Context, t testing.TB) *Stepper {
 }
 
 type Universe struct {
-	DeployerTopic deployer_tpb.DeployerInputTopicClient
-	CFReplyTopic  deployer_tpb.CloudFormationReplyTopicClient
+	DeployerTopic deployer_tpb.DeploymentRequestTopicClient
+	CFReplyTopic  awsinfra_tpb.CloudFormationReplyTopicClient
 
-	GithubWebhookTopic github_pb.WebhookTopicClient
-	DeployerQuery      deployer_spb.DeploymentQueryServiceClient
-	DeployerCommand    deployer_spb.DeploymentCommandServiceClient
+	DeployerQuery   awsdeployer_spb.DeploymentQueryServiceClient
+	DeployerCommand awsdeployer_spb.DeploymentCommandServiceClient
 
 	SpecBuilder *deployer.SpecBuilder
 
@@ -128,7 +120,7 @@ type cfMock struct {
 
 func (cf *cfMock) ExpectStabalizeStack(t flowtest.TB) {
 	t.Helper()
-	stabalizeRequest := &deployer_tpb.StabalizeStackMessage{
+	stabalizeRequest := &awsinfra_tpb.StabalizeStackMessage{
 		Request: &messaging_pb.RequestMetadata{},
 	}
 	cf.uu.Outbox.PopMessage(t, stabalizeRequest)
@@ -136,9 +128,9 @@ func (cf *cfMock) ExpectStabalizeStack(t flowtest.TB) {
 	cf.lastStack = stabalizeRequest.StackName
 }
 
-func (cf *cfMock) ExpectCreateStack(t flowtest.TB) *deployer_tpb.CreateNewStackMessage {
+func (cf *cfMock) ExpectCreateStack(t flowtest.TB) *awsinfra_tpb.CreateNewStackMessage {
 	t.Helper()
-	createRequest := &deployer_tpb.CreateNewStackMessage{
+	createRequest := &awsinfra_tpb.CreateNewStackMessage{
 		Request: &messaging_pb.RequestMetadata{},
 	}
 	cf.uu.Outbox.PopMessage(t, createRequest)
@@ -149,11 +141,11 @@ func (cf *cfMock) ExpectCreateStack(t flowtest.TB) *deployer_tpb.CreateNewStackM
 
 func (cf *cfMock) StackStatusMissing(t flowtest.TB) {
 	t.Helper()
-	_, err := cf.uu.CFReplyTopic.StackStatusChanged(context.Background(), &deployer_tpb.StackStatusChangedMessage{
+	_, err := cf.uu.CFReplyTopic.StackStatusChanged(context.Background(), &awsinfra_tpb.StackStatusChangedMessage{
 		EventId:   fmt.Sprintf("event-%d", time.Now().UnixNano()),
 		Request:   cf.lastRequest,
 		StackName: cf.lastStack,
-		Lifecycle: deployer_pb.CFLifecycle_MISSING,
+		Lifecycle: awsdeployer_pb.CFLifecycle_MISSING,
 		Status:    "MISSING",
 	})
 	if err != nil {
@@ -161,14 +153,14 @@ func (cf *cfMock) StackStatusMissing(t flowtest.TB) {
 	}
 }
 
-func (cf *cfMock) StackCreateCompleteMessage() *deployer_tpb.StackStatusChangedMessage {
-	return &deployer_tpb.StackStatusChangedMessage{
+func (cf *cfMock) StackCreateCompleteMessage() *awsinfra_tpb.StackStatusChangedMessage {
+	return &awsinfra_tpb.StackStatusChangedMessage{
 		EventId:   fmt.Sprintf("event-%d", time.Now().UnixNano()),
 		Request:   cf.lastRequest,
 		StackName: cf.lastStack,
-		Lifecycle: deployer_pb.CFLifecycle_COMPLETE,
+		Lifecycle: awsdeployer_pb.CFLifecycle_COMPLETE,
 		Status:    "CREATE_COMPLETE",
-		Outputs: []*deployer_pb.KeyValue{{
+		Outputs: []*awsdeployer_pb.KeyValue{{
 			Name:  "foo",
 			Value: "bar",
 		}},
@@ -182,37 +174,33 @@ func (cf *cfMock) StackCreateComplete(t flowtest.TB) {
 	}
 }
 
-func (uu *Universe) PopStackEvent(t flowtest.TB, eventKey deployer_pb.StackPSMEventKey, status deployer_pb.StackStatus) *deployer_epb.StackEvent {
+func (uu *Universe) PopStackEvent(t flowtest.TB, eventKey awsdeployer_pb.StackPSMEventKey, status awsdeployer_pb.StackStatus) *awsdeployer_epb.StackEvent {
 	t.Helper()
-	event := &deployer_epb.StackEvent{}
-	uu.Outbox.PopMatching(t, outboxtest.NewMatcher(event))
-	gotKey := event.Event.PSMEventKey()
-	if gotKey != eventKey {
-		t.Fatalf("unexpected Stack event: %v, want %v", gotKey, eventKey)
-	}
+	event := &awsdeployer_epb.StackEvent{}
+	uu.Outbox.PopMatching(t, outboxtest.NewMatcher(event, func(evt *awsdeployer_epb.StackEvent) bool {
+		return evt.Event.PSMEventKey() == eventKey
+	}))
 	if status != event.Status {
 		t.Fatalf("unexpected Stack status: %v, want %v", event.Status, status)
 	}
 	return event
 }
 
-func (uu *Universe) PopDeploymentEvent(t flowtest.TB, eventKey deployer_pb.DeploymentPSMEventKey, status deployer_pb.DeploymentStatus) *deployer_epb.DeploymentEvent {
+func (uu *Universe) PopDeploymentEvent(t flowtest.TB, eventKey awsdeployer_pb.DeploymentPSMEventKey, status awsdeployer_pb.DeploymentStatus) *awsdeployer_epb.DeploymentEvent {
 	t.Helper()
-	event := &deployer_epb.DeploymentEvent{}
-	uu.Outbox.PopMatching(t, outboxtest.NewMatcher(event))
-	gotKey := event.Event.PSMEventKey()
-	if gotKey != eventKey {
-		t.Fatalf("unexpected Deployment event: %v, want %v", gotKey, eventKey)
-	}
+	event := &awsdeployer_epb.DeploymentEvent{}
+	uu.Outbox.PopMatching(t, outboxtest.NewMatcher(event, func(evt *awsdeployer_epb.DeploymentEvent) bool {
+		return evt.Event.PSMEventKey() == eventKey
+	}))
 	if status != event.Status {
 		t.Fatalf("unexpected Deployment status: %v, want %v", event.Status, status)
 	}
 	return event
 }
 
-func (uu *Universe) PopEnvironmentEvent(t flowtest.TB, eventKey deployer_pb.EnvironmentPSMEventKey, status deployer_pb.EnvironmentStatus) *deployer_epb.EnvironmentEvent {
+func (uu *Universe) PopEnvironmentEvent(t flowtest.TB, eventKey awsdeployer_pb.EnvironmentPSMEventKey, status awsdeployer_pb.EnvironmentStatus) *awsdeployer_epb.EnvironmentEvent {
 	t.Helper()
-	event := &deployer_epb.EnvironmentEvent{}
+	event := &awsdeployer_epb.EnvironmentEvent{}
 	uu.Outbox.PopMatching(t, outboxtest.NewMatcher(event))
 	gotKey := event.Event.PSMEventKey()
 	if gotKey != eventKey {
@@ -238,16 +226,11 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 
 	uu.Github = mocks.NewGithub()
 
-	log.DefaultLogger = log.NewCallbackLogger(ss.stepper.Log)
+	log.DefaultLogger = log.NewCallbackLogger(ss.stepper.LevelLog)
 
 	uu.S3 = mocks.NewS3()
 
 	uu.Outbox = outboxtest.NewOutboxAsserter(t, conn)
-
-	refStore, err := github.NewRefStore(conn)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	tplStore, err := deployer.NewS3TemplateStore(ctx, uu.S3, "bucket")
 	if err != nil {
@@ -272,33 +255,25 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	deployer_tpb.RegisterDeployerInputTopicServer(topicPair.Server, deploymentWorker)
-	uu.DeployerTopic = deployer_tpb.NewDeployerInputTopicClient(topicPair.Client)
+	deployer_tpb.RegisterDeploymentRequestTopicServer(topicPair.Server, deploymentWorker)
+	uu.DeployerTopic = deployer_tpb.NewDeploymentRequestTopicClient(topicPair.Client)
 
-	deployer_tpb.RegisterCloudFormationReplyTopicServer(topicPair.Server, deploymentWorker)
-	uu.CFReplyTopic = deployer_tpb.NewCloudFormationReplyTopicClient(topicPair.Client)
-
-	githubWorker, err := github.NewWebhookWorker(conn, uu.Github, refStore)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	github_pb.RegisterWebhookTopicServer(topicPair.Server, githubWorker)
-	uu.GithubWebhookTopic = github_pb.NewWebhookTopicClient(topicPair.Client)
+	awsinfra_tpb.RegisterCloudFormationReplyTopicServer(topicPair.Server, deploymentWorker)
+	uu.CFReplyTopic = awsinfra_tpb.NewCloudFormationReplyTopicClient(topicPair.Client)
 
 	deployerService, err := service.NewCommandService(conn, uu.Github, stateMachines)
 	if err != nil {
 		t.Fatal(err)
 	}
-	deployer_spb.RegisterDeploymentCommandServiceServer(servicePair.Server, deployerService)
-	uu.DeployerCommand = deployer_spb.NewDeploymentCommandServiceClient(servicePair.Client)
+	awsdeployer_spb.RegisterDeploymentCommandServiceServer(servicePair.Server, deployerService)
+	uu.DeployerCommand = awsdeployer_spb.NewDeploymentCommandServiceClient(servicePair.Client)
 
 	queryService, err := service.NewQueryService(conn, stateMachines)
 	if err != nil {
 		t.Fatal(err)
 	}
-	deployer_spb.RegisterDeploymentQueryServiceServer(servicePair.Server, queryService)
-	uu.DeployerQuery = deployer_spb.NewDeploymentQueryServiceClient(servicePair.Client)
+	awsdeployer_spb.RegisterDeploymentQueryServiceServer(servicePair.Server, queryService)
+	uu.DeployerQuery = awsdeployer_spb.NewDeploymentQueryServiceClient(servicePair.Client)
 
 	topicPair.ServeUntilDone(t, ctx)
 	servicePair.ServeUntilDone(t, ctx)
@@ -306,11 +281,11 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 	ss.stepper.RunSteps(t)
 }
 
-func (uu *Universe) AssertDeploymentStatus(t flowtest.Asserter, deploymentID string, status deployer_pb.DeploymentStatus) *deployer_pb.DeploymentState {
+func (uu *Universe) AssertDeploymentStatus(t flowtest.Asserter, deploymentID string, status awsdeployer_pb.DeploymentStatus) *awsdeployer_pb.DeploymentState {
 	t.Helper()
 	ctx := context.Background()
 
-	deployment, err := uu.DeployerQuery.GetDeployment(ctx, &deployer_spb.GetDeploymentRequest{
+	deployment, err := uu.DeployerQuery.GetDeployment(ctx, &awsdeployer_spb.GetDeploymentRequest{
 		DeploymentId: deploymentID,
 	})
 	if err != nil {
@@ -326,11 +301,11 @@ func (uu *Universe) AssertDeploymentStatus(t flowtest.Asserter, deploymentID str
 	return deployment.State
 }
 
-func (uu *Universe) AssertStackStatus(t flowtest.Asserter, stackID string, status deployer_pb.StackStatus, pendingDeployments []string) {
+func (uu *Universe) AssertStackStatus(t flowtest.Asserter, stackID string, status awsdeployer_pb.StackStatus, pendingDeployments []string) {
 	t.Helper()
 	ctx := context.Background()
 
-	stack, err := uu.DeployerQuery.GetStack(ctx, &deployer_spb.GetStackRequest{
+	stack, err := uu.DeployerQuery.GetStack(ctx, &awsdeployer_spb.GetStackRequest{
 		StackId: stackID,
 	})
 	if err != nil {

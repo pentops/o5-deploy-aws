@@ -12,9 +12,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/deployer"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/states"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/outbox.pg.go/outbox"
 	"github.com/pentops/protostate/gen/state/v1/psm_pb"
@@ -35,7 +35,7 @@ type EventLoop struct {
 }
 
 type IInfra interface {
-	HandleMessage(ctx context.Context, msg proto.Message) (*deployer_pb.DeploymentPSMEventSpec, error)
+	HandleMessage(ctx context.Context, msg proto.Message) (*awsdeployer_pb.DeploymentPSMEventSpec, error)
 }
 
 func NewEventLoop(awsRunner IInfra, stateStore *StateStore, specBuilder *deployer.SpecBuilder) *EventLoop {
@@ -52,12 +52,12 @@ func NewEventLoop(awsRunner IInfra, stateStore *StateStore, specBuilder *deploye
 }
 
 type TransitionData struct {
-	CausedBy    *deployer_pb.DeploymentEvent
+	CausedBy    *awsdeployer_pb.DeploymentEvent
 	SideEffects []outbox.OutboxMessage
-	ChainEvents []deployer_pb.DeploymentPSMEvent
+	ChainEvents []awsdeployer_pb.DeploymentPSMEvent
 }
 
-func (td *TransitionData) ChainEvent(event deployer_pb.DeploymentPSMEvent) {
+func (td *TransitionData) ChainEvent(event awsdeployer_pb.DeploymentPSMEvent) {
 	td.ChainEvents = append(td.ChainEvents, event)
 }
 
@@ -77,7 +77,7 @@ func (td *TransitionData) AsCause() *psm_pb.Cause {
 
 }
 
-func (td *TransitionData) FullCause() *deployer_pb.DeploymentEvent {
+func (td *TransitionData) FullCause() *awsdeployer_pb.DeploymentEvent {
 	return td.CausedBy
 }
 
@@ -93,7 +93,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 
 	deploymentId := trigger.DeploymentId
 
-	deploymentKeys := &deployer_pb.DeploymentKeys{
+	deploymentKeys := &awsdeployer_pb.DeploymentKeys{
 		DeploymentId:  trigger.DeploymentId,
 		EnvironmentId: trigger.EnvironmentId,
 		// These don't mean anything locally.
@@ -103,15 +103,15 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 
 	tx := lel.storage
 
-	eventQueue := []*deployer_pb.DeploymentEvent{{
+	eventQueue := []*awsdeployer_pb.DeploymentEvent{{
 		Keys: deploymentKeys,
 		Metadata: &psm_pb.EventMetadata{
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
 		},
-		Event: &deployer_pb.DeploymentEventType{
-			Type: &deployer_pb.DeploymentEventType_Created_{
-				Created: &deployer_pb.DeploymentEventType_Created{
+		Event: &awsdeployer_pb.DeploymentEventType{
+			Type: &awsdeployer_pb.DeploymentEventType_Created_{
+				Created: &awsdeployer_pb.DeploymentEventType_Created{
 					Spec: spec,
 				},
 			},
@@ -122,9 +122,9 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 			EventId:   uuid.NewString(),
 			Timestamp: timestamppb.Now(),
 		},
-		Event: &deployer_pb.DeploymentEventType{
-			Type: &deployer_pb.DeploymentEventType_Triggered_{
-				Triggered: &deployer_pb.DeploymentEventType_Triggered{},
+		Event: &awsdeployer_pb.DeploymentEventType{
+			Type: &awsdeployer_pb.DeploymentEventType_Triggered_{
+				Triggered: &awsdeployer_pb.DeploymentEventType_Triggered{},
 			},
 		},
 	}}
@@ -146,7 +146,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 
 		deployment, err := tx.GetDeployment(ctx, deploymentId)
 		if errors.Is(err, deployer.DeploymentNotFoundError) {
-			deployment = &deployer_pb.DeploymentState{
+			deployment = &awsdeployer_pb.DeploymentState{
 				Metadata: &psm_pb.StateMetadata{},
 				Keys:     deploymentKeys,
 			}
@@ -216,15 +216,15 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 			evt := baton.ChainEvents[0]
 
 			if lel.confirmPlan {
-				if evt.PSMEventKey() == deployer_pb.DeploymentPSMEventRunSteps {
-					if !confirmPlan(evt.(*deployer_pb.DeploymentEventType_RunSteps)) {
+				if evt.PSMEventKey() == awsdeployer_pb.DeploymentPSMEventRunSteps {
+					if !confirmPlan(evt.(*awsdeployer_pb.DeploymentEventType_RunSteps)) {
 						return nil
 					}
 
 				}
 			}
 			log.WithField(ctx, "chainEvent", protojson.Format(evt)).Debug("Chain Event")
-			wrapped := &deployer_pb.DeploymentEvent{
+			wrapped := &awsdeployer_pb.DeploymentEvent{
 				Keys: innerEvent.Keys,
 				Metadata: &psm_pb.EventMetadata{
 					EventId:   uuid.NewString(),
@@ -249,7 +249,7 @@ func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDepl
 			}
 
 			if result != nil {
-				mapped := &deployer_pb.DeploymentEvent{
+				mapped := &awsdeployer_pb.DeploymentEvent{
 					Keys: deploymentKeys,
 					Metadata: &psm_pb.EventMetadata{
 						EventId:   uuid.NewString(),
@@ -288,9 +288,9 @@ func AskBool(prompt string) bool {
 	return strings.HasPrefix(strings.ToLower(answer), "y")
 }
 
-func confirmPlan(deployment *deployer_pb.DeploymentEventType_RunSteps) bool {
+func confirmPlan(deployment *awsdeployer_pb.DeploymentEventType_RunSteps) bool {
 	fmt.Printf("CONFIRM STEPS\n")
-	stepMap := make(map[string]*deployer_pb.DeploymentStep)
+	stepMap := make(map[string]*awsdeployer_pb.DeploymentStep)
 	for _, step := range deployment.Steps {
 		stepMap[step.Id] = step
 	}

@@ -6,7 +6,7 @@ import (
 	"regexp"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	"github.com/tidwall/sjson"
 )
 
@@ -16,14 +16,14 @@ type IResource interface {
 	GetAtt(name string) string
 	Name() string
 	DependsOn(IResource)
-	Parameters() []*deployer_pb.Parameter
+	Parameters() []*awsdeployer_pb.Parameter
 }
 
 type Resource[T cloudformation.Resource] struct {
 	name         string
 	Resource     T
 	overrides    map[string]string
-	parameters   []*deployer_pb.Parameter
+	parameters   []*awsdeployer_pb.Parameter
 	dependencies []IResource
 }
 
@@ -49,7 +49,7 @@ func (rr *Resource[T]) DependsOn(b IResource) {
 	rr.dependencies = append(rr.dependencies, b)
 }
 
-func (rr Resource[T]) Parameters() []*deployer_pb.Parameter {
+func (rr Resource[T]) Parameters() []*awsdeployer_pb.Parameter {
 	return rr.parameters
 }
 
@@ -57,7 +57,7 @@ func (rr *Resource[T]) Override(key, val string) {
 	rr.overrides[key] = val
 }
 
-func (rr *Resource[T]) AddParameter(param *deployer_pb.Parameter) {
+func (rr *Resource[T]) AddParameter(param *awsdeployer_pb.Parameter) {
 	rr.parameters = append(rr.parameters, param)
 }
 

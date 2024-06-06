@@ -9,8 +9,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/google/uuid"
 	"github.com/pentops/flowtest"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
@@ -22,10 +22,10 @@ type MockTemplateStore struct {
 	Templates map[string]string
 }
 
-func (m *MockTemplateStore) PutTemplate(ctx context.Context, envName, appName, deploymentID string, template []byte) (*deployer_pb.S3Template, error) {
+func (m *MockTemplateStore) PutTemplate(ctx context.Context, envName, appName, deploymentID string, template []byte) (*awsdeployer_pb.S3Template, error) {
 	key := envName + appName + deploymentID
 	m.Templates[key] = string(template)
-	return &deployer_pb.S3Template{
+	return &awsdeployer_pb.S3Template{
 		Key:    key,
 		Bucket: "foo",
 		Region: "us-east-1",
@@ -34,10 +34,10 @@ func (m *MockTemplateStore) PutTemplate(ctx context.Context, envName, appName, d
 
 type MockInfra struct {
 	incoming chan proto.Message
-	outgoing chan deployer_pb.DeploymentPSMEvent
+	outgoing chan awsdeployer_pb.DeploymentPSMEvent
 }
 
-func (m *MockInfra) HandleMessage(ctx context.Context, msg proto.Message) (*deployer_pb.DeploymentPSMEventSpec, error) {
+func (m *MockInfra) HandleMessage(ctx context.Context, msg proto.Message) (*awsdeployer_pb.DeploymentPSMEventSpec, error) {
 	fmt.Printf("MSG: %s\n", msg.ProtoReflect().Descriptor().FullName())
 	select {
 	case <-ctx.Done():
@@ -45,8 +45,8 @@ func (m *MockInfra) HandleMessage(ctx context.Context, msg proto.Message) (*depl
 	case m.incoming <- msg:
 		fmt.Printf("Released\n")
 		msg := <-m.outgoing
-		return &deployer_pb.DeploymentPSMEventSpec{
-			Keys:    &deployer_pb.DeploymentKeys{},
+		return &awsdeployer_pb.DeploymentPSMEventSpec{
+			Keys:    &awsdeployer_pb.DeploymentKeys{},
 			EventID: uuid.NewString(),
 			Cause:   &psm_pb.Cause{},
 			Event:   msg,
@@ -54,12 +54,12 @@ func (m *MockInfra) HandleMessage(ctx context.Context, msg proto.Message) (*depl
 	}
 }
 
-func (m *MockInfra) CFResult(md *messaging_pb.RequestMetadata, status deployer_pb.StepStatus, result *deployer_pb.CFStackOutput) {
-	m.StepResult(md, &deployer_pb.DeploymentEventType_StepResult{
+func (m *MockInfra) CFResult(md *messaging_pb.RequestMetadata, status awsdeployer_pb.StepStatus, result *awsdeployer_pb.CFStackOutput) {
+	m.StepResult(md, &awsdeployer_pb.DeploymentEventType_StepResult{
 		Status: status,
-		Output: &deployer_pb.StepOutputType{
-			Type: &deployer_pb.StepOutputType_CfStatus{
-				CfStatus: &deployer_pb.StepOutputType_CFStatus{
+		Output: &awsdeployer_pb.StepOutputType{
+			Type: &awsdeployer_pb.StepOutputType_CfStatus{
+				CfStatus: &awsdeployer_pb.StepOutputType_CFStatus{
 					Output: result,
 				},
 			},
@@ -67,8 +67,8 @@ func (m *MockInfra) CFResult(md *messaging_pb.RequestMetadata, status deployer_p
 	})
 }
 
-func (m *MockInfra) StepResult(md *messaging_pb.RequestMetadata, result *deployer_pb.DeploymentEventType_StepResult) {
-	stepContext := &deployer_pb.StepContext{}
+func (m *MockInfra) StepResult(md *messaging_pb.RequestMetadata, result *awsdeployer_pb.DeploymentEventType_StepResult) {
+	stepContext := &awsdeployer_pb.StepContext{}
 	if err := proto.Unmarshal(md.Context, stepContext); err != nil {
 		panic(err)
 	}
@@ -78,7 +78,7 @@ func (m *MockInfra) StepResult(md *messaging_pb.RequestMetadata, result *deploye
 	m.Send(result)
 }
 
-func (m *MockInfra) Send(msg deployer_pb.DeploymentPSMEvent) {
+func (m *MockInfra) Send(msg awsdeployer_pb.DeploymentPSMEvent) {
 	m.outgoing <- msg
 }
 
@@ -153,29 +153,29 @@ func TestLocalRun(t *testing.T) {
 
 	infra := &MockInfra{
 		incoming: make(chan proto.Message),
-		outgoing: make(chan deployer_pb.DeploymentPSMEvent),
+		outgoing: make(chan awsdeployer_pb.DeploymentPSMEvent),
 	}
 
-	ss.StepC("Stabalize", func(ctx context.Context, t flowtest.Asserter) {
-		_, ok := infra.Pop(t, ctx).(*deployer_tpb.StabalizeStackMessage)
+	ss.Step("Stabalize", func(ctx context.Context, t flowtest.Asserter) {
+		_, ok := infra.Pop(t, ctx).(*awsinfra_tpb.StabalizeStackMessage)
 		if !ok {
 			t.Fatalf("expected StabalizeStackMessage")
 		}
 
-		infra.Send(&deployer_pb.DeploymentEventType_StackAvailable{
+		infra.Send(&awsdeployer_pb.DeploymentEventType_StackAvailable{
 			StackOutput: nil,
 		})
 	})
 
-	ss.StepC("CreateNewStack", func(ctx context.Context, t flowtest.Asserter) {
-		req, ok := infra.Pop(t, ctx).(*deployer_tpb.CreateNewStackMessage)
+	ss.Step("CreateNewStack", func(ctx context.Context, t flowtest.Asserter) {
+		req, ok := infra.Pop(t, ctx).(*awsinfra_tpb.CreateNewStackMessage)
 		if !ok {
 			t.Fatalf("expected CreateNewStackMessage")
 		}
 
-		infra.CFResult(req.Request, deployer_pb.StepStatus_DONE, &deployer_pb.CFStackOutput{
-			Lifecycle: deployer_pb.CFLifecycle_COMPLETE,
-			Outputs: []*deployer_pb.KeyValue{{
+		infra.CFResult(req.Request, awsdeployer_pb.StepStatus_DONE, &awsdeployer_pb.CFStackOutput{
+			Lifecycle: awsdeployer_pb.CFLifecycle_COMPLETE,
+			Outputs: []*awsdeployer_pb.KeyValue{{
 				Name:  "MigrationTaskDefinitionFoo",
 				Value: "arn:taskdef",
 			}, {
@@ -185,21 +185,21 @@ func TestLocalRun(t *testing.T) {
 		})
 	})
 
-	ss.StepC("UpsertPostgresDatabase", func(ctx context.Context, t flowtest.Asserter) {
-		msg, ok := infra.Pop(t, ctx).(*deployer_tpb.UpsertPostgresDatabaseMessage)
+	ss.Step("UpsertPostgresDatabase", func(ctx context.Context, t flowtest.Asserter) {
+		msg, ok := infra.Pop(t, ctx).(*awsinfra_tpb.UpsertPostgresDatabaseMessage)
 		if !ok {
 			t.Fatalf("expected UpsertPostgresDatabaseMessage")
 		}
 
 		t.Equal("arn:secret", msg.Spec.SecretArn)
 
-		infra.StepResult(msg.Request, &deployer_pb.DeploymentEventType_StepResult{
-			Status: deployer_pb.StepStatus_DONE,
+		infra.StepResult(msg.Request, &awsdeployer_pb.DeploymentEventType_StepResult{
+			Status: awsdeployer_pb.StepStatus_DONE,
 		})
 	})
 
-	ss.StepC("MigratePostgresDatabase", func(ctx context.Context, t flowtest.Asserter) {
-		msg, ok := infra.Pop(t, ctx).(*deployer_tpb.MigratePostgresDatabaseMessage)
+	ss.Step("MigratePostgresDatabase", func(ctx context.Context, t flowtest.Asserter) {
+		msg, ok := infra.Pop(t, ctx).(*awsinfra_tpb.MigratePostgresDatabaseMessage)
 		if !ok {
 			t.Fatalf("expected MigratePostgresDatabaseMessage")
 		}
@@ -208,33 +208,33 @@ func TestLocalRun(t *testing.T) {
 		t.Equal("arn:secret", msg.Spec.SecretArn)
 		t.Equal("arn:taskdef", msg.Spec.MigrationTaskArn)
 
-		infra.StepResult(msg.Request, &deployer_pb.DeploymentEventType_StepResult{
-			Status: deployer_pb.StepStatus_DONE,
+		infra.StepResult(msg.Request, &awsdeployer_pb.DeploymentEventType_StepResult{
+			Status: awsdeployer_pb.StepStatus_DONE,
 		})
 	})
 
-	ss.StepC("CleanupPostgresDatabase", func(ctx context.Context, t flowtest.Asserter) {
-		msg, ok := infra.Pop(t, ctx).(*deployer_tpb.CleanupPostgresDatabaseMessage)
+	ss.Step("CleanupPostgresDatabase", func(ctx context.Context, t flowtest.Asserter) {
+		msg, ok := infra.Pop(t, ctx).(*awsinfra_tpb.CleanupPostgresDatabaseMessage)
 		if !ok {
 			t.Fatalf("expected CleanupPostgresDatabaseMessage")
 		}
 
-		infra.StepResult(msg.Request, &deployer_pb.DeploymentEventType_StepResult{
-			Status: deployer_pb.StepStatus_DONE,
+		infra.StepResult(msg.Request, &awsdeployer_pb.DeploymentEventType_StepResult{
+			Status: awsdeployer_pb.StepStatus_DONE,
 		})
 	})
 
-	ss.StepC("ScaleUp", func(ctx context.Context, t flowtest.Asserter) {
-		msg, ok := infra.Pop(t, ctx).(*deployer_tpb.ScaleStackMessage)
+	ss.Step("ScaleUp", func(ctx context.Context, t flowtest.Asserter) {
+		msg, ok := infra.Pop(t, ctx).(*awsinfra_tpb.ScaleStackMessage)
 		if !ok {
 			t.Fatalf("expected ScaleStackMessage")
 		}
 
 		t.Equal(int32(1), msg.DesiredCount)
 
-		infra.CFResult(msg.Request, deployer_pb.StepStatus_DONE, &deployer_pb.CFStackOutput{
-			Lifecycle: deployer_pb.CFLifecycle_COMPLETE,
-			Outputs:   []*deployer_pb.KeyValue{},
+		infra.CFResult(msg.Request, awsdeployer_pb.StepStatus_DONE, &awsdeployer_pb.CFStackOutput{
+			Lifecycle: awsdeployer_pb.CFLifecycle_COMPLETE,
+			Outputs:   []*awsdeployer_pb.KeyValue{},
 		})
 	})
 
@@ -252,7 +252,7 @@ func TestLocalRun(t *testing.T) {
 		runErr <- err
 	}()
 
-	ss.RunStepsC(runCtx, t)
+	ss.RunSteps(t)
 
 	if err := <-runErr; err != nil {
 		t.Fatal(err.Error())

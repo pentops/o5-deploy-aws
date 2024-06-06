@@ -6,17 +6,17 @@ import (
 
 	"github.com/bufbuild/protovalidate-go"
 	"github.com/pentops/o5-deploy-aws/deployer"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 )
 
 // StateStore wires back the events to the deployer, rather than relying on
 // an event bus and database
 type StateStore struct {
-	deployments map[string]*deployer_pb.DeploymentState
+	deployments map[string]*awsdeployer_pb.DeploymentState
 
 	validator *protovalidate.Validator
 
-	StoreCallback func(ctx context.Context, state *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error
+	StoreCallback func(ctx context.Context, state *awsdeployer_pb.DeploymentState, event *awsdeployer_pb.DeploymentEvent) error
 }
 
 func NewStateStore() *StateStore {
@@ -26,13 +26,13 @@ func NewStateStore() *StateStore {
 	}
 
 	lss := &StateStore{
-		deployments: map[string]*deployer_pb.DeploymentState{},
+		deployments: map[string]*awsdeployer_pb.DeploymentState{},
 		validator:   validator,
 	}
 	return lss
 }
 
-func (lss *StateStore) StoreDeploymentEvent(ctx context.Context, state *deployer_pb.DeploymentState, event *deployer_pb.DeploymentEvent) error {
+func (lss *StateStore) StoreDeploymentEvent(ctx context.Context, state *awsdeployer_pb.DeploymentState, event *awsdeployer_pb.DeploymentEvent) error {
 	if err := lss.validator.Validate(event); err != nil {
 		return fmt.Errorf("validating event: %s", err)
 	}
@@ -52,7 +52,7 @@ func (lss *StateStore) StoreDeploymentEvent(ctx context.Context, state *deployer
 	return nil
 }
 
-func (lss *StateStore) GetDeployment(ctx context.Context, id string) (*deployer_pb.DeploymentState, error) {
+func (lss *StateStore) GetDeployment(ctx context.Context, id string) (*awsdeployer_pb.DeploymentState, error) {
 	if deployment, ok := lss.deployments[id]; ok {
 		return deployment, nil
 	}

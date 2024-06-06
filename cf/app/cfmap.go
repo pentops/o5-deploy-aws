@@ -12,7 +12,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
 	"github.com/awslabs/goformation/v7/cloudformation/tags"
 	"github.com/pentops/o5-deploy-aws/cf"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 )
 
@@ -24,6 +24,7 @@ const (
 	ListenerARNParameter          = "ListenerARN"
 	HostHeaderParameter           = "HostHeader"
 	EnvNameParameter              = "EnvName"
+	ClusterNameParameter          = "ClusterName"
 	VPCParameter                  = "VPCID"
 	MetaDeployAssumeRoleParameter = "MetaDeployAssumeRoleArns"
 	JWKSParameter                 = "JWKS"
@@ -34,6 +35,7 @@ const (
 	O5SidecarImageParameter       = "O5SidecarImage"
 	SESConditionsParameter        = "SESConditions"
 	SourceTagParameter            = "SourceTag"
+	EventBusARNParameter          = "EventBusARN"
 
 	AWSAccountIDParameter = "AWS::AccountId"
 
@@ -104,6 +106,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 		ListenerARNParameter,
 		HostHeaderParameter,
 		EnvNameParameter,
+		ClusterNameParameter,
 		VPCParameter,
 		VersionTagParameter,
 		MetaDeployAssumeRoleParameter,
@@ -113,29 +116,30 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 		S3BucketNamespaceParameter,
 		O5SidecarImageParameter,
 		SESConditionsParameter,
+		EventBusARNParameter,
 		SourceTagParameter,
 	} {
-		parameter := &deployer_pb.Parameter{
+		parameter := &awsdeployer_pb.Parameter{
 			Name: key,
 			Type: "String",
-			Source: &deployer_pb.ParameterSourceType{
-				Type: &deployer_pb.ParameterSourceType_WellKnown_{
-					WellKnown: &deployer_pb.ParameterSourceType_WellKnown{},
+			Source: &awsdeployer_pb.ParameterSourceType{
+				Type: &awsdeployer_pb.ParameterSourceType_WellKnown_{
+					WellKnown: &awsdeployer_pb.ParameterSourceType_WellKnown{},
 				},
 			},
 		}
 		switch key {
 		case VersionTagParameter:
-			parameter.Source.Type = &deployer_pb.ParameterSourceType_Static_{
-				Static: &deployer_pb.ParameterSourceType_Static{
+			parameter.Source.Type = &awsdeployer_pb.ParameterSourceType_Static_{
+				Static: &awsdeployer_pb.ParameterSourceType_Static{
 					Value: versionTag,
 				},
 			}
 		case VPCParameter:
 			parameter.Type = "AWS::EC2::VPC::Id"
 		case SourceTagParameter:
-			parameter.Source.Type = &deployer_pb.ParameterSourceType_Static_{
-				Static: &deployer_pb.ParameterSourceType_Static{
+			parameter.Source.Type = &awsdeployer_pb.ParameterSourceType_Static_{
+				Static: &awsdeployer_pb.ParameterSourceType_Static{
 					Value: fmt.Sprintf("o5/%s/%s", app.Name, versionTag),
 				},
 			}
@@ -175,7 +179,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 			global.databases[database.Name] = ref
 
 			secretName := fmt.Sprintf("DatabaseSecret%s", cf.CleanParameterName(database.Name))
-			def := &deployer_pb.PostgresDatabaseResource{
+			def := &awsdeployer_pb.PostgresDatabaseResource{
 				DbName:           database.Name,
 				ServerGroup:      dbType.Postgres.ServerGroup,
 				SecretOutputName: secretName,
@@ -251,9 +255,6 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 			})
 		}
 
-		for _, target := range app.Targets {
-			stackTemplate.AddSNSTopic(target.Name)
-		}
 	}
 
 	listener := NewListenerRuleSet()
@@ -270,17 +271,8 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 		}
 
 		for _, target := range app.Targets {
-			snsTopicARN := cloudformation.Join("", []string{
-				"arn:aws:sns:",
-				cloudformation.Ref(AWSRegionParameter),
-				":",
-				cloudformation.Ref(AWSAccountIDParameter),
-				":",
-				cloudformation.Ref(EnvNameParameter),
-				"-",
-				target.Name,
-			})
-			runtimeStack.Policy.AddSNSPublish(snsTopicARN)
+			runtimeStack.Policy.AddEventBridgePublish(target.Name)
+
 		}
 
 		if app.AwsConfig != nil {

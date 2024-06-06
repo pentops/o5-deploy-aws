@@ -37,22 +37,45 @@ func (worker *RawMessageWorker) Raw(ctx context.Context, msg *messaging_tpb.RawM
 
 	log.WithField(ctx, "topic", msg.Topic).Debug("RawMessage")
 
-	if strings.HasSuffix(msg.Topic, "-o5-aws-callback") {
-		if err := worker.handleCloudFormationEvent(ctx, msg.Payload); err != nil {
-			return nil, err
-		}
-		return &emptypb.Empty{}, nil
+	if strings.HasSuffix(msg.Topic, "-o5-infra") {
 
-	} else if strings.HasSuffix(msg.Topic, "-o5-cloudwatch-events") {
-		if err := worker.handleCloudWatchEvent(ctx, msg.Payload); err != nil {
+		if msg.Payload[0] == '{' {
+			if err := worker.HandleInfraJSON(ctx, msg.Payload); err != nil {
+				return nil, err
+			}
+			return &emptypb.Empty{}, nil
+		}
+
+		if err := worker.HandleInfraNonJSON(ctx, msg.Payload); err != nil {
 			return nil, err
 		}
 		return &emptypb.Empty{}, nil
 	}
+
 	return nil, fmt.Errorf("unknown topic: %s", msg.Topic)
 }
 
-func (worker *RawMessageWorker) handleCloudFormationEvent(ctx context.Context, payload []byte) error {
+func (worker *RawMessageWorker) HandleInfraJSON(ctx context.Context, payload []byte) error {
+	infraEvent := &InfraEvent{}
+	if err := json.Unmarshal(payload, infraEvent); err == nil && infraEvent.Valid() {
+		log.WithFields(ctx, map[string]interface{}{
+			"eventId":     infraEvent.ID,
+			"eventSource": infraEvent.Source,
+			"eventType":   infraEvent.DetailType,
+		}).Debug("infra event")
+
+		if !strings.HasPrefix(infraEvent.Source, "aws.") {
+			return fmt.Errorf("unknown event-bridge source: %s", infraEvent.Source)
+		}
+		if err := worker.handleAWSInfraEvent(ctx, infraEvent); err != nil {
+			return err
+		}
+		return nil
+	}
+	return fmt.Errorf("unknown JSON-like message: %s", string(payload))
+}
+
+func (worker *RawMessageWorker) HandleInfraNonJSON(ctx context.Context, payload []byte) error {
 	fields, err := parseAWSRawMessage(payload)
 	if err != nil {
 		return err
@@ -91,18 +114,11 @@ type InfraEvent struct {
 	ID         string          `json:"id"`
 }
 
-func (worker *RawMessageWorker) handleCloudWatchEvent(ctx context.Context, payload []byte) error {
-	infraEvent := &InfraEvent{}
-	if err := json.Unmarshal(payload, infraEvent); err != nil {
-		return fmt.Errorf("unhandled infra event: %w", err)
-	}
+func (ie *InfraEvent) Valid() bool {
+	return ie.Source != "" && ie.DetailType != ""
+}
 
-	log.WithFields(ctx, map[string]interface{}{
-		"eventId":     infraEvent.ID,
-		"eventSource": infraEvent.Source,
-		"eventType":   infraEvent.DetailType,
-	}).Debug("infra event")
-
+func (worker *RawMessageWorker) handleAWSInfraEvent(ctx context.Context, infraEvent *InfraEvent) error {
 	if infraEvent.Source == "aws.ecs" && infraEvent.DetailType == "ECS Task State Change" {
 		taskEvent := &ECSTaskStateChangeEvent{}
 		if err := json.Unmarshal(infraEvent.Detail, taskEvent); err != nil {
@@ -114,6 +130,6 @@ func (worker *RawMessageWorker) handleCloudWatchEvent(ctx context.Context, paylo
 		}
 		return nil
 	} else {
-		return fmt.Errorf("unhandled ecs infra event: %s %s", infraEvent.Source, infraEvent.DetailType)
+		return fmt.Errorf("unhandled AWS Infra event: %s %s", infraEvent.Source, infraEvent.DetailType)
 	}
 }

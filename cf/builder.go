@@ -2,18 +2,18 @@ package cf
 
 import (
 	"github.com/awslabs/goformation/v7/cloudformation"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 )
 
 type TemplateBuilder struct {
-	parameters map[string]*deployer_pb.Parameter
+	parameters map[string]*awsdeployer_pb.Parameter
 	resources  map[string]IResource
 	outputs    map[string]*Output
 }
 
 func NewTemplateBuilder() *TemplateBuilder {
 	return &TemplateBuilder{
-		parameters: make(map[string]*deployer_pb.Parameter),
+		parameters: make(map[string]*awsdeployer_pb.Parameter),
 		resources:  make(map[string]IResource),
 		outputs:    make(map[string]*Output),
 	}
@@ -23,7 +23,7 @@ func (ss *TemplateBuilder) AddResource(resource IResource) {
 	ss.resources[resource.Name()] = resource
 }
 
-func (ss *TemplateBuilder) AddParameter(param *deployer_pb.Parameter) {
+func (ss *TemplateBuilder) AddParameter(param *awsdeployer_pb.Parameter) {
 	if param.Name == "" {
 		panic("No Name")
 	}
@@ -39,12 +39,12 @@ func (ss *TemplateBuilder) AddOutput(output *Output) {
 
 type BuiltTemplate struct {
 	Template   *cloudformation.Template
-	Parameters []*deployer_pb.Parameter
+	Parameters []*awsdeployer_pb.Parameter
 }
 
 func (ss *TemplateBuilder) Build() *BuiltTemplate {
 	template := cloudformation.NewTemplate()
-	parameters := map[string]*deployer_pb.Parameter{}
+	parameters := map[string]*awsdeployer_pb.Parameter{}
 
 	for _, param := range ss.parameters {
 		parameters[param.Name] = param
@@ -78,7 +78,7 @@ func (ss *TemplateBuilder) Build() *BuiltTemplate {
 		}
 	}
 
-	parameterSlice := make([]*deployer_pb.Parameter, 0, len(parameters))
+	parameterSlice := make([]*awsdeployer_pb.Parameter, 0, len(parameters))
 	for _, param := range parameters {
 		parameterSlice = append(parameterSlice, param)
 	}

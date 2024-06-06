@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/pentops/o5-deploy-aws/cf/app"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 )
 
@@ -127,9 +127,9 @@ func validPreviousPriority(group application_pb.RouteGroup, previous *types.Para
 	return "", false
 }
 
-func (dpr *DeferredParameterResolver) Resolve(ctx context.Context, input *deployer_pb.CloudFormationStackParameterType, previous *types.Parameter) (string, error) {
+func (dpr *DeferredParameterResolver) Resolve(ctx context.Context, input *awsdeployer_pb.CloudFormationStackParameterType, previous *types.Parameter) (string, error) {
 	switch pt := input.Type.(type) {
-	case *deployer_pb.CloudFormationStackParameterType_RulePriority_:
+	case *awsdeployer_pb.CloudFormationStackParameterType_RulePriority_:
 		group := pt.RulePriority.RouteGroup
 		previous, ok := validPreviousPriority(group, previous)
 		if ok {
@@ -142,7 +142,7 @@ func (dpr *DeferredParameterResolver) Resolve(ctx context.Context, input *deploy
 		}
 		return fmt.Sprintf("%d", priority), nil
 
-	case *deployer_pb.CloudFormationStackParameterType_DesiredCount_:
+	case *awsdeployer_pb.CloudFormationStackParameterType_DesiredCount_:
 		return fmt.Sprintf("%d", dpr.desiredCount), nil
 
 	default:

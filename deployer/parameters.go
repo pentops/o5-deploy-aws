@@ -8,17 +8,17 @@ import (
 	"strings"
 
 	"github.com/pentops/o5-deploy-aws/cf/app"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
 
 const (
 	DefaultO5SidecarImageName = "ghcr.io/pentops/o5-runtime-sidecar"
-	DefaultO5SidecarVersion   = "5bf7cbfba2448f9b548851e38cfbfe718b1d7afd"
+	DefaultO5SidecarVersion   = "9ed8c7d622b402f3850ad9082346f93d0628758c"
 )
 
 type ParameterResolver interface {
-	ResolveParameter(param *deployer_pb.Parameter) (*deployer_pb.CloudFormationStackParameter, error)
+	ResolveParameter(param *awsdeployer_pb.Parameter) (*awsdeployer_pb.CloudFormationStackParameter, error)
 }
 
 func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster, environment *environment_pb.Environment) (*deployerResolver, error) {
@@ -35,10 +35,10 @@ func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster
 		hostHeader = *awsEnv.HostHeader
 	}
 
-	crossEnvSNS := map[string]string{}
+	crossEnvs := map[string]*environment_pb.AWSLink{}
 
 	for _, envLink := range awsEnv.EnvironmentLinks {
-		crossEnvSNS[envLink.FullName] = envLink.SnsPrefix
+		crossEnvs[envLink.LookupName] = envLink
 	}
 
 	sidecarImageName := DefaultO5SidecarImageName
@@ -110,6 +110,7 @@ func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster
 			app.ECSRepoParameter:              ecsCluster.EcsRepo,
 			app.ECSTaskExecutionRoleParameter: ecsCluster.EcsTaskExecutionRole,
 			app.EnvNameParameter:              environment.FullName,
+			app.ClusterNameParameter:          cluster.Name,
 			app.VPCParameter:                  ecsCluster.VpcId,
 			app.MetaDeployAssumeRoleParameter: strings.Join(ecsCluster.O5DeployerGrantRoles, ","),
 			app.JWKSParameter:                 strings.Join(environment.TrustJwks, ","),
@@ -118,24 +119,25 @@ func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster
 			app.O5SidecarImageParameter:       fmt.Sprintf("%s:%s", sidecarImageName, sidecarImageVersion),
 			app.SESConditionsParameter:        sesIdentityCondition,
 			app.CORSOriginParameter:           strings.Join(environment.CorsOrigins, ","),
+			app.EventBusARNParameter:          ecsCluster.EventBusArn,
 		},
-		custom:              environment.Vars,
-		crossEnvSNSPrefixes: crossEnvSNS,
+		custom:    environment.Vars,
+		crossEnvs: crossEnvs,
 	}
 	return dr, nil
 }
 
-func (rr *deployerResolver) ResolveParameter(param *deployer_pb.Parameter) (*deployer_pb.CloudFormationStackParameter, error) {
+func (rr *deployerResolver) ResolveParameter(param *awsdeployer_pb.Parameter) (*awsdeployer_pb.CloudFormationStackParameter, error) {
 
 	switch ps := param.Source.Type.(type) {
-	case *deployer_pb.ParameterSourceType_RulePriority_:
+	case *awsdeployer_pb.ParameterSourceType_RulePriority_:
 
-		return &deployer_pb.CloudFormationStackParameter{
+		return &awsdeployer_pb.CloudFormationStackParameter{
 			Name: param.Name,
-			Source: &deployer_pb.CloudFormationStackParameter_Resolve{
-				Resolve: &deployer_pb.CloudFormationStackParameterType{
-					Type: &deployer_pb.CloudFormationStackParameterType_RulePriority_{
-						RulePriority: &deployer_pb.CloudFormationStackParameterType_RulePriority{
+			Source: &awsdeployer_pb.CloudFormationStackParameter_Resolve{
+				Resolve: &awsdeployer_pb.CloudFormationStackParameterType{
+					Type: &awsdeployer_pb.CloudFormationStackParameterType_RulePriority_{
+						RulePriority: &awsdeployer_pb.CloudFormationStackParameterType_RulePriority{
 							RouteGroup: ps.RulePriority.RouteGroup,
 						},
 					},
@@ -143,13 +145,13 @@ func (rr *deployerResolver) ResolveParameter(param *deployer_pb.Parameter) (*dep
 			},
 		}, nil
 
-	case *deployer_pb.ParameterSourceType_DesiredCount_:
-		return &deployer_pb.CloudFormationStackParameter{
+	case *awsdeployer_pb.ParameterSourceType_DesiredCount_:
+		return &awsdeployer_pb.CloudFormationStackParameter{
 			Name: param.Name,
-			Source: &deployer_pb.CloudFormationStackParameter_Resolve{
-				Resolve: &deployer_pb.CloudFormationStackParameterType{
-					Type: &deployer_pb.CloudFormationStackParameterType_DesiredCount_{
-						DesiredCount: &deployer_pb.CloudFormationStackParameterType_DesiredCount{},
+			Source: &awsdeployer_pb.CloudFormationStackParameter_Resolve{
+				Resolve: &awsdeployer_pb.CloudFormationStackParameterType{
+					Type: &awsdeployer_pb.CloudFormationStackParameterType_DesiredCount_{
+						DesiredCount: &awsdeployer_pb.CloudFormationStackParameterType_DesiredCount{},
 					},
 				},
 			},
@@ -158,26 +160,25 @@ func (rr *deployerResolver) ResolveParameter(param *deployer_pb.Parameter) (*dep
 
 	var value string
 	switch ps := param.Source.Type.(type) {
-	case *deployer_pb.ParameterSourceType_Static_:
+	case *awsdeployer_pb.ParameterSourceType_Static_:
 		value = ps.Static.Value
 
-	case *deployer_pb.ParameterSourceType_WellKnown_:
+	case *awsdeployer_pb.ParameterSourceType_WellKnown_:
 		val, ok := rr.WellKnownParameter(param.Name)
 		if !ok {
 			return nil, fmt.Errorf("unknown well known parameter: %s", param.Name)
 		}
 		value = val
 
-	case *deployer_pb.ParameterSourceType_CrossEnvSns_:
-		envName := ps.CrossEnvSns.EnvName
-		topicPrefix, err := rr.CrossEnvSNSPrefix(envName)
+	case *awsdeployer_pb.ParameterSourceType_CrossEnvAttr_:
+		val, err := rr.CrossEnvAttr(ps.CrossEnvAttr.EnvName, ps.CrossEnvAttr.Attr)
 		if err != nil {
 			return nil, err
 		}
 
-		value = topicPrefix
+		value = val
 
-	case *deployer_pb.ParameterSourceType_EnvVar_:
+	case *awsdeployer_pb.ParameterSourceType_EnvVar_:
 		key := ps.EnvVar.Name
 		val, ok := rr.CustomEnvVar(key)
 		if !ok {
@@ -189,9 +190,9 @@ func (rr *deployerResolver) ResolveParameter(param *deployer_pb.Parameter) (*dep
 		return nil, fmt.Errorf("unknown parameter source (%v) %s", param.Source, param.Name)
 	}
 
-	return &deployer_pb.CloudFormationStackParameter{
+	return &awsdeployer_pb.CloudFormationStackParameter{
 		Name: param.Name,
-		Source: &deployer_pb.CloudFormationStackParameter_Value{
+		Source: &awsdeployer_pb.CloudFormationStackParameter_Value{
 			Value: value,
 		},
 	}, nil
@@ -199,9 +200,9 @@ func (rr *deployerResolver) ResolveParameter(param *deployer_pb.Parameter) (*dep
 }
 
 type deployerResolver struct {
-	wellKnown           map[string]string
-	custom              []*environment_pb.CustomVariable
-	crossEnvSNSPrefixes map[string]string
+	wellKnown map[string]string
+	custom    []*environment_pb.CustomVariable
+	crossEnvs map[string]*environment_pb.AWSLink
 }
 
 func (dr *deployerResolver) CustomEnvVar(name string) (string, bool) {
@@ -220,11 +221,21 @@ func (dr *deployerResolver) CustomEnvVar(name string) (string, bool) {
 	return "", false
 }
 
-func (dr *deployerResolver) CrossEnvSNSPrefix(envName string) (string, error) {
-	if prefix, ok := dr.crossEnvSNSPrefixes[envName]; ok {
-		return prefix, nil
+func (dr *deployerResolver) CrossEnvAttr(envName string, attr awsdeployer_pb.EnvAttr) (string, error) {
+	env, ok := dr.crossEnvs[envName]
+	if !ok {
+		return "", fmt.Errorf("unknown env: %s", envName)
 	}
-	return "", fmt.Errorf("unknown env for SNS prefix: %s", envName)
+
+	switch attr {
+	case awsdeployer_pb.EnvAttr_SNS_PREFIX:
+		return env.SnsPrefix, nil
+	case awsdeployer_pb.EnvAttr_FULL_NAME:
+		return env.FullName, nil
+	default:
+		return "", fmt.Errorf("unknown attr: %v", attr)
+
+	}
 }
 
 func (dr *deployerResolver) WellKnownParameter(name string) (string, bool) {

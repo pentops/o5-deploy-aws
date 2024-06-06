@@ -5,18 +5,18 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_epb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_epb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	"github.com/pentops/outbox.pg.go/outbox"
 	"github.com/pentops/protostate/gen/state/v1/psm_pb"
 	"github.com/pentops/sqrlx.go/sqrlx"
 )
 
 type StateMachines struct {
-	Deployment  *deployer_pb.DeploymentPSM
-	Environment *deployer_pb.EnvironmentPSM
-	Cluster     *deployer_pb.ClusterPSM
-	Stack       *deployer_pb.StackPSM
+	Deployment  *awsdeployer_pb.DeploymentPSM
+	Environment *awsdeployer_pb.EnvironmentPSM
+	Cluster     *awsdeployer_pb.ClusterPSM
+	Stack       *awsdeployer_pb.StackPSM
 }
 
 func NewStateMachines() (*StateMachines, error) {
@@ -40,14 +40,14 @@ func NewStateMachines() (*StateMachines, error) {
 		return nil, fmt.Errorf("NewClusterEventer: %w", err)
 	}
 
-	deployment.GeneralHook(deployer_pb.DeploymentPSMGeneralHook(func(
+	deployment.GeneralHook(awsdeployer_pb.DeploymentPSMGeneralHook(func(
 		ctx context.Context,
 		tx sqrlx.Transaction,
-		baton deployer_pb.DeploymentPSMHookBaton,
-		state *deployer_pb.DeploymentState,
-		event *deployer_pb.DeploymentEvent,
+		baton awsdeployer_pb.DeploymentPSMHookBaton,
+		state *awsdeployer_pb.DeploymentState,
+		event *awsdeployer_pb.DeploymentEvent,
 	) error {
-		publish := &deployer_epb.DeploymentEvent{
+		publish := &awsdeployer_epb.DeploymentEvent{
 			Event:  event,
 			Status: state.Status,
 			State:  state.Data,
@@ -55,14 +55,14 @@ func NewStateMachines() (*StateMachines, error) {
 		return outbox.Send(ctx, tx, publish)
 	}))
 
-	stack.GeneralHook(deployer_pb.StackPSMGeneralHook(func(
+	stack.GeneralHook(awsdeployer_pb.StackPSMGeneralHook(func(
 		ctx context.Context,
 		tx sqrlx.Transaction,
-		baton deployer_pb.StackPSMHookBaton,
-		state *deployer_pb.StackState,
-		event *deployer_pb.StackEvent,
+		baton awsdeployer_pb.StackPSMHookBaton,
+		state *awsdeployer_pb.StackState,
+		event *awsdeployer_pb.StackEvent,
 	) error {
-		publish := &deployer_epb.StackEvent{
+		publish := &awsdeployer_epb.StackEvent{
 			Event:  event,
 			Status: state.Status,
 			State:  state.Data,
@@ -70,14 +70,14 @@ func NewStateMachines() (*StateMachines, error) {
 		return outbox.Send(ctx, tx, publish)
 	}))
 
-	environment.GeneralHook(deployer_pb.EnvironmentPSMGeneralHook(func(
+	environment.GeneralHook(awsdeployer_pb.EnvironmentPSMGeneralHook(func(
 		ctx context.Context,
 		tx sqrlx.Transaction,
-		baton deployer_pb.EnvironmentPSMHookBaton,
-		state *deployer_pb.EnvironmentState,
-		event *deployer_pb.EnvironmentEvent,
+		baton awsdeployer_pb.EnvironmentPSMHookBaton,
+		state *awsdeployer_pb.EnvironmentState,
+		event *awsdeployer_pb.EnvironmentEvent,
 	) error {
-		publish := &deployer_epb.EnvironmentEvent{
+		publish := &awsdeployer_epb.EnvironmentEvent{
 			Event:  event,
 			Status: state.Status,
 			State:  state.Data,
@@ -86,17 +86,17 @@ func NewStateMachines() (*StateMachines, error) {
 	}))
 
 	// Unblock waiting deployments from the stack trigger.
-	stack.From(deployer_pb.StackStatus_AVAILABLE).
-		Hook(deployer_pb.StackPSMHook(func(
+	stack.From(awsdeployer_pb.StackStatus_AVAILABLE).
+		Hook(awsdeployer_pb.StackPSMHook(func(
 			ctx context.Context,
 			tx sqrlx.Transaction,
-			tb deployer_pb.StackPSMHookBaton,
-			state *deployer_pb.StackState,
-			event *deployer_pb.StackEventType_RunDeployment,
+			tb awsdeployer_pb.StackPSMHookBaton,
+			state *awsdeployer_pb.StackState,
+			event *awsdeployer_pb.StackEventType_RunDeployment,
 		) error {
 
-			triggerDeploymentEvent := &deployer_pb.DeploymentPSMEventSpec{
-				Keys: &deployer_pb.DeploymentKeys{
+			triggerDeploymentEvent := &awsdeployer_pb.DeploymentPSMEventSpec{
+				Keys: &awsdeployer_pb.DeploymentKeys{
 					DeploymentId:  event.DeploymentId,
 					StackId:       state.Keys.StackId,
 					EnvironmentId: state.Keys.EnvironmentId,
@@ -104,7 +104,7 @@ func NewStateMachines() (*StateMachines, error) {
 				},
 				Cause:     tb.AsCause(),
 				Timestamp: time.Now(),
-				Event:     &deployer_pb.DeploymentEventType_Triggered{},
+				Event:     &awsdeployer_pb.DeploymentEventType_Triggered{},
 			}
 
 			if _, err := deployment.TransitionInTx(ctx, tx, triggerDeploymentEvent); err != nil {
@@ -116,24 +116,24 @@ func NewStateMachines() (*StateMachines, error) {
 		}))
 
 	// Push deployments into the stack queue.
-	deployment.From(0).Hook(deployer_pb.DeploymentPSMHook(func(
+	deployment.From(0).Hook(awsdeployer_pb.DeploymentPSMHook(func(
 		ctx context.Context,
 		tx sqrlx.Transaction,
-		tb deployer_pb.DeploymentPSMHookBaton,
-		state *deployer_pb.DeploymentState,
-		event *deployer_pb.DeploymentEventType_Created,
+		tb awsdeployer_pb.DeploymentPSMHookBaton,
+		state *awsdeployer_pb.DeploymentState,
+		event *awsdeployer_pb.DeploymentEventType_Created,
 	) error {
 
-		stackEvent := &deployer_pb.StackPSMEventSpec{
-			Keys: &deployer_pb.StackKeys{
+		stackEvent := &awsdeployer_pb.StackPSMEventSpec{
+			Keys: &awsdeployer_pb.StackKeys{
 				StackId:       StackID(state.Data.Spec.EnvironmentName, state.Data.Spec.AppName),
 				EnvironmentId: state.Keys.EnvironmentId,
 				ClusterId:     state.Keys.ClusterId,
 			},
 			Timestamp: time.Now(),
 			Cause:     tb.AsCause(),
-			Event: &deployer_pb.StackEventType_DeploymentRequested{
-				Deployment: &deployer_pb.StackDeployment{
+			Event: &awsdeployer_pb.StackEventType_DeploymentRequested{
+				Deployment: &awsdeployer_pb.StackDeployment{
 					DeploymentId: state.Keys.DeploymentId,
 					Version:      state.Data.Spec.Version,
 				},
@@ -150,18 +150,18 @@ func NewStateMachines() (*StateMachines, error) {
 		return nil
 	}))
 
-	deploymentCompleted := func(ctx context.Context, tx sqrlx.Transaction, state *deployer_pb.DeploymentState, cause *psm_pb.Cause) error {
+	deploymentCompleted := func(ctx context.Context, tx sqrlx.Transaction, state *awsdeployer_pb.DeploymentState, cause *psm_pb.Cause) error {
 
-		stackEvent := &deployer_pb.StackPSMEventSpec{
-			Keys: &deployer_pb.StackKeys{
+		stackEvent := &awsdeployer_pb.StackPSMEventSpec{
+			Keys: &awsdeployer_pb.StackKeys{
 				StackId:       StackID(state.Data.Spec.EnvironmentName, state.Data.Spec.AppName),
 				EnvironmentId: state.Keys.EnvironmentId,
 				ClusterId:     state.Keys.ClusterId,
 			},
 			Timestamp: time.Now(),
 			Cause:     cause,
-			Event: &deployer_pb.StackEventType_DeploymentCompleted{
-				Deployment: &deployer_pb.StackDeployment{
+			Event: &awsdeployer_pb.StackEventType_DeploymentCompleted{
+				Deployment: &awsdeployer_pb.StackDeployment{
 					DeploymentId: state.Keys.DeploymentId,
 					Version:      state.Data.Spec.Version,
 				},
@@ -175,30 +175,30 @@ func NewStateMachines() (*StateMachines, error) {
 		return nil
 	}
 
-	deployment.From().Hook(deployer_pb.DeploymentPSMHook(func(
+	deployment.From().Hook(awsdeployer_pb.DeploymentPSMHook(func(
 		ctx context.Context,
 		tx sqrlx.Transaction,
-		tb deployer_pb.DeploymentPSMHookBaton,
-		state *deployer_pb.DeploymentState,
-		event *deployer_pb.DeploymentEventType_Error,
+		tb awsdeployer_pb.DeploymentPSMHookBaton,
+		state *awsdeployer_pb.DeploymentState,
+		event *awsdeployer_pb.DeploymentEventType_Error,
 	) error {
 		return deploymentCompleted(ctx, tx, state, tb.AsCause())
 	}))
-	deployment.From().Hook(deployer_pb.DeploymentPSMHook(func(
+	deployment.From().Hook(awsdeployer_pb.DeploymentPSMHook(func(
 		ctx context.Context,
 		tx sqrlx.Transaction,
-		tb deployer_pb.DeploymentPSMHookBaton,
-		state *deployer_pb.DeploymentState,
-		event *deployer_pb.DeploymentEventType_Terminated,
+		tb awsdeployer_pb.DeploymentPSMHookBaton,
+		state *awsdeployer_pb.DeploymentState,
+		event *awsdeployer_pb.DeploymentEventType_Terminated,
 	) error {
 		return deploymentCompleted(ctx, tx, state, tb.AsCause())
 	}))
-	deployment.From().Hook(deployer_pb.DeploymentPSMHook(func(
+	deployment.From().Hook(awsdeployer_pb.DeploymentPSMHook(func(
 		ctx context.Context,
 		tx sqrlx.Transaction,
-		tb deployer_pb.DeploymentPSMHookBaton,
-		state *deployer_pb.DeploymentState,
-		event *deployer_pb.DeploymentEventType_Done,
+		tb awsdeployer_pb.DeploymentPSMHookBaton,
+		state *awsdeployer_pb.DeploymentState,
+		event *awsdeployer_pb.DeploymentEventType_Done,
 	) error {
 		return deploymentCompleted(ctx, tx, state, tb.AsCause())
 	}))

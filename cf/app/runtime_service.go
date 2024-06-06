@@ -7,12 +7,13 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	elbv2 "github.com/awslabs/goformation/v7/cloudformation/elasticloadbalancingv2"
+	"github.com/awslabs/goformation/v7/cloudformation/events"
 	"github.com/awslabs/goformation/v7/cloudformation/iam"
 	"github.com/awslabs/goformation/v7/cloudformation/sns"
 	"github.com/awslabs/goformation/v7/cloudformation/sqs"
 	"github.com/awslabs/goformation/v7/cloudformation/tags"
 	"github.com/pentops/o5-deploy-aws/cf"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 )
 
@@ -68,8 +69,14 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		}},
 		Links: serviceLinks,
 		Environment: []ecs.TaskDefinition_KeyValuePair{{
-			Name:  cf.String("SNS_PREFIX"),
-			Value: cf.String(cloudformation.Ref(SNSPrefixParameter)),
+			Name:  cf.String("EVENTBRIDGE_ARN"),
+			Value: cf.String(cloudformation.Ref(EventBusARNParameter)),
+		}, {
+			Name:  cf.String("APP_NAME"),
+			Value: cf.String(globals.appName),
+		}, {
+			Name:  cf.String("ENVIRONMENT_NAME"),
+			Value: cf.String(cloudformation.Ref(EnvNameParameter)),
 		}, {
 			Name:  cf.String("AWS_REGION"),
 			Value: cf.String(cloudformation.Ref(AWSRegionParameter)),
@@ -179,7 +186,6 @@ func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
 				"ecs",
 				cloudformation.Ref(EnvNameParameter),
 				rsPrefix,
-				def.Name,
 			}),
 			"awslogs-create-group":  "true",
 			"awslogs-region":        cloudformation.Ref("AWS::Region"),
@@ -191,12 +197,12 @@ func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
 func (rs *RuntimeService) Apply(template *Application) error {
 
 	desiredCountParameter := fmt.Sprintf("DesiredCount%s", rs.Name)
-	template.AddParameter(&deployer_pb.Parameter{
+	template.AddParameter(&awsdeployer_pb.Parameter{
 		Name: desiredCountParameter,
 		Type: "Number",
-		Source: &deployer_pb.ParameterSourceType{
-			Type: &deployer_pb.ParameterSourceType_DesiredCount_{
-				DesiredCount: &deployer_pb.ParameterSourceType_DesiredCount{},
+		Source: &awsdeployer_pb.ParameterSourceType{
+			Type: &awsdeployer_pb.ParameterSourceType_DesiredCount_{
+				DesiredCount: &awsdeployer_pb.ParameterSourceType_DesiredCount{},
 			},
 		},
 	})
@@ -230,9 +236,9 @@ func (rs *RuntimeService) Apply(template *Application) error {
 			SqsManagedSseEnabled: cf.Bool(true),
 			Tags:                 sourceTags(),
 		})
+
 		template.AddResource(queueResource)
 		rs.Policy.AddSQSSubscribe(queueResource.GetAtt("Arn"))
-
 		rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
 			Name:  cf.String("SQS_URL"),
 			Value: cf.String(queueResource.Ref()),
@@ -240,73 +246,114 @@ func (rs *RuntimeService) Apply(template *Application) error {
 
 		topicARNs := []string{}
 		for _, sub := range rs.spec.Subscriptions {
-
-			snsTopicARN := cloudformation.Join("", []string{
-				"arn:aws:sns:",
-				cloudformation.Ref("AWS::Region"),
-				":",
-				cloudformation.Ref("AWS::AccountId"),
-				":",
-				cloudformation.Ref(EnvNameParameter),
-				"-",
-				sub.Name,
-			})
+			detailPattern := map[string]interface{}{}
+			detailPattern["sourceEnv"] = []string{cloudformation.Ref(EnvNameParameter)}
 			if sub.EnvName != nil {
-				envSNSParamName := cf.CleanParameterName(*sub.EnvName, "SNSPrefix")
-				template.AddParameter(&deployer_pb.Parameter{
+
+				envSNSParamName := cf.CleanParameterName(*sub.EnvName, "FullName")
+				template.AddParameter(&awsdeployer_pb.Parameter{
 					Name: envSNSParamName,
 					Type: "String",
-					Source: &deployer_pb.ParameterSourceType{
-						Type: &deployer_pb.ParameterSourceType_CrossEnvSns_{
-							CrossEnvSns: &deployer_pb.ParameterSourceType_CrossEnvSns{
+					Source: &awsdeployer_pb.ParameterSourceType{
+						Type: &awsdeployer_pb.ParameterSourceType_CrossEnvAttr_{
+							CrossEnvAttr: &awsdeployer_pb.ParameterSourceType_CrossEnvAttr{
 								EnvName: *sub.EnvName,
+								Attr:    awsdeployer_pb.EnvAttr_FULL_NAME,
 							},
 						},
 					},
 				})
-				snsTopicARN = cloudformation.Join("", []string{
-					cloudformation.Ref(envSNSParamName),
-					sub.Name,
+
+			}
+			if strings.HasPrefix(sub.Name, "o5-infra/") {
+				topicName := sub.Name[len("o5-infra/"):]
+				if !rs.spec.GrantMetaDeployPermissions {
+					return fmt.Errorf("o5-infra subscription requires meta deploy permissions")
+				}
+				snsTopicARN := cloudformation.Join("", []string{
+					"arn:aws:sns:",
+					cloudformation.Ref("AWS::Region"),
+					":",
+					cloudformation.Ref("AWS::AccountId"),
+					":",
+					// Note this is the Cluster name, not the env name, one o5 listener per cluster.
+					cloudformation.Ref(ClusterNameParameter),
+					"-",
+					topicName,
 				})
-			}
-			topicARNs = append(topicARNs, snsTopicARN)
-			subscription := &sns.Subscription{
-				TopicArn:           snsTopicARN,
-				Protocol:           "sqs",
-				RawMessageDelivery: cf.Bool(true),
-				Endpoint:           cf.String(queueResource.GetAtt("Arn")),
-			}
 
-			if sub.RawMessage {
-				// 'RawMessage' in this context means the subscription is a
-				// o5.messaging.topic.RawMessage.
-				// The sidecar will use the SNS wrapper to pull out the
-				// original topic.
-				subscription.RawMessageDelivery = cf.Bool(false)
-			}
+				subscription := cf.NewResource(cf.CleanParameterName(rs.Name, sub.Name), &sns.Subscription{
+					TopicArn:           snsTopicARN,
+					Protocol:           "sqs",
+					RawMessageDelivery: cf.Bool(false), // Always include the SNS header info for infra events.
+					Endpoint:           cf.String(queueResource.GetAtt("Arn")),
+				})
 
-			template.AddSNSTopic(sub.Name)
-			template.AddResource(cf.NewResource(cf.CleanParameterName(rs.Name, sub.Name), subscription))
+				// The topic is not added to the stack, it should already exist
+				// in this case.
+				template.AddResource(subscription)
+				topicARNs = append(topicARNs, snsTopicARN)
+
+			} else {
+
+				topicParts := strings.Split(sub.Name, "/")
+
+				if len(topicParts) == 1 {
+					detailPattern["topicName"] = []string{topicParts[0]}
+				} else if len(topicParts) == 2 {
+					detailPattern["grpcService"] = []string{topicParts[1]}
+				} else if len(topicParts) == 3 {
+					detailPattern["grpcService"] = []string{topicParts[1]}
+					detailPattern["grpcMethod"] = []string{topicParts[2]}
+				} else {
+					return fmt.Errorf("invalid topic name %s", sub.Name)
+				}
+
+				eventBusSubscription := &events.Rule{
+					Description:  cf.String(fmt.Sprintf("Subscription for app %s %s", rs.Name, sub.Name)),
+					EventBusName: cloudformation.RefPtr(EventBusARNParameter),
+					Targets: []events.Rule_Target{{
+						Arn: queueResource.GetAtt("Arn"),
+						Id:  "SQS",
+					}},
+					EventPattern: map[string]interface{}{
+						"detail": detailPattern,
+					},
+				}
+				template.AddResource(cf.NewResource(cf.CleanParameterName(rs.Name, sub.Name), eventBusSubscription))
+			}
+		}
+		queuePolicyStatement := []interface{}{
+			map[string]interface{}{
+				"Effect": "Allow",
+				"Principal": map[string]interface{}{
+					"Service": "events.amazonaws.com",
+				},
+				"Action":   "sqs:SendMessage",
+				"Resource": queueResource.GetAtt("Arn"),
+			}}
+
+		if len(topicARNs) > 0 {
+			queuePolicyStatement = append(queuePolicyStatement, map[string]interface{}{
+				"Effect":    "Allow",
+				"Principal": "*",
+				"Action":    "sqs:SendMessage",
+				"Resource":  queueResource.GetAtt("Arn"),
+				"Condition": map[string]interface{}{
+					"ArnEquals": map[string]interface{}{
+						"aws:SourceArn": topicARNs,
+					},
+				},
+			})
 		}
 
-		// Allow SNS to publish to SQS...
+		// Allow SNS and EventBridge to publish to SQS...
+		// (The ARN distinguishes the source)
 		template.AddResource(cf.NewResource(cf.CleanParameterName(rs.Name), &sqs.QueuePolicy{
 			Queues: []string{queueResource.Ref()},
 			PolicyDocument: map[string]interface{}{
-				"Version": "2012-10-17",
-				"Statement": []interface{}{
-					map[string]interface{}{
-						"Effect":    "Allow",
-						"Principal": "*",
-						"Action":    "sqs:SendMessage",
-						"Resource":  queueResource.GetAtt("Arn"),
-						"Condition": map[string]interface{}{
-							"ArnEquals": map[string]interface{}{
-								"aws:SourceArn": topicARNs,
-							},
-						},
-					},
-				},
+				"Version":   "2012-10-17",
+				"Statement": queuePolicyStatement,
 			},
 		}))
 	}

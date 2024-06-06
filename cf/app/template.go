@@ -3,12 +3,12 @@ package app
 import (
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/pentops/o5-deploy-aws/cf"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 )
 
 type BuiltApplication struct {
 	Template *cloudformation.Template
-	*deployer_pb.BuiltApplication
+	*awsdeployer_pb.BuiltApplication
 }
 
 func (ba *BuiltApplication) TemplateJSON() ([]byte, error) {
@@ -24,7 +24,7 @@ type Application struct {
 	appName           string
 	version           string
 	quickMode         bool
-	postgresDatabases []*deployer_pb.PostgresDatabaseResource
+	postgresDatabases []*awsdeployer_pb.PostgresDatabaseResource
 	snsTopics         map[string]*SNSTopic
 
 	runtimes map[string]*RuntimeService
@@ -50,7 +50,7 @@ func (ss *Application) Build() *BuiltApplication {
 
 	return &BuiltApplication{
 		Template: template.Template,
-		BuiltApplication: &deployer_pb.BuiltApplication{
+		BuiltApplication: &awsdeployer_pb.BuiltApplication{
 			Parameters:        template.Parameters,
 			PostgresDatabases: ss.postgresDatabases,
 			SnsTopics:         snsToipcs,

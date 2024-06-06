@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
-	"github.com/pentops/jsonapi/jsontest"
+	"github.com/pentops/flowtest/jsontest"
 	"github.com/pentops/o5-deploy-aws/cf"
 )
 
