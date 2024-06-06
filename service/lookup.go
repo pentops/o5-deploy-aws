@@ -4,15 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 var environmentIDNamespace = uuid.MustParse("0D783718-F8FD-4543-AE3D-6382AB0B8178")
@@ -58,12 +61,12 @@ type clusterIdentifiers struct {
 func (ds *LookupProvider) stackByID(ctx context.Context, stackID string) (stackIdentifiers, error) {
 	query := sq.
 		Select(
-			"stack.id",
+			"stack.stack_id",
 			"stack.environment_id",
 			"stack.cluster_id",
 			"state->'data'->>'applicationName'",
 			"state->'data'->>'environmentName'",
-		).From("stack").Where("id = ?", stackID)
+		).From("stack").Where("stack_id = ?", stackID)
 
 	res := stackIdentifiers{}
 
@@ -108,14 +111,14 @@ func (ds *LookupProvider) lookupStack(ctx context.Context, presented string) (st
 
 	query := sq.
 		Select(
-			"stack.id",
+			"stack.stack_id",
 			"stack.environment_id",
 			"stack.cluster_id",
 			"state->'data'->>'applicationName'",
 			"state->'data'->>'environmentName'",
 		).From("stack").
-		Where("env_name = ?", fallbackEnvName).
-		Where("app_name = ?", fallbackAppName)
+		Where("state->'data'->>'environmentName' = ?", fallbackEnvName).
+		Where("state->'data'->>'applicationName' = ?", fallbackAppName)
 
 	res := stackIdentifiers{}
 
@@ -159,12 +162,16 @@ func (ds *LookupProvider) lookupStack(ctx context.Context, presented string) (st
 
 func (ds *LookupProvider) lookupEnvironment(ctx context.Context, presentedEnvironment, presentedCluster string) (environmentIdentifiers, error) {
 	query := sq.
-		Select("environment.id", "environment.cluster_id", "state->'data'->'config'->>'fullName'").
+		Select(
+			"environment.environment_id",
+			"environment.cluster_id",
+			"state->'data'->'config'->>'fullName'",
+		).
 		From("environment")
 
 	fallbackToName := ""
 	if _, err := uuid.Parse(presentedEnvironment); err == nil {
-		query = query.Where("id = ?", presentedEnvironment)
+		query = query.Where("environment_id = ?", presentedEnvironment)
 	} else {
 		query = query.Where("state->'data'->'config'->>'fullName' = ?", presentedEnvironment)
 		fallbackToName = presentedEnvironment
@@ -197,12 +204,16 @@ func (ds *LookupProvider) lookupEnvironment(ctx context.Context, presentedEnviro
 		return res, nil
 	}
 
+	backupQuery := sq.Select("cluster_id").
+		From("cluster").
+		Where("state->'data'->'config'->>'name' = ?", presentedCluster)
+
 	err = ds.db.Transact(ctx, &sqrlx.TxOptions{
 		Isolation: sql.LevelReadCommitted,
 		ReadOnly:  true,
 		Retryable: true,
 	}, func(ctx context.Context, tx sqrlx.Transaction) error {
-		return tx.SelectRow(ctx, sq.Select("id").From("cluster").Where("state->'data'->'config'->>'name' = ?", presentedCluster)).Scan(&res.clusterID)
+		return tx.SelectRow(ctx, backupQuery).Scan(&res.clusterID)
 	})
 	if err == nil {
 		return res, nil
@@ -216,12 +227,15 @@ func (ds *LookupProvider) lookupEnvironment(ctx context.Context, presentedEnviro
 
 func (ds *LookupProvider) lookupCluster(ctx context.Context, presented string) (clusterIdentifiers, error) {
 	query := sq.
-		Select("id", "state->'data'->'config'->>'name'").
+		Select(
+			"cluster_id",
+			"state->'data'->'config'->>'name'",
+		).
 		From("cluster")
 
 	fallbackToName := ""
 	if _, err := uuid.Parse(presented); err == nil {
-		query = query.Where("id = ?", presented)
+		query = query.Where("cluster_id = ?", presented)
 	} else {
 		query = query.Where("state->'data'->'config'->>'name' = ?", presented)
 		fallbackToName = presented
@@ -252,5 +266,48 @@ func (ds *LookupProvider) lookupCluster(ctx context.Context, presented string) (
 	return clusterIdentifiers{
 		clusterID:   id,
 		clusterName: fallbackToName,
+	}, nil
+}
+
+func (ds *LookupProvider) lookupAppStack(ctx context.Context, environmentId string, appName string) (*appStack, error) {
+	var envJSON []byte
+	var clusterJSON []byte
+
+	query := sq.Select(
+		"cluster.state",
+		"environment.state").
+		From("environment").
+		LeftJoin("cluster ON cluster.cluster_id = environment.cluster_id").
+		Where("environment.environment_id = ?", environmentId)
+
+	err := ds.db.Transact(ctx, &sqrlx.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+		ReadOnly:  true,
+		Retryable: true,
+	}, func(ctx context.Context, tx sqrlx.Transaction) error {
+		return tx.SelectRow(ctx, query).Scan(&clusterJSON, &envJSON)
+	})
+
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("environment %q not found", environmentId)
+	} else if err != nil {
+		return nil, err
+	}
+
+	cluster := &awsdeployer_pb.ClusterState{}
+	if err := protojson.Unmarshal(clusterJSON, cluster); err != nil {
+		return nil, fmt.Errorf("unmarshal cluster: %w", err)
+	}
+
+	env := &awsdeployer_pb.EnvironmentState{}
+	if err := protojson.Unmarshal(envJSON, env); err != nil {
+		return nil, fmt.Errorf("unmarshal environment: %w", err)
+	}
+	return &appStack{
+		environment:   env.Data.Config,
+		cluster:       cluster.Data.Config,
+		environmentID: env.Keys.EnvironmentId,
+		clusterID:     cluster.Keys.ClusterId,
+		stackID:       states.StackID(env.Data.Config.FullName, appName),
 	}, nil
 }

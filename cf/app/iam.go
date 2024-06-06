@@ -12,11 +12,12 @@ type PolicyBuilder struct {
 	s3ReadOnly     []string
 	s3WriteOnly    []string
 
-	sqsSubscribe []string
-	sqsPublish   []string
-	snsPublish   []string
-	ses          *application_pb.AWSConfig_SES
-	ecrPull      bool
+	sqsSubscribe       []string
+	sqsPublish         []string
+	snsPublish         []string
+	eventBridgePublish []string
+	ses                *application_pb.AWSConfig_SES
+	ecrPull            bool
 
 	metaDeployPermissions bool
 }
@@ -51,6 +52,10 @@ func (pb *PolicyBuilder) AddSQSPublish(arn string) {
 
 func (pb *PolicyBuilder) AddSNSPublish(arn string) {
 	pb.snsPublish = append(pb.snsPublish, arn)
+}
+
+func (pb *PolicyBuilder) AddEventBridgePublish(topicName string) {
+	pb.eventBridgePublish = append(pb.eventBridgePublish, topicName)
 }
 
 func (pb *PolicyBuilder) AddSES(policy *application_pb.AWSConfig_SES) {
@@ -173,6 +178,26 @@ func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Po
 				*/
 			})
 		}
+	}
+
+	if len(pb.eventBridgePublish) > 0 {
+		policy := iam.Role_Policy{
+			PolicyName: uniqueName("eventbridge-publish"),
+			PolicyDocument: map[string]interface{}{
+				"Version": "2012-10-17",
+				"Statement": []interface{}{
+					map[string]interface{}{
+						"Effect": "Allow",
+						"Action": []interface{}{
+							"events:PutEvents",
+						},
+						"Resource": []string{cloudformation.Ref(EventBusARNParameter)},
+					},
+				},
+			},
+		}
+		// TODO: Filter this down.
+		rolePolicies = append(rolePolicies, policy)
 	}
 
 	if len(pb.snsPublish) > 0 {

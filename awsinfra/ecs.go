@@ -9,12 +9,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	ecs_types "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type ECSWorker struct {
-	deployer_tpb.UnimplementedECSRequestTopicServer
+	awsinfra_tpb.UnimplementedECSRequestTopicServer
 
 	db  DBLite
 	ecs ECSAPI
@@ -27,7 +27,7 @@ func NewECSWorker(db DBLite, ecsClient ECSAPI) (*ECSWorker, error) {
 	}, nil
 }
 
-func (handler *ECSWorker) RunECSTask(ctx context.Context, msg *deployer_tpb.RunECSTaskMessage) (*emptypb.Empty, error) {
+func (handler *ECSWorker) RunECSTask(ctx context.Context, msg *awsinfra_tpb.RunECSTaskMessage) (*emptypb.Empty, error) {
 
 	clientToken, err := handler.db.RequestToClientToken(ctx, msg.Request)
 	if err != nil {
@@ -96,17 +96,17 @@ func (handler *ECSWorker) HandleECSTaskEvent(ctx context.Context, eventID string
 		return err
 	}
 
-	statusMessage := &deployer_tpb.ECSTaskStatusMessage{
+	statusMessage := &awsinfra_tpb.ECSTaskStatusMessage{
 		Request: taskContext,
 		EventId: eventID,
 		TaskArn: taskEvent.TaskArn,
-		Event:   &deployer_tpb.ECSTaskEventType{},
+		Event:   &awsinfra_tpb.ECSTaskEventType{},
 	}
 
 	switch taskEvent.LastStatus {
 	case "RUNNING":
 		// Good.
-		statusMessage.Event.Set(&deployer_tpb.ECSTaskEventType_Running{})
+		statusMessage.Event.Set(&awsinfra_tpb.ECSTaskEventType_Running{})
 
 	case "PENDING",
 		"PROVISIONING",
@@ -126,11 +126,11 @@ func (handler *ECSWorker) HandleECSTaskEvent(ctx context.Context, eventID string
 
 		switch *taskEvent.StopCode {
 		case "TaskFailedToStart":
-			statusMessage.Event.Set(&deployer_tpb.ECSTaskEventType_Failed{
+			statusMessage.Event.Set(&awsinfra_tpb.ECSTaskEventType_Failed{
 				Reason: fmt.Sprintf("Task failed to start: %s", taskEvent.StoppedReason),
 			})
 		case "ServiceSchedulerInitiated":
-			statusMessage.Event.Set(&deployer_tpb.ECSTaskEventType_Failed{
+			statusMessage.Event.Set(&awsinfra_tpb.ECSTaskEventType_Failed{
 				Reason: "Scaled by service scheduller",
 			})
 
@@ -154,16 +154,16 @@ func (handler *ECSWorker) HandleECSTaskEvent(ctx context.Context, eventID string
 			}
 
 			if allOK {
-				statusMessage.Event.Set(&deployer_tpb.ECSTaskEventType_Exited{
+				statusMessage.Event.Set(&awsinfra_tpb.ECSTaskEventType_Exited{
 					ExitCode: 0,
 				})
 			} else if nonZeroExit != nil {
-				statusMessage.Event.Set(&deployer_tpb.ECSTaskEventType_Exited{
+				statusMessage.Event.Set(&awsinfra_tpb.ECSTaskEventType_Exited{
 					ExitCode:      int32(*nonZeroExit.ExitCode),
 					ContainerName: nonZeroExit.Name,
 				})
 			} else {
-				statusMessage.Event.Set(&deployer_tpb.ECSTaskEventType_Failed{
+				statusMessage.Event.Set(&awsinfra_tpb.ECSTaskEventType_Failed{
 					Reason: fmt.Sprintf("Containers exited with no exit codes: %v", reasonCodes),
 				})
 			}

@@ -1,0 +1,18 @@
+
+---
+registry:
+  organization: pentops
+  name: o5-deploy
+
+options:
+  trimSubPackages:
+    - service
+    - topic
+  wrapOneof: true
+  shortEnums:
+    unspecifiedSuffix: UNSPECIFIED
+    strictUnmarshal: true
+
+packages:
+  - label: AWS Deployer
+    name: o5.awsdeployer.v1

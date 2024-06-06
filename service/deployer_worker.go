@@ -2,36 +2,33 @@ package service
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 
 	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
 	"github.com/pentops/o5-deploy-aws/deployer"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/states"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/protostate/gen/state/v1/psm_pb"
-	"github.com/pentops/protostate/psm"
 	"github.com/pentops/sqrlx.go/sqrlx"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type DeployerWorker struct {
-	*deployer_tpb.UnimplementedDeployerInputTopicServer
-	*deployer_tpb.UnimplementedCloudFormationReplyTopicServer
-	*deployer_tpb.UnimplementedPostgresReplyTopicServer
+	*deployer_tpb.UnimplementedDeploymentRequestTopicServer
+	*awsinfra_tpb.UnimplementedCloudFormationReplyTopicServer
+	*awsinfra_tpb.UnimplementedPostgresReplyTopicServer
 
-	db *sqrlx.Wrapper
+	lookup *LookupProvider
 
 	specBuilder       *deployer.SpecBuilder
-	stackEventer      *deployer_pb.StackPSM
-	deploymentEventer *deployer_pb.DeploymentPSM
+	stackEventer      *awsdeployer_pb.StackPSM
+	deploymentEventer *awsdeployer_pb.DeploymentPSMDB
 }
 
 func NewDeployerWorker(conn sqrlx.Connection, specBuilder *deployer.SpecBuilder, states *states.StateMachines) (*DeployerWorker, error) {
@@ -40,16 +37,21 @@ func NewDeployerWorker(conn sqrlx.Connection, specBuilder *deployer.SpecBuilder,
 		return nil, err
 	}
 
+	lookupProvider, err := NewLookupProvider(conn)
+	if err != nil {
+		return nil, err
+	}
+
 	return &DeployerWorker{
-		db:                db,
 		specBuilder:       specBuilder,
 		stackEventer:      states.Stack,
-		deploymentEventer: states.Deployment,
+		deploymentEventer: states.Deployment.WithDB(db),
+		lookup:            lookupProvider,
 	}, nil
 }
 
-func (dw *DeployerWorker) doDeploymentEvent(ctx context.Context, event *deployer_pb.DeploymentPSMEventSpec) error {
-	_, err := dw.deploymentEventer.Transition(ctx, dw.db, event)
+func (dw *DeployerWorker) doDeploymentEvent(ctx context.Context, event *awsdeployer_pb.DeploymentPSMEventSpec) error {
+	_, err := dw.deploymentEventer.Transition(ctx, event)
 	return err
 }
 
@@ -61,46 +63,8 @@ type appStack struct {
 	stackID       string
 }
 
-func (dw *DeployerWorker) getEnvironment(ctx context.Context, environmentId string, appName string) (*appStack, error) {
-	var envJSON []byte
-	var clusterJSON []byte
-
-	err := dw.db.Transact(ctx, &sqrlx.TxOptions{
-		Isolation: sql.LevelReadCommitted,
-		ReadOnly:  true,
-		Retryable: true,
-	}, func(ctx context.Context, tx sqrlx.Transaction) error {
-		return tx.SelectRow(ctx, sq.Select("cluster.state", "environment.state").
-			From("environment").
-			LeftJoin("cluster ON cluster.id = environment.cluster_id").
-			Where("environment.id = ?", environmentId)).Scan(&clusterJSON, &envJSON)
-	})
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("environment %q not found", environmentId)
-	} else if err != nil {
-		return nil, err
-	}
-
-	cluster := &deployer_pb.ClusterState{}
-	if err := protojson.Unmarshal(clusterJSON, cluster); err != nil {
-		return nil, fmt.Errorf("unmarshal cluster: %w", err)
-	}
-
-	env := &deployer_pb.EnvironmentState{}
-	if err := protojson.Unmarshal(envJSON, env); err != nil {
-		return nil, fmt.Errorf("unmarshal environment: %w", err)
-	}
-	return &appStack{
-		environment:   env.Data.Config,
-		cluster:       cluster.Data.Config,
-		environmentID: env.Keys.EnvironmentId,
-		clusterID:     cluster.Keys.ClusterId,
-		stackID:       states.StackID(env.Data.Config.FullName, appName),
-	}, nil
-}
-
 func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_tpb.RequestDeploymentMessage) (*emptypb.Empty, error) {
-	appID, err := dw.getEnvironment(ctx, msg.EnvironmentId, msg.Application.Name)
+	appID, err := dw.lookup.lookupAppStack(ctx, msg.EnvironmentId, msg.Application.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -110,8 +74,8 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 		return nil, err
 	}
 
-	createDeploymentEvent := &deployer_pb.DeploymentPSMEventSpec{
-		Keys: &deployer_pb.DeploymentKeys{
+	createDeploymentEvent := &awsdeployer_pb.DeploymentPSMEventSpec{
+		Keys: &awsdeployer_pb.DeploymentKeys{
 			DeploymentId:  msg.DeploymentId,
 			EnvironmentId: appID.environmentID,
 			StackId:       appID.stackID,
@@ -119,7 +83,7 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 		},
 		EventID:   msg.DeploymentId,
 		Timestamp: time.Now(),
-		Event: &deployer_pb.DeploymentEventType_Created{
+		Event: &awsdeployer_pb.DeploymentEventType_Created{
 			Spec: spec,
 		},
 		Cause: &psm_pb.Cause{
@@ -132,7 +96,7 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 		},
 	}
 
-	if _, err := dw.deploymentEventer.Transition(ctx, dw.db, createDeploymentEvent); err != nil {
+	if _, err := dw.deploymentEventer.Transition(ctx, createDeploymentEvent); err != nil {
 		return nil, err
 	}
 
@@ -141,15 +105,15 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *deployer_t
 
 var cfEventNamespace = uuid.MustParse("6BE12207-A62C-4D9E-8A94-48A091DDFB53")
 
-func StackStatusToEvent(msg *deployer_tpb.StackStatusChangedMessage) (*deployer_pb.DeploymentPSMEventSpec, error) {
+func StackStatusToEvent(msg *awsinfra_tpb.StackStatusChangedMessage) (*awsdeployer_pb.DeploymentPSMEventSpec, error) {
 
-	stepContext := &deployer_pb.StepContext{}
+	stepContext := &awsdeployer_pb.StepContext{}
 	if err := proto.Unmarshal(msg.Request.Context, stepContext); err != nil {
 		return nil, err
 	}
 
-	event := &deployer_pb.DeploymentPSMEventSpec{
-		Keys: &deployer_pb.DeploymentKeys{
+	event := &awsdeployer_pb.DeploymentPSMEventSpec{
+		Keys: &awsdeployer_pb.DeploymentKeys{
 			DeploymentId: stepContext.DeploymentId,
 		},
 		EventID:   uuid.NewSHA1(cfEventNamespace, []byte(msg.EventId)).String(),
@@ -165,21 +129,21 @@ func StackStatusToEvent(msg *deployer_tpb.StackStatusChangedMessage) (*deployer_
 		},
 	}
 
-	cfOutput := &deployer_pb.CFStackOutput{
+	cfOutput := &awsdeployer_pb.CFStackOutput{
 		Lifecycle: msg.Lifecycle,
 		Outputs:   msg.Outputs,
 	}
 	switch stepContext.Phase {
-	case deployer_pb.StepPhase_STEPS:
+	case awsdeployer_pb.StepPhase_STEPS:
 		if stepContext.StepId == nil {
 			return nil, fmt.Errorf("StepId is required when Phase is STEPS")
 		}
 
-		stepResult := &deployer_pb.DeploymentEventType_StepResult{
+		stepResult := &awsdeployer_pb.DeploymentEventType_StepResult{
 			StepId: *stepContext.StepId,
-			Output: &deployer_pb.StepOutputType{
-				Type: &deployer_pb.StepOutputType_CfStatus{
-					CfStatus: &deployer_pb.StepOutputType_CFStatus{
+			Output: &awsdeployer_pb.StepOutputType{
+				Type: &awsdeployer_pb.StepOutputType_CfStatus{
+					CfStatus: &awsdeployer_pb.StepOutputType_CFStatus{
 						Output: cfOutput,
 					},
 				},
@@ -187,42 +151,42 @@ func StackStatusToEvent(msg *deployer_tpb.StackStatusChangedMessage) (*deployer_
 		}
 
 		switch msg.Lifecycle {
-		case deployer_pb.CFLifecycle_PROGRESS,
-			deployer_pb.CFLifecycle_ROLLING_BACK:
+		case awsdeployer_pb.CFLifecycle_PROGRESS,
+			awsdeployer_pb.CFLifecycle_ROLLING_BACK:
 			return nil, nil
 
-		case deployer_pb.CFLifecycle_COMPLETE:
-			stepResult.Status = deployer_pb.StepStatus_DONE
-		case deployer_pb.CFLifecycle_CREATE_FAILED,
-			deployer_pb.CFLifecycle_ROLLED_BACK,
-			deployer_pb.CFLifecycle_MISSING:
-			stepResult.Status = deployer_pb.StepStatus_FAILED
+		case awsdeployer_pb.CFLifecycle_COMPLETE:
+			stepResult.Status = awsdeployer_pb.StepStatus_DONE
+		case awsdeployer_pb.CFLifecycle_CREATE_FAILED,
+			awsdeployer_pb.CFLifecycle_ROLLED_BACK,
+			awsdeployer_pb.CFLifecycle_MISSING:
+			stepResult.Status = awsdeployer_pb.StepStatus_FAILED
 		default:
 			return nil, fmt.Errorf("unknown lifecycle: %s", msg.Lifecycle)
 		}
 
 		event.Event = stepResult
 
-	case deployer_pb.StepPhase_WAIT:
+	case awsdeployer_pb.StepPhase_WAIT:
 		switch msg.Lifecycle {
-		case deployer_pb.CFLifecycle_PROGRESS,
-			deployer_pb.CFLifecycle_ROLLING_BACK:
+		case awsdeployer_pb.CFLifecycle_PROGRESS,
+			awsdeployer_pb.CFLifecycle_ROLLING_BACK:
 			return nil, nil
 
-		case deployer_pb.CFLifecycle_COMPLETE,
-			deployer_pb.CFLifecycle_ROLLED_BACK:
+		case awsdeployer_pb.CFLifecycle_COMPLETE,
+			awsdeployer_pb.CFLifecycle_ROLLED_BACK:
 
-			event.Event = &deployer_pb.DeploymentEventType_StackAvailable{
+			event.Event = &awsdeployer_pb.DeploymentEventType_StackAvailable{
 				StackOutput: cfOutput,
 			}
 
-		case deployer_pb.CFLifecycle_MISSING:
-			event.Event = &deployer_pb.DeploymentEventType_StackAvailable{
+		case awsdeployer_pb.CFLifecycle_MISSING:
+			event.Event = &awsdeployer_pb.DeploymentEventType_StackAvailable{
 				StackOutput: nil,
 			}
 
 		default:
-			event.Event = &deployer_pb.DeploymentEventType_StackWaitFailure{
+			event.Event = &awsdeployer_pb.DeploymentEventType_StackWaitFailure{
 				Error: fmt.Sprintf("Stack Status: %s", msg.Status),
 			}
 		}
@@ -232,14 +196,14 @@ func StackStatusToEvent(msg *deployer_tpb.StackStatusChangedMessage) (*deployer_
 	return event, nil
 }
 
-func ChangeSetStatusToEvent(msg *deployer_tpb.ChangeSetStatusChangedMessage) (*deployer_pb.DeploymentPSMEventSpec, error) {
-	stepContext := &deployer_pb.StepContext{}
+func ChangeSetStatusToEvent(msg *awsinfra_tpb.ChangeSetStatusChangedMessage) (*awsdeployer_pb.DeploymentPSMEventSpec, error) {
+	stepContext := &awsdeployer_pb.StepContext{}
 	if err := proto.Unmarshal(msg.Request.Context, stepContext); err != nil {
 		return nil, err
 	}
 
-	event := &deployer_pb.DeploymentPSMEventSpec{
-		Keys: &deployer_pb.DeploymentKeys{
+	event := &awsdeployer_pb.DeploymentPSMEventSpec{
+		Keys: &awsdeployer_pb.DeploymentKeys{
 			DeploymentId: stepContext.DeploymentId,
 		},
 		EventID:   msg.EventId,
@@ -255,23 +219,23 @@ func ChangeSetStatusToEvent(msg *deployer_tpb.ChangeSetStatusChangedMessage) (*d
 		},
 	}
 
-	if stepContext.Phase != deployer_pb.StepPhase_STEPS || stepContext.StepId == nil {
+	if stepContext.Phase != awsdeployer_pb.StepPhase_STEPS || stepContext.StepId == nil {
 		return nil, fmt.Errorf("Plan context expects STEPS and an ID")
 	}
 
-	status := deployer_pb.StepStatus_DONE
-	if msg.Lifecycle != deployer_pb.CFChangesetLifecycle_AVAILABLE {
-		status = deployer_pb.StepStatus_FAILED
+	status := awsdeployer_pb.StepStatus_DONE
+	if msg.Lifecycle != awsdeployer_pb.CFChangesetLifecycle_AVAILABLE {
+		status = awsdeployer_pb.StepStatus_FAILED
 	}
-	changesetStatus := &deployer_pb.CFChangesetOutput{
+	changesetStatus := &awsdeployer_pb.CFChangesetOutput{
 		Lifecycle: msg.Lifecycle,
 	}
-	stepStatus := &deployer_pb.DeploymentEventType_StepResult{
+	stepStatus := &awsdeployer_pb.DeploymentEventType_StepResult{
 		StepId: *stepContext.StepId,
 		Status: status,
-		Output: &deployer_pb.StepOutputType{
-			Type: &deployer_pb.StepOutputType_CfPlanStatus{
-				CfPlanStatus: &deployer_pb.StepOutputType_CFPlanStatus{
+		Output: &awsdeployer_pb.StepOutputType{
+			Type: &awsdeployer_pb.StepOutputType_CfPlanStatus{
+				CfPlanStatus: &awsdeployer_pb.StepOutputType_CFPlanStatus{
 					Output: changesetStatus,
 				},
 			},
@@ -282,7 +246,7 @@ func ChangeSetStatusToEvent(msg *deployer_tpb.ChangeSetStatusChangedMessage) (*d
 	return event, nil
 }
 
-func (dw *DeployerWorker) ChangeSetStatusChanged(ctx context.Context, msg *deployer_tpb.ChangeSetStatusChangedMessage) (*emptypb.Empty, error) {
+func (dw *DeployerWorker) ChangeSetStatusChanged(ctx context.Context, msg *awsinfra_tpb.ChangeSetStatusChangedMessage) (*emptypb.Empty, error) {
 	event, err := ChangeSetStatusToEvent(msg)
 	if err != nil {
 		return nil, err
@@ -292,19 +256,14 @@ func (dw *DeployerWorker) ChangeSetStatusChanged(ctx context.Context, msg *deplo
 		return &emptypb.Empty{}, nil
 	}
 
-	if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
-		if _, err := dw.deploymentEventer.TransitionInTx(ctx, tx, event); err != nil {
-			return err
-		}
-		return nil
-	}); err != nil {
+	if _, err := dw.deploymentEventer.Transition(ctx, event); err != nil {
 		return nil, err
 	}
 
 	return &emptypb.Empty{}, nil
 }
 
-func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *deployer_tpb.StackStatusChangedMessage) (*emptypb.Empty, error) {
+func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *awsinfra_tpb.StackStatusChangedMessage) (*emptypb.Empty, error) {
 
 	event, err := StackStatusToEvent(msg)
 	if err != nil {
@@ -315,27 +274,22 @@ func (dw *DeployerWorker) StackStatusChanged(ctx context.Context, msg *deployer_
 		return &emptypb.Empty{}, nil
 	}
 
-	if err := dw.db.Transact(ctx, psm.TxOptions, func(ctx context.Context, tx sqrlx.Transaction) error {
-		if _, err := dw.deploymentEventer.TransitionInTx(ctx, tx, event); err != nil {
-			return err
-		}
-		return nil
-	}); err != nil {
+	if _, err := dw.deploymentEventer.Transition(ctx, event); err != nil {
 		return nil, err
 	}
 
 	return &emptypb.Empty{}, nil
 }
 
-func PostgresMigrationToEvent(msg *deployer_tpb.PostgresDatabaseStatusMessage) (*deployer_pb.DeploymentPSMEventSpec, error) {
+func PostgresMigrationToEvent(msg *awsinfra_tpb.PostgresDatabaseStatusMessage) (*awsdeployer_pb.DeploymentPSMEventSpec, error) {
 
-	stepContext := &deployer_pb.StepContext{}
+	stepContext := &awsdeployer_pb.StepContext{}
 	if err := proto.Unmarshal(msg.Request.Context, stepContext); err != nil {
 		return nil, err
 	}
 
-	event := &deployer_pb.DeploymentPSMEventSpec{
-		Keys: &deployer_pb.DeploymentKeys{
+	event := &awsdeployer_pb.DeploymentPSMEventSpec{
+		Keys: &awsdeployer_pb.DeploymentKeys{
 			DeploymentId: stepContext.DeploymentId,
 		},
 		EventID:   msg.EventId,
@@ -351,23 +305,23 @@ func PostgresMigrationToEvent(msg *deployer_tpb.PostgresDatabaseStatusMessage) (
 		},
 	}
 
-	if stepContext.Phase != deployer_pb.StepPhase_STEPS || stepContext.StepId == nil {
+	if stepContext.Phase != awsdeployer_pb.StepPhase_STEPS || stepContext.StepId == nil {
 		return nil, fmt.Errorf("DB Migration context expects STEPS and an ID")
 	}
 
-	stepStatus := &deployer_pb.DeploymentEventType_StepResult{
+	stepStatus := &awsdeployer_pb.DeploymentEventType_StepResult{
 		StepId: *stepContext.StepId,
 	}
 	event.Event = stepStatus
 
 	switch msg.Status {
-	case deployer_tpb.PostgresStatus_DONE:
-		stepStatus.Status = deployer_pb.StepStatus_DONE
-	case deployer_tpb.PostgresStatus_ERROR:
-		stepStatus.Status = deployer_pb.StepStatus_FAILED
+	case awsinfra_tpb.PostgresStatus_DONE:
+		stepStatus.Status = awsdeployer_pb.StepStatus_DONE
+	case awsinfra_tpb.PostgresStatus_ERROR:
+		stepStatus.Status = awsdeployer_pb.StepStatus_FAILED
 		stepStatus.Error = msg.Error
 
-	case deployer_tpb.PostgresStatus_STARTED:
+	case awsinfra_tpb.PostgresStatus_STARTED:
 		return nil, nil
 
 	default:
@@ -377,7 +331,7 @@ func PostgresMigrationToEvent(msg *deployer_tpb.PostgresDatabaseStatusMessage) (
 	return event, nil
 }
 
-func (dw *DeployerWorker) PostgresDatabaseStatus(ctx context.Context, msg *deployer_tpb.PostgresDatabaseStatusMessage) (*emptypb.Empty, error) {
+func (dw *DeployerWorker) PostgresDatabaseStatus(ctx context.Context, msg *awsinfra_tpb.PostgresDatabaseStatusMessage) (*emptypb.Empty, error) {
 
 	event, err := PostgresMigrationToEvent(msg)
 	if err != nil {

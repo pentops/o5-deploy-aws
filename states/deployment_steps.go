@@ -6,25 +6,26 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/outbox.pg.go/outbox"
 )
 
 type planInput struct {
-	stackStatus *deployer_pb.CFStackOutput
+	stackStatus *awsdeployer_pb.CFStackOutput
 	flags       *deployer_pb.DeploymentFlags
 }
 
-func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.DeploymentStateData, input planInput) ([]*deployer_pb.DeploymentStep, error) {
+func planDeploymentSteps(ctx context.Context, deployment *awsdeployer_pb.DeploymentStateData, input planInput) ([]*awsdeployer_pb.DeploymentStep, error) {
 
-	plan := make([]*deployer_pb.DeploymentStep, 0)
+	plan := make([]*awsdeployer_pb.DeploymentStep, 0)
 
-	stackInput := func(desiredCount int32) *deployer_pb.CFStackInput {
-		return &deployer_pb.CFStackInput{
+	stackInput := func(desiredCount int32) *awsdeployer_pb.CFStackInput {
+		return &awsdeployer_pb.CFStackInput{
 			StackName:    deployment.StackName,
 			DesiredCount: desiredCount,
-			Template: &deployer_pb.CFStackInput_S3Template{
+			Template: &awsdeployer_pb.CFStackInput_S3Template{
 				S3Template: deployment.Spec.Template,
 			},
 			Parameters: deployment.Spec.Parameters,
@@ -38,18 +39,18 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 			return nil, fmt.Errorf("cannot import resources into an existing stack")
 		}
 		spec := stackInput(0)
-		spec.Template = &deployer_pb.CFStackInput_EmptyStack{
+		spec.Template = &awsdeployer_pb.CFStackInput_EmptyStack{
 			EmptyStack: true,
 		}
 		spec.Parameters = nil
 
-		createEmptyStack := &deployer_pb.DeploymentStep{
+		createEmptyStack := &awsdeployer_pb.DeploymentStep{
 			Id:     uuid.NewString(),
 			Name:   "CFCreate",
-			Status: deployer_pb.StepStatus_UNSPECIFIED,
-			Request: &deployer_pb.StepRequestType{
-				Type: &deployer_pb.StepRequestType_CfCreate{
-					CfCreate: &deployer_pb.StepRequestType_CFCreate{
+			Status: awsdeployer_pb.StepStatus_UNSPECIFIED,
+			Request: &awsdeployer_pb.StepRequestType{
+				Type: &awsdeployer_pb.StepRequestType_CfCreate{
+					CfCreate: &awsdeployer_pb.StepRequestType_CFCreate{
 						Spec:       spec,
 						EmptyStack: true,
 					},
@@ -59,13 +60,13 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 
 		plan = append(plan, createEmptyStack)
 
-		createChangeset := &deployer_pb.DeploymentStep{
+		createChangeset := &awsdeployer_pb.DeploymentStep{
 			Id:     uuid.NewString(),
 			Name:   "CFPlan",
-			Status: deployer_pb.StepStatus_UNSPECIFIED,
-			Request: &deployer_pb.StepRequestType{
-				Type: &deployer_pb.StepRequestType_CfPlan{
-					CfPlan: &deployer_pb.StepRequestType_CFPlan{
+			Status: awsdeployer_pb.StepStatus_UNSPECIFIED,
+			Request: &awsdeployer_pb.StepRequestType{
+				Type: &awsdeployer_pb.StepRequestType_CfPlan{
+					CfPlan: &awsdeployer_pb.StepRequestType_CFPlan{
 						Spec:            stackInput(0),
 						ImportResources: true,
 					},
@@ -85,13 +86,13 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 			scale = 0
 		}
 		if input.stackStatus != nil {
-			infraMigrate := &deployer_pb.DeploymentStep{
+			infraMigrate := &awsdeployer_pb.DeploymentStep{
 				Id:     uuid.NewString(),
 				Name:   "CFUpdate",
-				Status: deployer_pb.StepStatus_UNSPECIFIED,
-				Request: &deployer_pb.StepRequestType{
-					Type: &deployer_pb.StepRequestType_CfUpdate{
-						CfUpdate: &deployer_pb.StepRequestType_CFUpdate{
+				Status: awsdeployer_pb.StepStatus_UNSPECIFIED,
+				Request: &awsdeployer_pb.StepRequestType{
+					Type: &awsdeployer_pb.StepRequestType_CfUpdate{
+						CfUpdate: &awsdeployer_pb.StepRequestType_CFUpdate{
 							Spec: stackInput(scale),
 						},
 					},
@@ -99,13 +100,13 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 			}
 			plan = append(plan, infraMigrate)
 		} else {
-			infraCreate := &deployer_pb.DeploymentStep{
+			infraCreate := &awsdeployer_pb.DeploymentStep{
 				Id:     uuid.NewString(),
 				Name:   "CFCreate",
-				Status: deployer_pb.StepStatus_UNSPECIFIED,
-				Request: &deployer_pb.StepRequestType{
-					Type: &deployer_pb.StepRequestType_CfCreate{
-						CfCreate: &deployer_pb.StepRequestType_CFCreate{
+				Status: awsdeployer_pb.StepStatus_UNSPECIFIED,
+				Request: &awsdeployer_pb.StepRequestType{
+					Type: &awsdeployer_pb.StepRequestType_CfCreate{
+						CfCreate: &awsdeployer_pb.StepRequestType_CFCreate{
 							Spec: stackInput(scale),
 						},
 					},
@@ -123,17 +124,17 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 		return nil, fmt.Errorf("cannot migrate databases without a stack")
 	}
 
-	var scaleUp *deployer_pb.DeploymentStep
+	var scaleUp *awsdeployer_pb.DeploymentStep
 
 	if !input.flags.DbOnly {
 		if input.stackStatus != nil {
-			scaleDown := &deployer_pb.DeploymentStep{
+			scaleDown := &awsdeployer_pb.DeploymentStep{
 				Id:     uuid.NewString(),
 				Name:   "ScaleDown",
-				Status: deployer_pb.StepStatus_UNSPECIFIED,
-				Request: &deployer_pb.StepRequestType{
-					Type: &deployer_pb.StepRequestType_CfScale{
-						CfScale: &deployer_pb.StepRequestType_CFScale{
+				Status: awsdeployer_pb.StepStatus_UNSPECIFIED,
+				Request: &awsdeployer_pb.StepRequestType{
+					Type: &awsdeployer_pb.StepRequestType_CfScale{
+						CfScale: &awsdeployer_pb.StepRequestType_CFScale{
 							DesiredCount: 0,
 							StackName:    deployment.StackName,
 						},
@@ -142,13 +143,13 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 			}
 			plan = append(plan, scaleDown)
 
-			infraMigrate := &deployer_pb.DeploymentStep{
+			infraMigrate := &awsdeployer_pb.DeploymentStep{
 				Id:     uuid.NewString(),
 				Name:   "InfraMigrate",
-				Status: deployer_pb.StepStatus_UNSPECIFIED,
-				Request: &deployer_pb.StepRequestType{
-					Type: &deployer_pb.StepRequestType_CfUpdate{
-						CfUpdate: &deployer_pb.StepRequestType_CFUpdate{
+				Status: awsdeployer_pb.StepStatus_UNSPECIFIED,
+				Request: &awsdeployer_pb.StepRequestType{
+					Type: &awsdeployer_pb.StepRequestType_CfUpdate{
+						CfUpdate: &awsdeployer_pb.StepRequestType_CFUpdate{
 							Spec: stackInput(0),
 						},
 					},
@@ -158,13 +159,13 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 			plan = append(plan, infraMigrate)
 			infraReadyStepID = infraMigrate.Id
 		} else {
-			infraCreate := &deployer_pb.DeploymentStep{
+			infraCreate := &awsdeployer_pb.DeploymentStep{
 				Id:     uuid.NewString(),
 				Name:   "InfraCreate",
-				Status: deployer_pb.StepStatus_UNSPECIFIED,
-				Request: &deployer_pb.StepRequestType{
-					Type: &deployer_pb.StepRequestType_CfCreate{
-						CfCreate: &deployer_pb.StepRequestType_CFCreate{
+				Status: awsdeployer_pb.StepStatus_UNSPECIFIED,
+				Request: &awsdeployer_pb.StepRequestType{
+					Type: &awsdeployer_pb.StepRequestType_CfCreate{
+						CfCreate: &awsdeployer_pb.StepRequestType_CFCreate{
 							Spec: stackInput(0),
 						},
 					},
@@ -174,13 +175,13 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 			infraReadyStepID = infraCreate.Id
 		}
 
-		scaleUp = &deployer_pb.DeploymentStep{
+		scaleUp = &awsdeployer_pb.DeploymentStep{
 			Id:     uuid.NewString(),
 			Name:   "ScaleUp",
-			Status: deployer_pb.StepStatus_UNSPECIFIED,
-			Request: &deployer_pb.StepRequestType{
-				Type: &deployer_pb.StepRequestType_CfScale{
-					CfScale: &deployer_pb.StepRequestType_CFScale{
+			Status: awsdeployer_pb.StepStatus_UNSPECIFIED,
+			Request: &awsdeployer_pb.StepRequestType{
+				Type: &awsdeployer_pb.StepRequestType_CfScale{
+					CfScale: &awsdeployer_pb.StepRequestType_CFScale{
 						DesiredCount: 1,
 						StackName:    deployment.StackName,
 					},
@@ -191,13 +192,13 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 		plan = append(plan, scaleUp)
 	} else {
 		// add a fake discovery step which is already completed.
-		discoveryStep := &deployer_pb.DeploymentStep{
+		discoveryStep := &awsdeployer_pb.DeploymentStep{
 			Id:     uuid.NewString(),
 			Name:   "Discovery",
-			Status: deployer_pb.StepStatus_DONE,
-			Output: &deployer_pb.StepOutputType{
-				Type: &deployer_pb.StepOutputType_CfStatus{
-					CfStatus: &deployer_pb.StepOutputType_CFStatus{
+			Status: awsdeployer_pb.StepStatus_DONE,
+			Output: &awsdeployer_pb.StepOutputType{
+				Type: &awsdeployer_pb.StepOutputType_CfStatus{
+					CfStatus: &awsdeployer_pb.StepOutputType_CFStatus{
 						Output: input.stackStatus,
 					},
 				},
@@ -215,13 +216,13 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 		})
 		log.Debug(ctx, "Upsert Database")
 
-		upsertStep := &deployer_pb.DeploymentStep{
+		upsertStep := &awsdeployer_pb.DeploymentStep{
 			Id:     uuid.NewString(),
 			Name:   fmt.Sprintf("PgUpsert-%s", db.DbName),
-			Status: deployer_pb.StepStatus_UNSPECIFIED,
-			Request: &deployer_pb.StepRequestType{
-				Type: &deployer_pb.StepRequestType_PgUpsert{
-					PgUpsert: &deployer_pb.StepRequestType_PGUpsert{
+			Status: awsdeployer_pb.StepStatus_UNSPECIFIED,
+			Request: &awsdeployer_pb.StepRequestType{
+				Type: &awsdeployer_pb.StepRequestType_PgUpsert{
+					PgUpsert: &awsdeployer_pb.StepRequestType_PGUpsert{
 						Spec:              db,
 						InfraOutputStepId: infraReadyStepID,
 					},
@@ -230,13 +231,13 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 			DependsOn: []string{infraReadyStepID},
 		}
 
-		migrateStep := &deployer_pb.DeploymentStep{
+		migrateStep := &awsdeployer_pb.DeploymentStep{
 			Id:     uuid.NewString(),
 			Name:   fmt.Sprintf("PgMigrate-%s", db.DbName),
-			Status: deployer_pb.StepStatus_UNSPECIFIED,
-			Request: &deployer_pb.StepRequestType{
-				Type: &deployer_pb.StepRequestType_PgMigrate{
-					PgMigrate: &deployer_pb.StepRequestType_PGMigrate{
+			Status: awsdeployer_pb.StepStatus_UNSPECIFIED,
+			Request: &awsdeployer_pb.StepRequestType{
+				Type: &awsdeployer_pb.StepRequestType_PgMigrate{
+					PgMigrate: &awsdeployer_pb.StepRequestType_PGMigrate{
 						Spec:              db,
 						InfraOutputStepId: infraReadyStepID,
 					},
@@ -247,13 +248,13 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 			DependsOn: []string{infraReadyStepID, upsertStep.Id},
 		}
 
-		cleanupStep := &deployer_pb.DeploymentStep{
+		cleanupStep := &awsdeployer_pb.DeploymentStep{
 			Id:     uuid.NewString(),
 			Name:   fmt.Sprintf("PgCleanup-%s", db.DbName),
-			Status: deployer_pb.StepStatus_UNSPECIFIED,
-			Request: &deployer_pb.StepRequestType{
-				Type: &deployer_pb.StepRequestType_PgCleanup{
-					PgCleanup: &deployer_pb.StepRequestType_PGCleanup{
+			Status: awsdeployer_pb.StepStatus_UNSPECIFIED,
+			Request: &awsdeployer_pb.StepRequestType{
+				Type: &awsdeployer_pb.StepRequestType_PgCleanup{
+					PgCleanup: &awsdeployer_pb.StepRequestType_PGCleanup{
 						Spec: db,
 					},
 				},
@@ -270,8 +271,61 @@ func planDeploymentSteps(ctx context.Context, deployment *deployer_pb.Deployment
 	return plan, nil
 }
 
-func stepNext(ctx context.Context, tb deployer_pb.DeploymentPSMHookBaton, deployment *deployer_pb.DeploymentState) error {
-	stepMap := make(map[string]*deployer_pb.DeploymentStep)
+func updateDeploymentStep(deployment *awsdeployer_pb.DeploymentStateData, event *awsdeployer_pb.DeploymentEventType_StepResult) error {
+
+	for _, step := range deployment.Steps {
+		if step.Id == event.StepId {
+			step.Status = event.Status
+			step.Output = event.Output
+			step.Error = event.Error
+
+			if event.Status == awsdeployer_pb.StepStatus_DONE {
+				// If the step is done, we can update the dependencies
+				return updateStepDependencies(deployment)
+			}
+		}
+	}
+
+	return fmt.Errorf("step %s not found", event.StepId)
+}
+
+func updateStepDependencies(deployment *awsdeployer_pb.DeploymentStateData) error {
+
+	stepMap := make(map[string]*awsdeployer_pb.DeploymentStep)
+
+	for _, step := range deployment.Steps {
+		stepMap[step.Id] = step
+	}
+
+	for _, step := range deployment.Steps {
+		if step.Status != awsdeployer_pb.StepStatus_BLOCKED && step.Status != awsdeployer_pb.StepStatus_UNSPECIFIED {
+			continue
+		}
+
+		isBlocked := false
+		for _, dep := range step.DependsOn {
+			depStep, ok := stepMap[dep]
+			if !ok {
+				return fmt.Errorf("step %s depends on %s, but it does not exist", step.Id, dep)
+			}
+			if depStep.Status != awsdeployer_pb.StepStatus_DONE {
+				isBlocked = true
+				break
+			}
+		}
+
+		if isBlocked {
+			step.Status = awsdeployer_pb.StepStatus_BLOCKED
+		} else {
+			step.Status = awsdeployer_pb.StepStatus_READY
+		}
+	}
+
+	return nil
+}
+
+func stepNext(ctx context.Context, tb awsdeployer_pb.DeploymentPSMHookBaton, deployment *awsdeployer_pb.DeploymentState) error {
+	stepMap := make(map[string]*awsdeployer_pb.DeploymentStep)
 	for _, step := range deployment.Data.Steps {
 		stepMap[step.Id] = step
 	}
@@ -280,18 +334,29 @@ func stepNext(ctx context.Context, tb deployer_pb.DeploymentPSMHookBaton, deploy
 	anyRunning := false
 	anyFailed := false
 
-	waitingSteps := make([]*deployer_pb.DeploymentStep, 0)
+	readySteps := make([]*awsdeployer_pb.DeploymentStep, 0)
 
 	for _, step := range deployment.Data.Steps {
 		switch step.Status {
-		case deployer_pb.StepStatus_UNSPECIFIED, deployer_pb.StepStatus_BLOCKED:
-			waitingSteps = append(waitingSteps, step)
-		case deployer_pb.StepStatus_ACTIVE:
+		case awsdeployer_pb.StepStatus_BLOCKED:
+			// Do nothing
+
+		case awsdeployer_pb.StepStatus_READY:
+			readySteps = append(readySteps, step)
+
+		case awsdeployer_pb.StepStatus_ACTIVE:
 			anyRunning = true
-		case deployer_pb.StepStatus_DONE:
-		case deployer_pb.StepStatus_FAILED:
+
+		case awsdeployer_pb.StepStatus_DONE:
+			// Do Nothing
+
+		case awsdeployer_pb.StepStatus_FAILED:
 			anyFailed = true
+
+		default:
+			return fmt.Errorf("unexpected step status: %s", step.Status)
 		}
+
 	}
 
 	if anyFailed {
@@ -302,7 +367,7 @@ func stepNext(ctx context.Context, tb deployer_pb.DeploymentPSMHookBaton, deploy
 
 		// Nothing still running, we don't need to trigger any further
 		// tasks.
-		tb.ChainEvent(&deployer_pb.DeploymentEventType_Error{
+		tb.ChainEvent(&awsdeployer_pb.DeploymentEventType_Error{
 			Error: "deployment steps failed",
 		})
 		return nil
@@ -310,30 +375,12 @@ func stepNext(ctx context.Context, tb deployer_pb.DeploymentPSMHookBaton, deploy
 
 	// allows steps to pull outputs from previous steps.
 
-steps:
-	for _, step := range waitingSteps {
+	for _, step := range readySteps {
+		tb.ChainEvent(&awsdeployer_pb.DeploymentEventType_RunStep{
+			StepId: step.Id,
+		})
 
-		depMap := make(map[string]*deployer_pb.DeploymentStep)
-		for _, dep := range step.DependsOn {
-			depStep, ok := stepMap[dep]
-			if !ok {
-				return fmt.Errorf("step %s depends on %s, but it does not exist", step.Id, dep)
-			}
-			if depStep.Status != deployer_pb.StepStatus_DONE {
-				anyOpen = true
-				step.Status = deployer_pb.StepStatus_BLOCKED
-				continue steps
-			}
-			depMap[dep] = depStep
-		}
-
-		sideEffect, err := stepToSideEffect(step, deployment, depMap)
-		if err != nil {
-			return err
-		}
 		anyRunning = true
-		tb.SideEffect(sideEffect)
-		step.Status = deployer_pb.StepStatus_ACTIVE
 	}
 
 	if anyRunning {
@@ -341,57 +388,58 @@ steps:
 	}
 
 	if anyOpen {
-		tb.ChainEvent(&deployer_pb.DeploymentEventType_Error{
+		tb.ChainEvent(&awsdeployer_pb.DeploymentEventType_Error{
 			Error: "deployment steps deadlock",
 		})
 		return nil
 	}
 
 	// All steps are done
-	tb.ChainEvent(&deployer_pb.DeploymentEventType_Done{})
+	tb.ChainEvent(&awsdeployer_pb.DeploymentEventType_Done{})
 
 	return nil
 }
-func stepToSideEffect(step *deployer_pb.DeploymentStep, deployment *deployer_pb.DeploymentState, dependencies map[string]*deployer_pb.DeploymentStep) (outbox.OutboxMessage, error) {
-	requestMetadata, err := buildRequestMetadata(&deployer_pb.StepContext{
+
+func stepToSideEffect(step *awsdeployer_pb.DeploymentStep, deployment *awsdeployer_pb.DeploymentState, dependencies map[string]*awsdeployer_pb.DeploymentStep) (outbox.OutboxMessage, error) {
+	requestMetadata, err := buildRequestMetadata(&awsdeployer_pb.StepContext{
 		StepId:       &step.Id,
-		Phase:        deployer_pb.StepPhase_STEPS,
+		Phase:        awsdeployer_pb.StepPhase_STEPS,
 		DeploymentId: deployment.Keys.DeploymentId,
 	})
 	if err != nil {
 		return nil, err
 	}
 	switch st := step.Request.Type.(type) {
-	case *deployer_pb.StepRequestType_CfScale:
-		return &deployer_tpb.ScaleStackMessage{
+	case *awsdeployer_pb.StepRequestType_CfScale:
+		return &awsinfra_tpb.ScaleStackMessage{
 			Request:      requestMetadata,
 			StackName:    st.CfScale.StackName,
 			DesiredCount: st.CfScale.DesiredCount,
 		}, nil
 
-	case *deployer_pb.StepRequestType_CfUpdate:
-		return &deployer_tpb.UpdateStackMessage{
+	case *awsdeployer_pb.StepRequestType_CfUpdate:
+		return &awsinfra_tpb.UpdateStackMessage{
 			Request: requestMetadata,
 			Spec:    st.CfUpdate.Spec,
 		}, nil
 
-	case *deployer_pb.StepRequestType_CfCreate:
-		return &deployer_tpb.CreateNewStackMessage{
+	case *awsdeployer_pb.StepRequestType_CfCreate:
+		return &awsinfra_tpb.CreateNewStackMessage{
 			Request:    requestMetadata,
 			Spec:       st.CfCreate.Spec,
 			EmptyStack: st.CfCreate.EmptyStack,
 		}, nil
 
-	case *deployer_pb.StepRequestType_CfPlan:
-		return &deployer_tpb.CreateChangeSetMessage{
+	case *awsdeployer_pb.StepRequestType_CfPlan:
+		return &awsinfra_tpb.CreateChangeSetMessage{
 			Request:         requestMetadata,
 			Spec:            st.CfPlan.Spec,
 			ImportResources: st.CfPlan.ImportResources,
 		}, nil
 
-	case *deployer_pb.StepRequestType_PgUpsert:
+	case *awsdeployer_pb.StepRequestType_PgUpsert:
 		src := st.PgUpsert.Spec
-		spec := &deployer_pb.PostgresCreationSpec{
+		spec := &awsdeployer_pb.PostgresCreationSpec{
 			DbName:            src.DbName,
 			RootSecretName:    src.RootSecretName,
 			DbExtensions:      src.DbExtensions,
@@ -411,15 +459,15 @@ func stepToSideEffect(step *deployer_pb.DeploymentStep, deployment *deployer_pb.
 			return nil, fmt.Errorf("stack output missing %s for database %s", src.SecretOutputName, src.DbName)
 		}
 
-		return &deployer_tpb.UpsertPostgresDatabaseMessage{
+		return &awsinfra_tpb.UpsertPostgresDatabaseMessage{
 			Request:     requestMetadata,
 			MigrationId: step.Id,
 			Spec:        spec,
 		}, nil
 
-	case *deployer_pb.StepRequestType_PgMigrate:
+	case *awsdeployer_pb.StepRequestType_PgMigrate:
 		src := st.PgMigrate.Spec
-		spec := &deployer_pb.PostgresMigrationSpec{
+		spec := &awsdeployer_pb.PostgresMigrationSpec{
 			EcsClusterName: deployment.Data.Spec.EcsCluster,
 		}
 		outputs, err := getStackOutputs(dependencies, st.PgMigrate.InfraOutputStepId)
@@ -442,19 +490,19 @@ func stepToSideEffect(step *deployer_pb.DeploymentStep, deployment *deployer_pb.
 			return nil, fmt.Errorf("stack output missing %s for database %s", src.SecretOutputName, src.DbName)
 		}
 
-		return &deployer_tpb.MigratePostgresDatabaseMessage{
+		return &awsinfra_tpb.MigratePostgresDatabaseMessage{
 			Request:     requestMetadata,
 			MigrationId: step.Id,
 			Spec:        spec,
 		}, nil
 
-	case *deployer_pb.StepRequestType_PgCleanup:
+	case *awsdeployer_pb.StepRequestType_PgCleanup:
 		src := st.PgCleanup.Spec
-		spec := &deployer_pb.PostgresCleanupSpec{
+		spec := &awsdeployer_pb.PostgresCleanupSpec{
 			DbName:         src.DbName,
 			RootSecretName: src.RootSecretName,
 		}
-		return &deployer_tpb.CleanupPostgresDatabaseMessage{
+		return &awsinfra_tpb.CleanupPostgresDatabaseMessage{
 			Request:     requestMetadata,
 			MigrationId: step.Id,
 			Spec:        spec,
@@ -465,13 +513,13 @@ func stepToSideEffect(step *deployer_pb.DeploymentStep, deployment *deployer_pb.
 	}
 }
 
-func getStackOutputs(dependencies map[string]*deployer_pb.DeploymentStep, id string) ([]*deployer_pb.KeyValue, error) {
+func getStackOutputs(dependencies map[string]*awsdeployer_pb.DeploymentStep, id string) ([]*awsdeployer_pb.KeyValue, error) {
 
 	infraOutputStep, ok := dependencies[id]
 	if !ok {
 		return nil, fmt.Errorf("PG Migrate step depends on %s for CF output, not passed in", id)
 	}
-	stackOutput, ok := infraOutputStep.Output.Type.(*deployer_pb.StepOutputType_CfStatus)
+	stackOutput, ok := infraOutputStep.Output.Type.(*awsdeployer_pb.StepOutputType_CfStatus)
 	if !ok {
 		return nil, fmt.Errorf("unexpected step type for CF Output: %T", infraOutputStep.Output)
 	}

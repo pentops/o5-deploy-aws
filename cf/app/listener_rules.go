@@ -7,7 +7,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation"
 	elbv2 "github.com/awslabs/goformation/v7/cloudformation/elasticloadbalancingv2"
 	"github.com/pentops/o5-deploy-aws/cf"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 )
 
@@ -82,13 +82,13 @@ func (ll *ListenerRuleSet) AddRoute(targetGroup *cf.Resource[*elbv2.TargetGroup]
 
 	resource := cf.NewResource(cf.QualifiedName(name), rule)
 	resource.Override("Priority", cloudformation.Ref(priority))
-	resource.AddParameter(&deployer_pb.Parameter{
+	resource.AddParameter(&awsdeployer_pb.Parameter{
 		Name:        priority,
 		Type:        "Number",
 		Description: fmt.Sprintf(":o5:priority:%s", route.Prefix),
-		Source: &deployer_pb.ParameterSourceType{
-			Type: &deployer_pb.ParameterSourceType_RulePriority_{
-				RulePriority: &deployer_pb.ParameterSourceType_RulePriority{
+		Source: &awsdeployer_pb.ParameterSourceType{
+			Type: &awsdeployer_pb.ParameterSourceType_RulePriority_{
+				RulePriority: &awsdeployer_pb.ParameterSourceType_RulePriority{
 					RouteGroup: route.RouteGroup,
 				},
 			},

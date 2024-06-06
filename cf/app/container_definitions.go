@@ -6,13 +6,13 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	"github.com/pentops/o5-deploy-aws/cf"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 )
 
 type ContainerDefinition struct {
 	Container  *ecs.TaskDefinition_ContainerDefinition
-	Parameters map[string]*deployer_pb.Parameter
+	Parameters map[string]*awsdeployer_pb.Parameter
 }
 
 func ensureEnvVar(envVars *[]ecs.TaskDefinition_KeyValuePair, name string, value *string) {
@@ -45,7 +45,7 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 
 	containerDef := &ContainerDefinition{
 		Container:  container,
-		Parameters: map[string]*deployer_pb.Parameter{},
+		Parameters: map[string]*awsdeployer_pb.Parameter{},
 	}
 
 	switch src := def.Source.(type) {
@@ -154,12 +154,12 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 		case *application_pb.EnvironmentVariable_FromEnv:
 			varName := varType.FromEnv.Name
 			paramName := fmt.Sprintf("EnvVar%s", cf.CleanParameterName(varName))
-			containerDef.Parameters[paramName] = &deployer_pb.Parameter{
+			containerDef.Parameters[paramName] = &awsdeployer_pb.Parameter{
 				Name: paramName,
 				Type: "String",
-				Source: &deployer_pb.ParameterSourceType{
-					Type: &deployer_pb.ParameterSourceType_EnvVar_{
-						EnvVar: &deployer_pb.ParameterSourceType_EnvVar{
+				Source: &awsdeployer_pb.ParameterSourceType{
+					Type: &awsdeployer_pb.ParameterSourceType_EnvVar_{
+						EnvVar: &awsdeployer_pb.ParameterSourceType_EnvVar{
 							Name: varType.FromEnv.Name,
 						},
 					},

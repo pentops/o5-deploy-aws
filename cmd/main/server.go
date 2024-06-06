@@ -18,16 +18,16 @@ import (
 	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-deploy-aws/cf/app"
 	"github.com/pentops/o5-deploy-aws/deployer"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_spb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/github/v1/github_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_spb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/github"
 	"github.com/pentops/o5-deploy-aws/localrun"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_tpb"
 	"github.com/pentops/runner/commander"
@@ -164,20 +164,6 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	refLookup, err := github.NewRefStore(db)
-	if err != nil {
-		return err
-	}
-
-	githubWorker, err := github.NewWebhookWorker(
-		db,
-		githubClient,
-		refLookup,
-	)
-	if err != nil {
-		return err
-	}
-
 	commandService, err := service.NewCommandService(db, githubClient, stateMachines)
 	if err != nil {
 		return err
@@ -193,22 +179,21 @@ func runServe(ctx context.Context, cfg struct {
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(middleware...)),
 	)
 
-	github_pb.RegisterWebhookTopicServer(grpcServer, githubWorker)
-	deployer_spb.RegisterDeploymentQueryServiceServer(grpcServer, queryService)
-	deployer_spb.RegisterDeploymentCommandServiceServer(grpcServer, commandService)
+	awsdeployer_spb.RegisterDeploymentQueryServiceServer(grpcServer, queryService)
+	awsdeployer_spb.RegisterDeploymentCommandServiceServer(grpcServer, commandService)
 
-	deployer_tpb.RegisterDeployerInputTopicServer(grpcServer, deploymentWorker)
+	deployer_tpb.RegisterDeploymentRequestTopicServer(grpcServer, deploymentWorker)
 
 	messaging_tpb.RegisterRawMessageTopicServer(grpcServer, rawWorker)
 
-	deployer_tpb.RegisterCloudFormationRequestTopicServer(grpcServer, awsInfraRunner)
-	deployer_tpb.RegisterCloudFormationReplyTopicServer(grpcServer, deploymentWorker)
+	awsinfra_tpb.RegisterCloudFormationRequestTopicServer(grpcServer, awsInfraRunner)
+	awsinfra_tpb.RegisterCloudFormationReplyTopicServer(grpcServer, deploymentWorker)
 
-	deployer_tpb.RegisterPostgresRequestTopicServer(grpcServer, pgMigrateRunner)
-	deployer_tpb.RegisterPostgresReplyTopicServer(grpcServer, deploymentWorker)
+	awsinfra_tpb.RegisterPostgresRequestTopicServer(grpcServer, pgMigrateRunner)
+	awsinfra_tpb.RegisterPostgresReplyTopicServer(grpcServer, deploymentWorker)
 
-	deployer_tpb.RegisterECSReplyTopicServer(grpcServer, pgMigrateRunner)
-	deployer_tpb.RegisterECSRequestTopicServer(grpcServer, ecsWorker)
+	awsinfra_tpb.RegisterECSReplyTopicServer(grpcServer, pgMigrateRunner)
+	awsinfra_tpb.RegisterECSRequestTopicServer(grpcServer, ecsWorker)
 
 	reflection.Register(grpcServer)
 
@@ -352,9 +337,9 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		ConfirmPlan:   !cfg.Auto,
 		Flags: &deployer_pb.DeploymentFlags{
 			RotateCredentials: cfg.RotateSecrets,
-			CancelUpdates:     cfg.CancelUpdate,
 			QuickMode:         cfg.QuickMode,
 			InfraOnly:         cfg.InfraOnly,
+			CancelUpdates:     cfg.CancelUpdate,
 			DbOnly:            cfg.DBOnly,
 			ImportResources:   cfg.ImportResources,
 		},

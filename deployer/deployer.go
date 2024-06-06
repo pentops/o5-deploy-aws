@@ -12,13 +12,14 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/awsinfra"
 	"github.com/pentops/o5-deploy-aws/cf/app"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
 
 type TemplateStore interface {
-	PutTemplate(ctx context.Context, envName, appName, deploymentID string, template []byte) (*deployer_pb.S3Template, error)
+	PutTemplate(ctx context.Context, envName, appName, deploymentID string, template []byte) (*awsdeployer_pb.S3Template, error)
 }
 
 type S3TemplateStore struct {
@@ -45,7 +46,7 @@ func NewS3TemplateStore(ctx context.Context, s3Client awsinfra.S3API, cfTemplate
 	}, nil
 }
 
-func (s3ts *S3TemplateStore) PutTemplate(ctx context.Context, envName string, appName string, deploymentID string, templateJSON []byte) (*deployer_pb.S3Template, error) {
+func (s3ts *S3TemplateStore) PutTemplate(ctx context.Context, envName string, appName string, deploymentID string, templateJSON []byte) (*awsdeployer_pb.S3Template, error) {
 
 	templateKey := fmt.Sprintf("%s/%s/%s.json", envName, appName, deploymentID)
 	_, err := s3ts.s3Client.PutObject(ctx, &s3.PutObjectInput{
@@ -57,7 +58,7 @@ func (s3ts *S3TemplateStore) PutTemplate(ctx context.Context, envName string, ap
 		return nil, err
 	}
 
-	return &deployer_pb.S3Template{
+	return &awsdeployer_pb.S3Template{
 		Bucket: s3ts.cfTemplateBucket,
 		Key:    templateKey,
 		Region: s3ts.region,
@@ -74,7 +75,7 @@ func NewSpecBuilder(templateStore TemplateStore) (*SpecBuilder, error) {
 	}, nil
 }
 
-func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage, cluster *environment_pb.Cluster, environment *environment_pb.Environment) (*deployer_pb.DeploymentSpec, error) {
+func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage, cluster *environment_pb.Cluster, environment *environment_pb.Environment) (*awsdeployer_pb.DeploymentSpec, error) {
 	app, err := app.BuildApplication(trigger.Application, trigger.Version)
 	if err != nil {
 		return nil, err
@@ -106,9 +107,9 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		return nil, err
 	}
 
-	dbSpecs := make([]*deployer_pb.PostgresSpec, len(app.PostgresDatabases))
+	dbSpecs := make([]*awsdeployer_pb.PostgresSpec, len(app.PostgresDatabases))
 	for idx, db := range app.PostgresDatabases {
-		dbSpec := &deployer_pb.PostgresSpec{
+		dbSpec := &awsdeployer_pb.PostgresSpec{
 			DbName:                  db.DbName,
 			DbExtensions:            db.DbExtensions,
 			MigrationTaskOutputName: db.MigrationTaskOutputName,
@@ -132,7 +133,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		return nil, err
 	}
 
-	parameters := make([]*deployer_pb.CloudFormationStackParameter, len(app.Parameters))
+	parameters := make([]*awsdeployer_pb.CloudFormationStackParameter, len(app.Parameters))
 	for idx, param := range app.Parameters {
 		parameter, err := deployerResolver.ResolveParameter(param)
 		if err != nil {
@@ -149,11 +150,12 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 	if trigger.Flags == nil {
 		trigger.Flags = &deployer_pb.DeploymentFlags{}
 	}
+
 	if app.QuickMode {
 		trigger.Flags.QuickMode = true
 	}
 
-	spec := &deployer_pb.DeploymentSpec{
+	spec := &awsdeployer_pb.DeploymentSpec{
 		AppName:         app.Name,
 		Version:         app.Version,
 		EnvironmentName: environment.FullName,
@@ -163,7 +165,6 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 		Parameters:      parameters,
 		SnsTopics:       snsTopics,
 		Flags:           trigger.Flags,
-		Source:          trigger.Source,
 
 		EcsCluster: ecsCluster.EcsClusterName,
 	}

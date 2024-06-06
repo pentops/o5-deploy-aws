@@ -5,12 +5,12 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_spb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_spb"
 	"github.com/pentops/o5-deploy-aws/integration/mocks"
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/outbox.pg.go/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
@@ -58,18 +58,17 @@ func TestConfiguration(t *testing.T) {
 	})
 
 	{ // Attempt to upsert stack before the environment exists.
-		_, err := ds.UpsertStack(ctx, &deployer_spb.UpsertStackRequest{
+		_, err := ds.UpsertStack(ctx, &awsdeployer_spb.UpsertStackRequest{
 			StackId: "test-app",
-			Config:  &deployer_pb.StackConfig{},
 		})
 		assertCodeError(t, err, codes.NotFound)
 	}
 
 	{ // Attempt to upsert the environment before the cluster exists
-		_, err = ds.UpsertEnvironment(ctx, &deployer_spb.UpsertEnvironmentRequest{
+		_, err = ds.UpsertEnvironment(ctx, &awsdeployer_spb.UpsertEnvironmentRequest{
 			EnvironmentId: "test",
 			ClusterId:     "cluster",
-			Src: &deployer_spb.UpsertEnvironmentRequest_Config{
+			Src: &awsdeployer_spb.UpsertEnvironmentRequest_Config{
 				Config: &environment_pb.Environment{
 					FullName: "test",
 				},
@@ -78,9 +77,9 @@ func TestConfiguration(t *testing.T) {
 		assertCodeError(t, err, codes.NotFound)
 	}
 
-	_, err = ds.UpsertCluster(ctx, &deployer_spb.UpsertClusterRequest{
+	_, err = ds.UpsertCluster(ctx, &awsdeployer_spb.UpsertClusterRequest{
 		ClusterId: "cluster",
-		Src: &deployer_spb.UpsertClusterRequest_Config{
+		Src: &awsdeployer_spb.UpsertClusterRequest_Config{
 			Config: &environment_pb.CombinedConfig{
 				Name: "cluster",
 				Provider: &environment_pb.CombinedConfig_EcsCluster{
@@ -93,10 +92,10 @@ func TestConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = ds.UpsertEnvironment(ctx, &deployer_spb.UpsertEnvironmentRequest{
+	_, err = ds.UpsertEnvironment(ctx, &awsdeployer_spb.UpsertEnvironmentRequest{
 		EnvironmentId: "test",
 		ClusterId:     "cluster",
-		Src: &deployer_spb.UpsertEnvironmentRequest_Config{
+		Src: &awsdeployer_spb.UpsertEnvironmentRequest_Config{
 			Config: &environment_pb.Environment{
 				FullName: "test",
 			},
@@ -105,16 +104,15 @@ func TestConfiguration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := ds.UpsertStack(ctx, &deployer_spb.UpsertStackRequest{
+	res, err := ds.UpsertStack(ctx, &awsdeployer_spb.UpsertStackRequest{
 		StackId: "test-app",
-		Config:  &deployer_pb.StackConfig{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if res.State.Status != deployer_pb.StackStatus_AVAILABLE {
-		t.Errorf("expected status %s, got %s", deployer_pb.StackStatus_AVAILABLE, res.State.Status)
+	if res.State.Status != awsdeployer_pb.StackStatus_AVAILABLE {
+		t.Errorf("expected status %s, got %s", awsdeployer_pb.StackStatus_AVAILABLE, res.State.Status)
 	}
 
 }
@@ -144,9 +142,9 @@ func TestTriggerDeployment(t *testing.T) {
 		Actor:  actorExtractor(context.Background()),
 	})
 
-	_, err = ds.UpsertCluster(ctx, &deployer_spb.UpsertClusterRequest{
+	_, err = ds.UpsertCluster(ctx, &awsdeployer_spb.UpsertClusterRequest{
 		ClusterId: "cluster",
-		Src: &deployer_spb.UpsertClusterRequest_Config{
+		Src: &awsdeployer_spb.UpsertClusterRequest_Config{
 			Config: &environment_pb.CombinedConfig{
 				Name: "cluster",
 				Provider: &environment_pb.CombinedConfig_EcsCluster{
@@ -166,15 +164,15 @@ func TestTriggerDeployment(t *testing.T) {
 		Name: "app",
 	}}
 
-	triggerRes, err := ds.TriggerDeployment(ctx, &deployer_spb.TriggerDeploymentRequest{
+	triggerRes, err := ds.TriggerDeployment(ctx, &awsdeployer_spb.TriggerDeploymentRequest{
 		DeploymentId: uuid.NewString(),
 		Environment:  "test",
-		Source: &deployer_spb.TriggerSource{
-			Type: &deployer_spb.TriggerSource_Github{
-				Github: &deployer_spb.TriggerSource_GithubSource{
+		Source: &awsdeployer_spb.TriggerSource{
+			Type: &awsdeployer_spb.TriggerSource_Github{
+				Github: &awsdeployer_spb.TriggerSource_GithubSource{
 					Owner: "owner",
 					Repo:  "repo",
-					Ref: &deployer_spb.TriggerSource_GithubSource_Commit{
+					Ref: &awsdeployer_spb.TriggerSource_GithubSource_Commit{
 						Commit: "commit",
 					},
 				},

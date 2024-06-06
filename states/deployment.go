@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	"github.com/pentops/protostate/psm"
 	"github.com/pentops/sqrlx.go/sqrlx"
@@ -25,8 +25,8 @@ func buildRequestMetadata(contextMessage proto.Message) (*messaging_pb.RequestMe
 	return req, nil
 }
 
-func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
-	config := deployer_pb.DefaultDeploymentPSMConfig().
+func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
+	config := awsdeployer_pb.DefaultDeploymentPSMConfig().
 		SystemActor(psm.MustSystemActor("9C88DF5B-6ED0-46DF-A389-474F27A7395F"))
 
 	sm, err := config.NewStateMachine()
@@ -35,12 +35,12 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 	}
 
 	// [*] --> QUEUED : Created
-	sm.From(deployer_pb.DeploymentStatus_UNSPECIFIED).
-		OnEvent(deployer_pb.DeploymentPSMEventCreated).
-		SetStatus(deployer_pb.DeploymentStatus_QUEUED).
-		Mutate(deployer_pb.DeploymentPSMMutation(func(
-			deployment *deployer_pb.DeploymentStateData,
-			event *deployer_pb.DeploymentEventType_Created,
+	sm.From(awsdeployer_pb.DeploymentStatus_UNSPECIFIED).
+		OnEvent(awsdeployer_pb.DeploymentPSMEventCreated).
+		SetStatus(awsdeployer_pb.DeploymentStatus_QUEUED).
+		Mutate(awsdeployer_pb.DeploymentPSMMutation(func(
+			deployment *awsdeployer_pb.DeploymentStateData,
+			event *awsdeployer_pb.DeploymentEventType_Created,
 		) error {
 			deployment.Spec = event.Spec
 			deployment.StackName = fmt.Sprintf("%s-%s", event.Spec.EnvironmentName, event.Spec.AppName)
@@ -51,42 +51,42 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		}))
 
 	// QUEUED --> TRIGGERED : Trigger
-	sm.From(deployer_pb.DeploymentStatus_QUEUED).
-		OnEvent(deployer_pb.DeploymentPSMEventTriggered).
-		SetStatus(deployer_pb.DeploymentStatus_TRIGGERED).
-		Hook(deployer_pb.DeploymentPSMHook(func(
+	sm.From(awsdeployer_pb.DeploymentStatus_QUEUED).
+		OnEvent(awsdeployer_pb.DeploymentPSMEventTriggered).
+		SetStatus(awsdeployer_pb.DeploymentStatus_TRIGGERED).
+		Hook(awsdeployer_pb.DeploymentPSMHook(func(
 			ctx context.Context,
 			tx sqrlx.Transaction,
-			tb deployer_pb.DeploymentPSMHookBaton,
-			deployment *deployer_pb.DeploymentState,
-			event *deployer_pb.DeploymentEventType_Triggered,
+			tb awsdeployer_pb.DeploymentPSMHookBaton,
+			deployment *awsdeployer_pb.DeploymentState,
+			event *awsdeployer_pb.DeploymentEventType_Triggered,
 		) error {
 
-			tb.ChainEvent(&deployer_pb.DeploymentEventType_StackWait{})
+			tb.ChainEvent(&awsdeployer_pb.DeploymentEventType_StackWait{})
 
 			return nil
 		}))
 
 	// TRIGGERED --> WAITING : StackWait
-	sm.From(deployer_pb.DeploymentStatus_TRIGGERED).
-		OnEvent(deployer_pb.DeploymentPSMEventStackWait).
-		SetStatus(deployer_pb.DeploymentStatus_WAITING).
-		Hook(deployer_pb.DeploymentPSMHook(func(
+	sm.From(awsdeployer_pb.DeploymentStatus_TRIGGERED).
+		OnEvent(awsdeployer_pb.DeploymentPSMEventStackWait).
+		SetStatus(awsdeployer_pb.DeploymentStatus_WAITING).
+		Hook(awsdeployer_pb.DeploymentPSMHook(func(
 			ctx context.Context,
 			tx sqrlx.Transaction,
-			tb deployer_pb.DeploymentPSMHookBaton,
-			deployment *deployer_pb.DeploymentState,
-			event *deployer_pb.DeploymentEventType_StackWait,
+			tb awsdeployer_pb.DeploymentPSMHookBaton,
+			deployment *awsdeployer_pb.DeploymentState,
+			event *awsdeployer_pb.DeploymentEventType_StackWait,
 		) error {
-			requestMetadata, err := buildRequestMetadata(&deployer_pb.StepContext{
-				Phase:        deployer_pb.StepPhase_WAIT,
+			requestMetadata, err := buildRequestMetadata(&awsdeployer_pb.StepContext{
+				Phase:        awsdeployer_pb.StepPhase_WAIT,
 				DeploymentId: deployment.Keys.DeploymentId,
 			})
 			if err != nil {
 				return err
 			}
 
-			tb.SideEffect(&deployer_tpb.StabalizeStackMessage{
+			tb.SideEffect(&awsinfra_tpb.StabalizeStackMessage{
 				Request:      requestMetadata,
 				StackName:    deployment.Data.StackName,
 				CancelUpdate: deployment.Data.Spec.Flags.CancelUpdates,
@@ -96,25 +96,22 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		}))
 
 	// WAITIHG --> FAILED : StackWaitFailure
-	sm.From(deployer_pb.DeploymentStatus_WAITING).
-		OnEvent(deployer_pb.DeploymentPSMEventStackWaitFailure).
-		SetStatus(deployer_pb.DeploymentStatus_FAILED)
+	sm.From(awsdeployer_pb.DeploymentStatus_WAITING).
+		OnEvent(awsdeployer_pb.DeploymentPSMEventStackWaitFailure).
+		SetStatus(awsdeployer_pb.DeploymentStatus_FAILED)
 		// REFACTOR NOTE: This used to return error.
 
 	// WAITING --> AVAILABLE : StackAvailable
-	sm.From(deployer_pb.DeploymentStatus_WAITING).
-		OnEvent(deployer_pb.DeploymentPSMEventStackAvailable).
-		SetStatus(deployer_pb.DeploymentStatus_AVAILABLE).
-		Hook(deployer_pb.DeploymentPSMHook(func(
+	sm.From(awsdeployer_pb.DeploymentStatus_WAITING).
+		OnEvent(awsdeployer_pb.DeploymentPSMEventStackAvailable).
+		SetStatus(awsdeployer_pb.DeploymentStatus_AVAILABLE).
+		Hook(awsdeployer_pb.DeploymentPSMHook(func(
 			ctx context.Context,
 			tx sqrlx.Transaction,
-			tb deployer_pb.DeploymentPSMHookBaton,
-			deployment *deployer_pb.DeploymentState,
-			event *deployer_pb.DeploymentEventType_StackAvailable,
+			tb awsdeployer_pb.DeploymentPSMHookBaton,
+			deployment *awsdeployer_pb.DeploymentState,
+			event *awsdeployer_pb.DeploymentEventType_StackAvailable,
 		) error {
-
-			// TODO: The plan should be generated in a side effect and stored as a
-			// new event.
 
 			plan, err := planDeploymentSteps(ctx, deployment.Data, planInput{
 				stackStatus: event.StackOutput,
@@ -124,7 +121,7 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 				return err
 			}
 
-			tb.ChainEvent(&deployer_pb.DeploymentEventType_RunSteps{
+			tb.ChainEvent(&awsdeployer_pb.DeploymentEventType_RunSteps{
 				Steps: plan,
 			})
 
@@ -132,88 +129,128 @@ func NewDeploymentEventer() (*deployer_pb.DeploymentPSM, error) {
 		}))
 
 	// AVAILABLE --> RUNNING : RunSteps
-	sm.From(deployer_pb.DeploymentStatus_AVAILABLE).
-		OnEvent(deployer_pb.DeploymentPSMEventRunSteps).
-		SetStatus(deployer_pb.DeploymentStatus_RUNNING).
-		Mutate(deployer_pb.DeploymentPSMMutation(func(
-			deployment *deployer_pb.DeploymentStateData,
-			event *deployer_pb.DeploymentEventType_RunSteps,
+	sm.From(awsdeployer_pb.DeploymentStatus_AVAILABLE).
+		OnEvent(awsdeployer_pb.DeploymentPSMEventRunSteps).
+		SetStatus(awsdeployer_pb.DeploymentStatus_RUNNING).
+		Mutate(awsdeployer_pb.DeploymentPSMMutation(func(
+			deployment *awsdeployer_pb.DeploymentStateData,
+			event *awsdeployer_pb.DeploymentEventType_RunSteps,
 		) error {
 
 			deployment.Steps = event.Steps
+			if err := updateStepDependencies(deployment); err != nil {
+				return err
+			}
 			return nil
 		})).
-		Hook(deployer_pb.DeploymentPSMHook(func(
+		Hook(awsdeployer_pb.DeploymentPSMHook(func(
 			ctx context.Context,
 			tx sqrlx.Transaction,
-			tb deployer_pb.DeploymentPSMHookBaton,
-			deployment *deployer_pb.DeploymentState,
-			event *deployer_pb.DeploymentEventType_RunSteps,
+			tb awsdeployer_pb.DeploymentPSMHookBaton,
+			deployment *awsdeployer_pb.DeploymentState,
+			event *awsdeployer_pb.DeploymentEventType_RunSteps,
 		) error {
 			return stepNext(ctx, tb, deployment)
 		}))
 
 	// RUNNING --> RUNNING : StepResult
-	sm.From(deployer_pb.DeploymentStatus_RUNNING).
-		Mutate(deployer_pb.DeploymentPSMMutation(func(
-			deployment *deployer_pb.DeploymentStateData,
-			event *deployer_pb.DeploymentEventType_StepResult,
+	sm.From(awsdeployer_pb.DeploymentStatus_RUNNING).
+		Mutate(awsdeployer_pb.DeploymentPSMMutation(func(
+			deployment *awsdeployer_pb.DeploymentStateData,
+			event *awsdeployer_pb.DeploymentEventType_StepResult,
 		) error {
 			return updateDeploymentStep(deployment, event)
 		})).
-		Hook(deployer_pb.DeploymentPSMHook(func(
+		Hook(awsdeployer_pb.DeploymentPSMHook(func(
 			ctx context.Context,
 			tx sqrlx.Transaction,
-			tb deployer_pb.DeploymentPSMHookBaton,
-			deployment *deployer_pb.DeploymentState,
-			event *deployer_pb.DeploymentEventType_StepResult,
+			tb awsdeployer_pb.DeploymentPSMHookBaton,
+			deployment *awsdeployer_pb.DeploymentState,
+			event *awsdeployer_pb.DeploymentEventType_StepResult,
 		) error {
 			return stepNext(ctx, tb, deployment)
 		}))
 
+	// RUNNING --> RUNNING : RunStep
+	sm.From(awsdeployer_pb.DeploymentStatus_RUNNING).
+		OnEvent(awsdeployer_pb.DeploymentPSMEventRunStep).
+		Mutate(awsdeployer_pb.DeploymentPSMMutation(func(
+			deployment *awsdeployer_pb.DeploymentStateData,
+			event *awsdeployer_pb.DeploymentEventType_RunStep,
+		) error {
+			for _, step := range deployment.Steps {
+				if step.Id == event.StepId {
+					step.Status = awsdeployer_pb.StepStatus_ACTIVE
+
+				}
+			}
+			return nil
+		})).
+		Hook(awsdeployer_pb.DeploymentPSMHook(func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			tb awsdeployer_pb.DeploymentPSMHookBaton,
+			deployment *awsdeployer_pb.DeploymentState,
+			event *awsdeployer_pb.DeploymentEventType_RunStep,
+		) error {
+			stepMap := map[string]*awsdeployer_pb.DeploymentStep{}
+			for _, search := range deployment.Data.Steps {
+				stepMap[search.Id] = search
+			}
+
+			thisStep, ok := stepMap[event.StepId]
+			if !ok {
+				return fmt.Errorf("step not found: %s", event.StepId)
+			}
+
+			depMap := map[string]*awsdeployer_pb.DeploymentStep{}
+
+			for _, dep := range thisStep.DependsOn {
+				depMap[dep], ok = stepMap[dep]
+				if !ok {
+					return fmt.Errorf("dependency not found: %s", dep)
+				}
+			}
+
+			sideEffect, err := stepToSideEffect(thisStep, deployment, depMap)
+			if err != nil {
+				return err
+			}
+			tb.SideEffect(sideEffect)
+
+			return nil
+		}))
+
 	// RUNNING --> DONE : Done
-	sm.From(deployer_pb.DeploymentStatus_RUNNING).
-		OnEvent(deployer_pb.DeploymentPSMEventDone).
-		SetStatus(deployer_pb.DeploymentStatus_DONE)
+	sm.From(awsdeployer_pb.DeploymentStatus_RUNNING).
+		OnEvent(awsdeployer_pb.DeploymentPSMEventDone).
+		SetStatus(awsdeployer_pb.DeploymentStatus_DONE)
 
 	// * --> FAILED : Error
-	sm.From().OnEvent(deployer_pb.DeploymentPSMEventError).
-		SetStatus(deployer_pb.DeploymentStatus_FAILED)
+	sm.From().OnEvent(awsdeployer_pb.DeploymentPSMEventError).
+		SetStatus(awsdeployer_pb.DeploymentStatus_FAILED)
 
 	// * --> TERMINATED : Terminated
-	sm.From().OnEvent(deployer_pb.DeploymentPSMEventTerminated).
-		SetStatus(deployer_pb.DeploymentStatus_TERMINATED)
+	sm.From().OnEvent(awsdeployer_pb.DeploymentPSMEventTerminated).
+		SetStatus(awsdeployer_pb.DeploymentStatus_TERMINATED)
 
 	// Discard Triggered
 	sm.From(
-		deployer_pb.DeploymentStatus_FAILED,
-		deployer_pb.DeploymentStatus_TERMINATED,
+		awsdeployer_pb.DeploymentStatus_FAILED,
+		awsdeployer_pb.DeploymentStatus_TERMINATED,
 	).
-		OnEvent(deployer_pb.DeploymentPSMEventTriggered).
+		OnEvent(awsdeployer_pb.DeploymentPSMEventTriggered).
 		Noop()
 
 	// Discard Step Results
-	sm.From(deployer_pb.DeploymentStatus_TERMINATED).
-		OnEvent(deployer_pb.DeploymentPSMEventStepResult).
-		Mutate(deployer_pb.DeploymentPSMMutation(func(
-			deployment *deployer_pb.DeploymentStateData,
-			event *deployer_pb.DeploymentEventType_StepResult,
+	sm.From(awsdeployer_pb.DeploymentStatus_TERMINATED).
+		OnEvent(awsdeployer_pb.DeploymentPSMEventStepResult).
+		Mutate(awsdeployer_pb.DeploymentPSMMutation(func(
+			deployment *awsdeployer_pb.DeploymentStateData,
+			event *awsdeployer_pb.DeploymentEventType_StepResult,
 		) error {
 			return updateDeploymentStep(deployment, event)
 		}))
 
 	return sm, nil
-}
-
-func updateDeploymentStep(deployment *deployer_pb.DeploymentStateData, event *deployer_pb.DeploymentEventType_StepResult) error {
-	for _, step := range deployment.Steps {
-		if step.Id == event.StepId {
-			step.Status = event.Status
-			step.Output = event.Output
-			step.Error = event.Error
-			return nil
-		}
-	}
-
-	return fmt.Errorf("step %s not found", event.StepId)
 }

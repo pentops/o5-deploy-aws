@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/bufbuild/protovalidate-go"
 	"github.com/goccy/go-yaml"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -64,6 +65,16 @@ func Parse(filename string, data []byte, into proto.Message) error {
 	err := protojson.Unmarshal(data, into)
 	if err != nil {
 		return findTokenError(data, err)
+	}
+
+	// should usually be cached, but this is used rarely.
+	validator, err := protovalidate.New()
+	if err != nil {
+		return fmt.Errorf("protovalidate.New: %w", err)
+	}
+
+	if err := validator.Validate(into); err != nil {
+		return err
 	}
 
 	return nil

@@ -7,8 +7,8 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	"github.com/pentops/outbox.pg.go/outbox"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -23,7 +23,7 @@ type DBLite interface {
 var RequestTokenNotFound = errors.New("request token not found")
 
 type InfraWorker struct {
-	deployer_tpb.UnimplementedCloudFormationRequestTopicServer
+	awsinfra_tpb.UnimplementedCloudFormationRequestTopicServer
 
 	db DBLite
 	*CFClient
@@ -82,9 +82,9 @@ func (cf *InfraWorker) HandleCloudFormationEvent(ctx context.Context, fields map
 		return err
 	}
 
-	var outputs []*deployer_pb.KeyValue
+	var outputs []*awsdeployer_pb.KeyValue
 
-	if lifecycle == deployer_pb.CFLifecycle_COMPLETE {
+	if lifecycle == awsdeployer_pb.CFLifecycle_COMPLETE {
 
 		stack, err := cf.getOneStack(ctx, stackName)
 		if err != nil {
@@ -105,7 +105,7 @@ func (cf *InfraWorker) HandleCloudFormationEvent(ctx context.Context, fields map
 		return err
 	}
 
-	if err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
+	if err := cf.eventOut(ctx, &awsinfra_tpb.StackStatusChangedMessage{
 		Request:   requestMetadata,
 		EventId:   eventID,
 		StackName: stackName,
@@ -119,7 +119,7 @@ func (cf *InfraWorker) HandleCloudFormationEvent(ctx context.Context, fields map
 	return nil
 }
 
-func (cf *InfraWorker) CreateNewStack(ctx context.Context, msg *deployer_tpb.CreateNewStackMessage) (*emptypb.Empty, error) {
+func (cf *InfraWorker) CreateNewStack(ctx context.Context, msg *awsinfra_tpb.CreateNewStackMessage) (*emptypb.Empty, error) {
 
 	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
 	if err != nil {
@@ -134,7 +134,7 @@ func (cf *InfraWorker) CreateNewStack(ctx context.Context, msg *deployer_tpb.Cre
 	return &emptypb.Empty{}, nil
 }
 
-func (cf *InfraWorker) UpdateStack(ctx context.Context, msg *deployer_tpb.UpdateStackMessage) (*emptypb.Empty, error) {
+func (cf *InfraWorker) UpdateStack(ctx context.Context, msg *awsinfra_tpb.UpdateStackMessage) (*emptypb.Empty, error) {
 	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
 	if err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func (cf *InfraWorker) UpdateStack(ctx context.Context, msg *deployer_tpb.Update
 	return &emptypb.Empty{}, nil
 }
 
-func (cf *InfraWorker) CreateChangeSet(ctx context.Context, msg *deployer_tpb.CreateChangeSetMessage) (*emptypb.Empty, error) {
+func (cf *InfraWorker) CreateChangeSet(ctx context.Context, msg *awsinfra_tpb.CreateChangeSetMessage) (*emptypb.Empty, error) {
 	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
 	if err != nil {
 		return nil, err
@@ -168,7 +168,7 @@ func (cf *InfraWorker) CreateChangeSet(ctx context.Context, msg *deployer_tpb.Cr
 	return &emptypb.Empty{}, nil
 }
 
-func (cf *InfraWorker) CancelStackUpdate(ctx context.Context, msg *deployer_tpb.CancelStackUpdateMessage) (*emptypb.Empty, error) {
+func (cf *InfraWorker) CancelStackUpdate(ctx context.Context, msg *awsinfra_tpb.CancelStackUpdateMessage) (*emptypb.Empty, error) {
 	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
 	if err != nil {
 		return nil, err
@@ -181,7 +181,7 @@ func (cf *InfraWorker) CancelStackUpdate(ctx context.Context, msg *deployer_tpb.
 	return &emptypb.Empty{}, nil
 }
 
-func (cf *InfraWorker) DeleteStack(ctx context.Context, msg *deployer_tpb.DeleteStackMessage) (*emptypb.Empty, error) {
+func (cf *InfraWorker) DeleteStack(ctx context.Context, msg *awsinfra_tpb.DeleteStackMessage) (*emptypb.Empty, error) {
 	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
 	if err != nil {
 		return nil, err
@@ -194,7 +194,7 @@ func (cf *InfraWorker) DeleteStack(ctx context.Context, msg *deployer_tpb.Delete
 	return &emptypb.Empty{}, nil
 }
 
-func (cf *InfraWorker) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleStackMessage) (*emptypb.Empty, error) {
+func (cf *InfraWorker) ScaleStack(ctx context.Context, msg *awsinfra_tpb.ScaleStackMessage) (*emptypb.Empty, error) {
 	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
 	if err != nil {
 		return nil, err
@@ -213,7 +213,7 @@ func (cf *InfraWorker) ScaleStack(ctx context.Context, msg *deployer_tpb.ScaleSt
 	return &emptypb.Empty{}, nil
 }
 
-func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.StabalizeStackMessage) (*emptypb.Empty, error) {
+func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *awsinfra_tpb.StabalizeStackMessage) (*emptypb.Empty, error) {
 
 	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
 	if err != nil {
@@ -226,12 +226,12 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 	}
 
 	if remoteStack == nil {
-		err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
+		err := cf.eventOut(ctx, &awsinfra_tpb.StackStatusChangedMessage{
 			Request:   msg.Request,
 			EventId:   reqToken,
 			StackName: msg.StackName,
 			Status:    "MISSING",
-			Lifecycle: deployer_pb.CFLifecycle_MISSING,
+			Lifecycle: awsdeployer_pb.CFLifecycle_MISSING,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("eventOut: %w", err)
@@ -246,7 +246,7 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 	}
 
 	if remoteStack.StackStatus == types.StackStatusRollbackComplete {
-		err := cf.eventOut(ctx, &deployer_tpb.DeleteStackMessage{
+		err := cf.eventOut(ctx, &awsinfra_tpb.DeleteStackMessage{
 			Request:   msg.Request,
 			StackName: msg.StackName,
 		})
@@ -259,7 +259,7 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 
 	needsCancel := msg.CancelUpdate && remoteStack.StackStatus == types.StackStatusUpdateInProgress
 	if needsCancel {
-		err := cf.eventOut(ctx, &deployer_tpb.CancelStackUpdateMessage{
+		err := cf.eventOut(ctx, &awsinfra_tpb.CancelStackUpdateMessage{
 			Request:   msg.Request,
 			StackName: msg.StackName,
 		})
@@ -274,8 +274,8 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 		// When a previous attempt has failed, the stack will be in this state
 		// In the Stabalize handler ONLY, this counts as a success, as the stack
 		// is stable and ready for another attempt
-		lifecycle = deployer_pb.CFLifecycle_COMPLETE
-		err = cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
+		lifecycle = awsdeployer_pb.CFLifecycle_COMPLETE
+		err = cf.eventOut(ctx, &awsinfra_tpb.StackStatusChangedMessage{
 			Request:   msg.Request,
 			EventId:   reqToken,
 			StackName: msg.StackName,
@@ -300,7 +300,7 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *deployer_tpb.Sta
 		"stackStatus": remoteStack.StackStatus,
 	}).Debug("StabalizeStack Result")
 
-	err = cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
+	err = cf.eventOut(ctx, &awsinfra_tpb.StackStatusChangedMessage{
 		Request:   msg.Request,
 		EventId:   reqToken,
 		StackName: msg.StackName,
@@ -329,13 +329,13 @@ func (cf *InfraWorker) noUpdatesToBePerformed(ctx context.Context, stackName str
 		return err
 	}
 
-	if err := cf.eventOut(ctx, &deployer_tpb.StackStatusChangedMessage{
+	if err := cf.eventOut(ctx, &awsinfra_tpb.StackStatusChangedMessage{
 		Request:   request,
 		EventId:   eventID,
 		StackName: stackName,
 		Status:    "NO UPDATES TO BE PERFORMED",
 		Outputs:   summary.Outputs,
-		Lifecycle: deployer_pb.CFLifecycle_COMPLETE,
+		Lifecycle: awsdeployer_pb.CFLifecycle_COMPLETE,
 	}); err != nil {
 		return err
 	}

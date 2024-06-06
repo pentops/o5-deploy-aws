@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 )
 
 var stackStatusProgress = []types.StackStatus{
@@ -51,58 +51,58 @@ var stackStatusesTerminalRollback = []types.StackStatus{
 
 type StackStatus struct {
 	StackStatus types.StackStatus
-	SummaryType deployer_pb.CFLifecycle
+	SummaryType awsdeployer_pb.CFLifecycle
 	IsOK        bool
 	Stable      bool
-	Parameters  []*deployer_pb.KeyValue
-	Outputs     []*deployer_pb.KeyValue
+	Parameters  []*awsdeployer_pb.KeyValue
+	Outputs     []*awsdeployer_pb.KeyValue
 }
 
-func stackLifecycle(remoteStatus types.StackStatus) (deployer_pb.CFLifecycle, error) {
+func stackLifecycle(remoteStatus types.StackStatus) (awsdeployer_pb.CFLifecycle, error) {
 	for _, status := range stackStatusesTerminal {
 		if remoteStatus == status {
-			return deployer_pb.CFLifecycle_TERMINAL, nil
+			return awsdeployer_pb.CFLifecycle_TERMINAL, nil
 		}
 	}
 
 	for _, status := range stackStatusesTerminalRollback {
 		if remoteStatus == status {
-			return deployer_pb.CFLifecycle_ROLLED_BACK, nil
+			return awsdeployer_pb.CFLifecycle_ROLLED_BACK, nil
 		}
 	}
 
 	for _, status := range stackStatusComplete {
 		if remoteStatus == status {
-			return deployer_pb.CFLifecycle_COMPLETE, nil
+			return awsdeployer_pb.CFLifecycle_COMPLETE, nil
 		}
 	}
 
 	for _, status := range stackStatusCreateFailed {
 		if remoteStatus == status {
-			return deployer_pb.CFLifecycle_CREATE_FAILED, nil
+			return awsdeployer_pb.CFLifecycle_CREATE_FAILED, nil
 		}
 	}
 
 	for _, status := range stackStatusRollingBack {
 		if remoteStatus == status {
-			return deployer_pb.CFLifecycle_ROLLING_BACK, nil
+			return awsdeployer_pb.CFLifecycle_ROLLING_BACK, nil
 		}
 	}
 
 	for _, status := range stackStatusProgress {
 		if remoteStatus == status {
-			return deployer_pb.CFLifecycle_PROGRESS, nil
+			return awsdeployer_pb.CFLifecycle_PROGRESS, nil
 		}
 	}
 
-	return deployer_pb.CFLifecycle_UNSPECIFIED, fmt.Errorf("unknown stack status %s", remoteStatus)
+	return awsdeployer_pb.CFLifecycle_UNSPECIFIED, fmt.Errorf("unknown stack status %s", remoteStatus)
 
 }
 
-func mapOutputs(outputs []types.Output) []*deployer_pb.KeyValue {
-	out := make([]*deployer_pb.KeyValue, len(outputs))
+func mapOutputs(outputs []types.Output) []*awsdeployer_pb.KeyValue {
+	out := make([]*awsdeployer_pb.KeyValue, len(outputs))
 	for i, output := range outputs {
-		out[i] = &deployer_pb.KeyValue{
+		out[i] = &awsdeployer_pb.KeyValue{
 			Name:  *output.OutputKey,
 			Value: *output.OutputValue,
 		}
@@ -115,7 +115,7 @@ func summarizeStackStatus(stack *types.Stack) (StackStatus, error) {
 	if stack == nil {
 		return StackStatus{
 			StackStatus: "MISSING",
-			SummaryType: deployer_pb.CFLifecycle_MISSING,
+			SummaryType: awsdeployer_pb.CFLifecycle_MISSING,
 			Stable:      true,
 			IsOK:        false,
 		}, nil
@@ -126,9 +126,9 @@ func summarizeStackStatus(stack *types.Stack) (StackStatus, error) {
 		return StackStatus{}, err
 	}
 
-	parameters := make([]*deployer_pb.KeyValue, len(stack.Parameters))
+	parameters := make([]*awsdeployer_pb.KeyValue, len(stack.Parameters))
 	for idx, param := range stack.Parameters {
-		parameters[idx] = &deployer_pb.KeyValue{
+		parameters[idx] = &awsdeployer_pb.KeyValue{
 			Name:  *param.ParameterKey,
 			Value: *param.ParameterValue,
 		}
@@ -143,27 +143,27 @@ func summarizeStackStatus(stack *types.Stack) (StackStatus, error) {
 
 	switch lifecycle {
 
-	case deployer_pb.CFLifecycle_COMPLETE:
+	case awsdeployer_pb.CFLifecycle_COMPLETE:
 		out.IsOK = true
 		out.Stable = true
 
-	case deployer_pb.CFLifecycle_TERMINAL:
+	case awsdeployer_pb.CFLifecycle_TERMINAL:
 		out.IsOK = false
 		out.Stable = true
 
-	case deployer_pb.CFLifecycle_CREATE_FAILED:
+	case awsdeployer_pb.CFLifecycle_CREATE_FAILED:
 		out.IsOK = false
 		out.Stable = true
 
-	case deployer_pb.CFLifecycle_ROLLING_BACK:
+	case awsdeployer_pb.CFLifecycle_ROLLING_BACK:
 		out.IsOK = false
 		out.Stable = false
 
-	case deployer_pb.CFLifecycle_ROLLED_BACK:
+	case awsdeployer_pb.CFLifecycle_ROLLED_BACK:
 		out.IsOK = false
 		out.Stable = true
 
-	case deployer_pb.CFLifecycle_PROGRESS:
+	case awsdeployer_pb.CFLifecycle_PROGRESS:
 		out.IsOK = true
 		out.Stable = false
 

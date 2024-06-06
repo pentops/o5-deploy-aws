@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	"github.com/pentops/protostate/psm"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc/codes"
@@ -18,29 +18,8 @@ func StackID(envName, appName string) string {
 	return uuid.NewMD5(namespaceStackID, []byte(fmt.Sprintf("%s-%s", envName, appName))).String()
 }
 
-func NewStackEventer() (*deployer_pb.StackPSM, error) {
-	config := deployer_pb.DefaultStackPSMConfig().
-		StoreExtraStateColumns(func(s *deployer_pb.StackState) (map[string]interface{}, error) {
-			mm := map[string]interface{}{
-				"env_name":       s.Data.EnvironmentName,
-				"app_name":       s.Data.ApplicationName,
-				"environment_id": s.Data.EnvironmentId,
-				"github_owner":   "", // TODO: Support NIL in PSM conversion
-				"github_repo":    "",
-				"github_ref":     "",
-			}
-
-			if s.Data.Config != nil && s.Data.Config.CodeSource != nil {
-				githubConfig := s.Data.Config.CodeSource.GetGithub()
-				if githubConfig != nil {
-					mm["github_owner"] = githubConfig.Owner
-					mm["github_repo"] = githubConfig.Repo
-					mm["github_ref"] = fmt.Sprintf("refs/heads/%s", githubConfig.Branch)
-				}
-			}
-
-			return mm, nil
-		}).
+func NewStackEventer() (*awsdeployer_pb.StackPSM, error) {
+	config := awsdeployer_pb.DefaultStackPSMConfig().
 		SystemActor(psm.MustSystemActor("0F34118E-6263-4634-A5FB-5C04D71203D2"))
 
 	sm, err := config.NewStateMachine()
@@ -52,13 +31,12 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 	// The stack is immediately 'AVAILABLE' and ready for the first deployment.
 	// [*] --> AVAILABLE : Configured
 	sm.From(0).
-		OnEvent(deployer_pb.StackPSMEventConfigured).
-		SetStatus(deployer_pb.StackStatus_AVAILABLE).
-		Mutate(deployer_pb.StackPSMMutation(func(
-			state *deployer_pb.StackStateData,
-			event *deployer_pb.StackEventType_Configured,
+		OnEvent(awsdeployer_pb.StackPSMEventConfigured).
+		SetStatus(awsdeployer_pb.StackStatus_AVAILABLE).
+		Mutate(awsdeployer_pb.StackPSMMutation(func(
+			state *awsdeployer_pb.StackStateData,
+			event *awsdeployer_pb.StackEventType_Configured,
 		) error {
-			state.Config = event.Config
 			state.EnvironmentId = event.EnvironmentId
 			state.EnvironmentName = event.EnvironmentName
 			state.ApplicationName = event.ApplicationName
@@ -69,16 +47,16 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 	// Creating the stack through the first deployment request.
 	// [*] --> AVAILABLE : DeploymentRequested
 	sm.From(0).
-		OnEvent(deployer_pb.StackPSMEventDeploymentRequested).
-		SetStatus(deployer_pb.StackStatus_AVAILABLE).
-		Mutate(deployer_pb.StackPSMMutation(func(
-			state *deployer_pb.StackStateData,
-			event *deployer_pb.StackEventType_DeploymentRequested,
+		OnEvent(awsdeployer_pb.StackPSMEventDeploymentRequested).
+		SetStatus(awsdeployer_pb.StackStatus_AVAILABLE).
+		Mutate(awsdeployer_pb.StackPSMMutation(func(
+			state *awsdeployer_pb.StackStateData,
+			event *awsdeployer_pb.StackEventType_DeploymentRequested,
 		) error {
 			state.ApplicationName = event.ApplicationName
 			state.EnvironmentName = event.EnvironmentName
 			state.EnvironmentId = event.EnvironmentId
-			state.QueuedDeployments = []*deployer_pb.StackDeployment{
+			state.QueuedDeployments = []*awsdeployer_pb.StackDeployment{
 				event.Deployment,
 			}
 			state.StackName = fmt.Sprintf("%s-%s", event.EnvironmentName, event.ApplicationName)
@@ -88,14 +66,13 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 	// Configuration after creation simply updates the config, leaving the
 	// status.
 	sm.From(
-		deployer_pb.StackStatus_AVAILABLE,
-		deployer_pb.StackStatus_MIGRATING,
+		awsdeployer_pb.StackStatus_AVAILABLE,
+		awsdeployer_pb.StackStatus_MIGRATING,
 	).
-		Mutate(deployer_pb.StackPSMMutation(func(
-			state *deployer_pb.StackStateData,
-			event *deployer_pb.StackEventType_Configured,
+		Mutate(awsdeployer_pb.StackPSMMutation(func(
+			state *awsdeployer_pb.StackStateData,
+			event *awsdeployer_pb.StackEventType_Configured,
 		) error {
-			state.Config = event.Config
 
 			if state.EnvironmentId != event.EnvironmentId {
 				return status.Errorf(codes.InvalidArgument, "environment id cannot be changed (from %s to %s)", state.EnvironmentId, event.EnvironmentId)
@@ -114,26 +91,26 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 	// MIGRATING --> MIGRATING : DeploymentRequested
 	// Queue the deployment for later
 	sm.From(
-		deployer_pb.StackStatus_AVAILABLE,
-		deployer_pb.StackStatus_MIGRATING,
-	).Mutate(deployer_pb.StackPSMMutation(func(
-		state *deployer_pb.StackStateData,
-		event *deployer_pb.StackEventType_DeploymentRequested,
+		awsdeployer_pb.StackStatus_AVAILABLE,
+		awsdeployer_pb.StackStatus_MIGRATING,
+	).Mutate(awsdeployer_pb.StackPSMMutation(func(
+		state *awsdeployer_pb.StackStateData,
+		event *awsdeployer_pb.StackEventType_DeploymentRequested,
 	) error {
 		state.QueuedDeployments = append(state.QueuedDeployments, event.Deployment)
 		return nil
 	}))
 
 	// AVAILABLE --> MIGRATING : RunDeployment
-	sm.From(deployer_pb.StackStatus_AVAILABLE).
-		OnEvent(deployer_pb.StackPSMEventRunDeployment).
-		SetStatus(deployer_pb.StackStatus_MIGRATING).
-		Mutate(deployer_pb.StackPSMMutation(func(
-			state *deployer_pb.StackStateData,
-			event *deployer_pb.StackEventType_RunDeployment,
+	sm.From(awsdeployer_pb.StackStatus_AVAILABLE).
+		OnEvent(awsdeployer_pb.StackPSMEventRunDeployment).
+		SetStatus(awsdeployer_pb.StackStatus_MIGRATING).
+		Mutate(awsdeployer_pb.StackPSMMutation(func(
+			state *awsdeployer_pb.StackStateData,
+			event *awsdeployer_pb.StackEventType_RunDeployment,
 		) error {
-			remaining := make([]*deployer_pb.StackDeployment, 0, len(state.QueuedDeployments))
-			var deployment *deployer_pb.StackDeployment
+			remaining := make([]*awsdeployer_pb.StackDeployment, 0, len(state.QueuedDeployments))
+			var deployment *awsdeployer_pb.StackDeployment
 			for _, d := range state.QueuedDeployments {
 				if d.DeploymentId == event.DeploymentId {
 					deployment = d
@@ -152,12 +129,12 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 		}))
 
 	// MIGRATING --> AVAILABLE : DeploymentCompleted
-	sm.From(deployer_pb.StackStatus_MIGRATING).
-		OnEvent(deployer_pb.StackPSMEventDeploymentCompleted).
-		SetStatus(deployer_pb.StackStatus_AVAILABLE).
-		Mutate(deployer_pb.StackPSMMutation(func(
-			state *deployer_pb.StackStateData,
-			event *deployer_pb.StackEventType_DeploymentCompleted,
+	sm.From(awsdeployer_pb.StackStatus_MIGRATING).
+		OnEvent(awsdeployer_pb.StackPSMEventDeploymentCompleted).
+		SetStatus(awsdeployer_pb.StackStatus_AVAILABLE).
+		Mutate(awsdeployer_pb.StackPSMMutation(func(
+			state *awsdeployer_pb.StackStateData,
+			event *awsdeployer_pb.StackEventType_DeploymentCompleted,
 		) error {
 			state.CurrentDeployment = nil
 			return nil
@@ -165,20 +142,20 @@ func NewStackEventer() (*deployer_pb.StackPSM, error) {
 
 		// After any event, if the status is AVAILABLE And there are queued
 		// deployments, run the next one.
-	sm.GeneralHook(deployer_pb.StackPSMGeneralHook(func(
+	sm.GeneralHook(awsdeployer_pb.StackPSMGeneralHook(func(
 		ctx context.Context,
 		tx sqrlx.Transaction,
-		tb deployer_pb.StackPSMHookBaton,
-		state *deployer_pb.StackState,
-		event *deployer_pb.StackEvent,
+		tb awsdeployer_pb.StackPSMHookBaton,
+		state *awsdeployer_pb.StackState,
+		event *awsdeployer_pb.StackEvent,
 	) error {
-		if state.Status != deployer_pb.StackStatus_AVAILABLE {
+		if state.Status != awsdeployer_pb.StackStatus_AVAILABLE {
 			return nil
 		}
 		if len(state.Data.QueuedDeployments) == 0 {
 			return nil
 		}
-		tb.ChainEvent(&deployer_pb.StackEventType_RunDeployment{
+		tb.ChainEvent(&awsdeployer_pb.StackEventType_RunDeployment{
 			DeploymentId: state.Data.QueuedDeployments[0].DeploymentId,
 		})
 		return nil

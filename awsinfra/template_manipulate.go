@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 )
 
 type Template struct {
@@ -59,7 +59,7 @@ func (cf *CFClient) findSecret(ctx context.Context, secretName string) (string, 
 	return *secret.ARN, nil
 }
 
-func (cf *CFClient) downloadCFTemplate(ctx context.Context, location *deployer_pb.S3Template) (string, error) {
+func (cf *CFClient) downloadCFTemplate(ctx context.Context, location *awsdeployer_pb.S3Template) (string, error) {
 	// TODO: This ignores the region in the template location, assuming it is
 	// the same region the worker is running. There is probably an easy way to
 	// set the region here.

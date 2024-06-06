@@ -15,7 +15,7 @@ import (
 	sq "github.com/elgris/sqrl"
 	_ "github.com/lib/pq"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/deployer/v1/deployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	"github.com/pentops/sqrlx.go/sqrlx"
 )
 
@@ -29,12 +29,12 @@ func NewDBMigrator(client SecretsManagerAPI) *DBMigrator {
 	}
 }
 
-func (d *DBMigrator) UpsertPostgresDatabase(ctx context.Context, migrationID string, msg *deployer_pb.PostgresCreationSpec) error {
+func (d *DBMigrator) UpsertPostgresDatabase(ctx context.Context, migrationID string, msg *awsdeployer_pb.PostgresCreationSpec) error {
 	if err := d.upsertPostgresDatabase(ctx, msg); err != nil {
 		return err
 	}
 
-	if err := d.fixPostgresOwnership(ctx, &deployer_pb.PostgresCleanupSpec{
+	if err := d.fixPostgresOwnership(ctx, &awsdeployer_pb.PostgresCleanupSpec{
 		DbName:         msg.DbName,
 		RootSecretName: msg.RootSecretName,
 	}); err != nil {
@@ -43,7 +43,7 @@ func (d *DBMigrator) UpsertPostgresDatabase(ctx context.Context, migrationID str
 	return nil
 }
 
-func (d *DBMigrator) CleanupPostgresDatabase(ctx context.Context, migrationID string, msg *deployer_pb.PostgresCleanupSpec) error {
+func (d *DBMigrator) CleanupPostgresDatabase(ctx context.Context, migrationID string, msg *awsdeployer_pb.PostgresCleanupSpec) error {
 	return d.fixPostgresOwnership(ctx, msg)
 }
 
@@ -77,7 +77,7 @@ func (d *DBMigrator) rootPostgresCredentials(ctx context.Context, rootSecretName
 	return secretVal, nil
 }
 
-func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *deployer_pb.PostgresCleanupSpec) error {
+func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *awsdeployer_pb.PostgresCleanupSpec) error {
 
 	log.Info(ctx, "Fix object ownership")
 	dbName := msg.DbName
@@ -188,9 +188,9 @@ func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *deployer_pb.
 	return nil
 }
 
-func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *deployer_pb.PostgresCreationSpec) error {
+func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *awsdeployer_pb.PostgresCreationSpec) error {
 
-	// spec *deployer_pb.PostgresDatabase, secretARN string, rotateExisting bool) error {
+	// spec *awsdeployer_pb.PostgresDatabase, secretARN string, rotateExisting bool) error {
 	//.Database, msg.SecretArn, msg.RotateCredentials); err != nil {
 
 	dbName := msg.DbName
