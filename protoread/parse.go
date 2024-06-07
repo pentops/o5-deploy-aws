@@ -82,6 +82,16 @@ func Parse(filename string, data []byte, into proto.Message) error {
 
 var reLocation = regexp.MustCompile(`\(line (\d+):(\d+)\)`)
 
+type TokenError struct {
+	LineNum     int
+	LineContent string
+	Err         error
+}
+
+func (te TokenError) Error() string {
+	return te.Err.Error()
+}
+
 func findTokenError(data []byte, tknErr error) error {
 	msg := tknErr.Error()
 
@@ -96,14 +106,18 @@ func findTokenError(data []byte, tknErr error) error {
 	}
 
 	lines := strings.Split(string(data), "\n")
-	for idx, line := range lines {
-		if idx+1 == matchedLine {
-			token := strings.Trim(line, ":{} \t")
-			return fmt.Errorf("matched token %s: %w", token, tknErr)
-		}
+	if matchedLine > len(lines) {
+		return fmt.Errorf("line number %d out of range: %w", matchedLine, tknErr)
 	}
 
-	return fmt.Errorf("no token error found")
+	line := lines[matchedLine-1]
+
+	return TokenError{
+		LineNum:     matchedLine,
+		LineContent: line,
+		Err:         tknErr,
+	}
+
 }
 
 func getFileBytes(ctx context.Context, s3Client S3Client, filename string) ([]byte, error) {

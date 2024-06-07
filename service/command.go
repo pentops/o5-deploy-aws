@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -109,15 +110,19 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *awsdeploye
 
 	apps, err := ds.github.PullO5Configs(ctx, gh.Owner, gh.Repo, commitHash)
 	if err != nil {
+		tokenError := &protoread.TokenError{}
+		if errors.As(err, &tokenError) {
+			return nil, status.Errorf(codes.InvalidArgument, "Config File: %s (%s)", tokenError.Error(), tokenError.LineContent)
+		}
 		return nil, fmt.Errorf("github: pull o5 config: %w", err)
 	}
 
 	if len(apps) == 0 {
-		return nil, fmt.Errorf("no applications found in push event")
+		return nil, status.Errorf(codes.NotFound, "no applications found commit %s", commitHash)
 	}
 
 	if len(apps) > 1 {
-		return nil, fmt.Errorf("multiple applications found in push event, not yet supported")
+		return nil, status.Errorf(codes.Unimplemented, "multiple applications found in push event, not yet supported")
 	}
 
 	environmentID, err := ds.lookupEnvironment(ctx, req.Environment, "")
