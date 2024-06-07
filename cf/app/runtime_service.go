@@ -250,9 +250,9 @@ func (rs *RuntimeService) Apply(template *Application) error {
 			detailPattern["sourceEnv"] = []string{cloudformation.Ref(EnvNameParameter)}
 			if sub.EnvName != nil {
 
-				envSNSParamName := cf.CleanParameterName(*sub.EnvName, "FullName")
+				crossEnvName := cf.CleanParameterName(*sub.EnvName, "FullName")
 				template.AddParameter(&awsdeployer_pb.Parameter{
-					Name: envSNSParamName,
+					Name: crossEnvName,
 					Type: "String",
 					Source: &awsdeployer_pb.ParameterSourceType{
 						Type: &awsdeployer_pb.ParameterSourceType_CrossEnvAttr_{
@@ -263,6 +263,7 @@ func (rs *RuntimeService) Apply(template *Application) error {
 						},
 					},
 				})
+				detailPattern["sourceEnv"] = []string{cloudformation.Ref(crossEnvName)}
 
 			}
 			if strings.HasPrefix(sub.Name, "o5-infra/") {
