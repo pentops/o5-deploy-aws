@@ -283,6 +283,7 @@ func updateDeploymentStep(deployment *awsdeployer_pb.DeploymentStateData, event 
 				// If the step is done, we can update the dependencies
 				return updateStepDependencies(deployment)
 			}
+			return nil
 		}
 	}
 
