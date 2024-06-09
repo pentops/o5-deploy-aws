@@ -51,25 +51,14 @@ message DeploymentStateData {
 }
 
 message DeploymentSpec {
-  string app_name = 1 [(psm.list.v1.field).string.open_text.searching = {
-    searchable: true,
-    field_identifier: "tsv_app_name"
-  }];
-  string version = 2 [(psm.list.v1.field).string.open_text.searching = {
-    searchable: true,
-    field_identifier: "tsv_version"
-  }];
-  string environment_name = 3 [(psm.list.v1.field).string.open_text.searching = {
-    searchable: true,
-    field_identifier: "tsv_environment_name"
-  }];
+  string app_name = 1 [(psm.list.v1.field).string.foreign_key.unique_string.filtering.filterable = true];
+  string version = 2 [(psm.list.v1.field).string.foreign_key.unique_string.filtering.filterable = true];
+  string environment_name = 3 [(psm.list.v1.field).string.foreign_key.unique_string.filtering.filterable = true];
+
   string environment_id = 9 [(buf.validate.field).string.uuid = true];
   S3Template template = 4;
 
-  string ecs_cluster = 10 [(psm.list.v1.field).string.open_text.searching = {
-    searchable: true,
-    field_identifier: "tsv_ecs_cluster"
-  }];
+  string ecs_cluster = 10 [(psm.list.v1.field).string.foreign_key.unique_string.filtering.filterable = true];
 
   o5.deployer.v1.DeploymentFlags flags = 8;
 

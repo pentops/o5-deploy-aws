@@ -7,6 +7,7 @@ import (
 
 	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
+	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	"github.com/pentops/outbox.pg.go/outbox"
 	"github.com/pentops/sqrlx.go/sqrlx"
@@ -77,7 +78,13 @@ func (s *Storage) RequestToClientToken(ctx context.Context, req *messaging_pb.Re
 func (s *Storage) ClientTokenToRequest(ctx context.Context, token string) (*messaging_pb.RequestMetadata, error) {
 	response := &messaging_pb.RequestMetadata{}
 
-	err := s.db.Transact(ctx, &sqrlx.TxOptions{
+	_, err := uuid.Parse(token)
+	if err != nil {
+		log.WithField(ctx, "token", token).Error("Ignoring non-uuid client token")
+		return nil, err
+	}
+
+	err = s.db.Transact(ctx, &sqrlx.TxOptions{
 		Isolation: sql.LevelReadCommitted,
 		ReadOnly:  true,
 		Retryable: true,
