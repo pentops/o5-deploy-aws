@@ -1,8 +1,7 @@
 -- +goose Up
 CREATE TABLE outbox (
 	id uuid PRIMARY KEY,
-	destination text NOT NULL,
-	message bytea NOT NULL,
+	data jsonb NOT NULL,
 	headers text NOT NULL
 );
 

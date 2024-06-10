@@ -7,7 +7,7 @@ import (
 
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_epb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
-	"github.com/pentops/outbox.pg.go/outbox"
+	"github.com/pentops/o5-messaging.go/outbox"
 	"github.com/pentops/protostate/gen/state/v1/psm_pb"
 	"github.com/pentops/sqrlx.go/sqrlx"
 )

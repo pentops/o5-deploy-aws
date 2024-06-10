@@ -12,7 +12,7 @@ import (
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
-	"github.com/pentops/outbox.pg.go/outboxtest"
+	"github.com/pentops/o5-messaging.go/outbox/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
