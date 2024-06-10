@@ -7,17 +7,16 @@ package awsinfra_tpb
 
 import (
 	context "context"
-
 	messaging_pb "github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	o5msg "github.com/pentops/o5-messaging.go/o5msg"
 )
 
 // Service: PostgresRequestTopic
-type PostgresRequestTopicSender[C any] struct {
-	Sender o5msg.Sender[C]
+type PostgresRequestTopicTxSender[C any] struct {
+	sender o5msg.TxSender[C]
 }
 
-func NewPostgresRequestTopicSender[C any](sender o5msg.Sender[C]) *PostgresRequestTopicSender[C] {
+func NewPostgresRequestTopicTxSender[C any](sender o5msg.TxSender[C]) *PostgresRequestTopicTxSender[C] {
 	sender.Register(o5msg.TopicDescriptor{
 		Service: "o5.awsinfra.v1.topic.PostgresRequestTopic",
 		Methods: []o5msg.MethodDescriptor{
@@ -35,11 +34,11 @@ func NewPostgresRequestTopicSender[C any](sender o5msg.Sender[C]) *PostgresReque
 			},
 		},
 	})
-	return &PostgresRequestTopicSender[C]{Sender: sender}
+	return &PostgresRequestTopicTxSender[C]{sender: sender}
 }
 
 type PostgresRequestTopicCollector[C any] struct {
-	Collector o5msg.Collector[C]
+	collector o5msg.Collector[C]
 }
 
 func NewPostgresRequestTopicCollector[C any](collector o5msg.Collector[C]) *PostgresRequestTopicCollector[C] {
@@ -60,7 +59,32 @@ func NewPostgresRequestTopicCollector[C any](collector o5msg.Collector[C]) *Post
 			},
 		},
 	})
-	return &PostgresRequestTopicCollector[C]{Collector: collector}
+	return &PostgresRequestTopicCollector[C]{collector: collector}
+}
+
+type PostgresRequestTopicPublisher struct {
+	publisher o5msg.Publisher
+}
+
+func NewPostgresRequestTopicPublisher(publisher o5msg.Publisher) *PostgresRequestTopicPublisher {
+	publisher.Register(o5msg.TopicDescriptor{
+		Service: "o5.awsinfra.v1.topic.PostgresRequestTopic",
+		Methods: []o5msg.MethodDescriptor{
+			{
+				Name:    "UpsertPostgresDatabase",
+				Message: (*UpsertPostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
+			},
+			{
+				Name:    "MigratePostgresDatabase",
+				Message: (*MigratePostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
+			},
+			{
+				Name:    "CleanupPostgresDatabase",
+				Message: (*CleanupPostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
+			},
+		},
+	})
+	return &PostgresRequestTopicPublisher{publisher: publisher}
 }
 
 // Method: UpsertPostgresDatabase
@@ -75,12 +99,16 @@ func (msg *UpsertPostgresDatabaseMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send PostgresRequestTopicSender[C]) UpsertPostgresDatabase(ctx context.Context, sendContext C, msg *UpsertPostgresDatabaseMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send PostgresRequestTopicTxSender[C]) UpsertPostgresDatabase(ctx context.Context, sendContext C, msg *UpsertPostgresDatabaseMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect PostgresRequestTopicCollector[C]) UpsertPostgresDatabase(sendContext C, msg *UpsertPostgresDatabaseMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish PostgresRequestTopicPublisher) UpsertPostgresDatabase(ctx context.Context, msg *UpsertPostgresDatabaseMessage) {
+	publish.publisher.Publish(ctx, msg)
 }
 
 // Method: MigratePostgresDatabase
@@ -95,12 +123,16 @@ func (msg *MigratePostgresDatabaseMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send PostgresRequestTopicSender[C]) MigratePostgresDatabase(ctx context.Context, sendContext C, msg *MigratePostgresDatabaseMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send PostgresRequestTopicTxSender[C]) MigratePostgresDatabase(ctx context.Context, sendContext C, msg *MigratePostgresDatabaseMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect PostgresRequestTopicCollector[C]) MigratePostgresDatabase(sendContext C, msg *MigratePostgresDatabaseMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish PostgresRequestTopicPublisher) MigratePostgresDatabase(ctx context.Context, msg *MigratePostgresDatabaseMessage) {
+	publish.publisher.Publish(ctx, msg)
 }
 
 // Method: CleanupPostgresDatabase
@@ -115,20 +147,24 @@ func (msg *CleanupPostgresDatabaseMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send PostgresRequestTopicSender[C]) CleanupPostgresDatabase(ctx context.Context, sendContext C, msg *CleanupPostgresDatabaseMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send PostgresRequestTopicTxSender[C]) CleanupPostgresDatabase(ctx context.Context, sendContext C, msg *CleanupPostgresDatabaseMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect PostgresRequestTopicCollector[C]) CleanupPostgresDatabase(sendContext C, msg *CleanupPostgresDatabaseMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish PostgresRequestTopicPublisher) CleanupPostgresDatabase(ctx context.Context, msg *CleanupPostgresDatabaseMessage) {
+	publish.publisher.Publish(ctx, msg)
 }
 
 // Service: PostgresReplyTopic
-type PostgresReplyTopicSender[C any] struct {
-	Sender o5msg.Sender[C]
+type PostgresReplyTopicTxSender[C any] struct {
+	sender o5msg.TxSender[C]
 }
 
-func NewPostgresReplyTopicSender[C any](sender o5msg.Sender[C]) *PostgresReplyTopicSender[C] {
+func NewPostgresReplyTopicTxSender[C any](sender o5msg.TxSender[C]) *PostgresReplyTopicTxSender[C] {
 	sender.Register(o5msg.TopicDescriptor{
 		Service: "o5.awsinfra.v1.topic.PostgresReplyTopic",
 		Methods: []o5msg.MethodDescriptor{
@@ -138,11 +174,11 @@ func NewPostgresReplyTopicSender[C any](sender o5msg.Sender[C]) *PostgresReplyTo
 			},
 		},
 	})
-	return &PostgresReplyTopicSender[C]{Sender: sender}
+	return &PostgresReplyTopicTxSender[C]{sender: sender}
 }
 
 type PostgresReplyTopicCollector[C any] struct {
-	Collector o5msg.Collector[C]
+	collector o5msg.Collector[C]
 }
 
 func NewPostgresReplyTopicCollector[C any](collector o5msg.Collector[C]) *PostgresReplyTopicCollector[C] {
@@ -155,7 +191,24 @@ func NewPostgresReplyTopicCollector[C any](collector o5msg.Collector[C]) *Postgr
 			},
 		},
 	})
-	return &PostgresReplyTopicCollector[C]{Collector: collector}
+	return &PostgresReplyTopicCollector[C]{collector: collector}
+}
+
+type PostgresReplyTopicPublisher struct {
+	publisher o5msg.Publisher
+}
+
+func NewPostgresReplyTopicPublisher(publisher o5msg.Publisher) *PostgresReplyTopicPublisher {
+	publisher.Register(o5msg.TopicDescriptor{
+		Service: "o5.awsinfra.v1.topic.PostgresReplyTopic",
+		Methods: []o5msg.MethodDescriptor{
+			{
+				Name:    "PostgresDatabaseStatus",
+				Message: (*PostgresDatabaseStatusMessage).ProtoReflect(nil).Descriptor(),
+			},
+		},
+	})
+	return &PostgresReplyTopicPublisher{publisher: publisher}
 }
 
 // Method: PostgresDatabaseStatus
@@ -177,10 +230,14 @@ func (msg *PostgresDatabaseStatusMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send PostgresReplyTopicSender[C]) PostgresDatabaseStatus(ctx context.Context, sendContext C, msg *PostgresDatabaseStatusMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send PostgresReplyTopicTxSender[C]) PostgresDatabaseStatus(ctx context.Context, sendContext C, msg *PostgresDatabaseStatusMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect PostgresReplyTopicCollector[C]) PostgresDatabaseStatus(sendContext C, msg *PostgresDatabaseStatusMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish PostgresReplyTopicPublisher) PostgresDatabaseStatus(ctx context.Context, msg *PostgresDatabaseStatusMessage) {
+	publish.publisher.Publish(ctx, msg)
 }

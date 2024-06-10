@@ -29,8 +29,8 @@ require (
 	github.com/pentops/go-grpc-helpers v0.0.0-20230815045451-2524ee695ebb
 	github.com/pentops/j5 v0.0.0-20240606040938-7f6c198fdc0d
 	github.com/pentops/log.go v0.0.0-20240523172444-85c9292a83db
-	github.com/pentops/o5-go v0.0.0-20240610185652-b7c07a9e678a
-	github.com/pentops/o5-messaging.go v0.0.0-20240610211256-59be1b5a7531
+	github.com/pentops/o5-go v0.0.0-20240610214522-dca99930d80e
+	github.com/pentops/o5-messaging.go v0.0.0-20240610214326-d2aa0570d347
 	github.com/pentops/pgtest.go v0.0.0-20240604005819-2035f4562734
 	github.com/pentops/protostate v0.0.0-20240610211526-361e6c3ed773
 	github.com/pentops/runner v0.0.0-20240525192419-d655233635e9

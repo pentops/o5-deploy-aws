@@ -6,6 +6,70 @@ import (
 	psm "github.com/pentops/protostate/psm"
 )
 
+// State Query Service for %sDeployment
+// QuerySet is the query set for the Deployment service.
+
+type DeploymentPSMQuerySet = psm.StateQuerySet[
+	*GetDeploymentRequest,
+	*GetDeploymentResponse,
+	*ListDeploymentsRequest,
+	*ListDeploymentsResponse,
+	*ListDeploymentEventsRequest,
+	*ListDeploymentEventsResponse,
+]
+
+func NewDeploymentPSMQuerySet(
+	smSpec psm.QuerySpec[
+		*GetDeploymentRequest,
+		*GetDeploymentResponse,
+		*ListDeploymentsRequest,
+		*ListDeploymentsResponse,
+		*ListDeploymentEventsRequest,
+		*ListDeploymentEventsResponse,
+	],
+	options psm.StateQueryOptions,
+) (*DeploymentPSMQuerySet, error) {
+	return psm.BuildStateQuerySet[
+		*GetDeploymentRequest,
+		*GetDeploymentResponse,
+		*ListDeploymentsRequest,
+		*ListDeploymentsResponse,
+		*ListDeploymentEventsRequest,
+		*ListDeploymentEventsResponse,
+	](smSpec, options)
+}
+
+type DeploymentPSMQuerySpec = psm.QuerySpec[
+	*GetDeploymentRequest,
+	*GetDeploymentResponse,
+	*ListDeploymentsRequest,
+	*ListDeploymentsResponse,
+	*ListDeploymentEventsRequest,
+	*ListDeploymentEventsResponse,
+]
+
+func DefaultDeploymentPSMQuerySpec(tableSpec psm.QueryTableSpec) DeploymentPSMQuerySpec {
+	return psm.QuerySpec[
+		*GetDeploymentRequest,
+		*GetDeploymentResponse,
+		*ListDeploymentsRequest,
+		*ListDeploymentsResponse,
+		*ListDeploymentEventsRequest,
+		*ListDeploymentEventsResponse,
+	]{
+		QueryTableSpec: tableSpec,
+		ListRequestFilter: func(req *ListDeploymentsRequest) (map[string]interface{}, error) {
+			filter := map[string]interface{}{}
+			return filter, nil
+		},
+		ListEventsRequestFilter: func(req *ListDeploymentEventsRequest) (map[string]interface{}, error) {
+			filter := map[string]interface{}{}
+			filter["deployment_id"] = req.DeploymentId
+			return filter, nil
+		},
+	}
+}
+
 // State Query Service for %sStack
 // QuerySet is the query set for the Stack service.
 
@@ -129,70 +193,6 @@ func DefaultEnvironmentPSMQuerySpec(tableSpec psm.QueryTableSpec) EnvironmentPSM
 		ListEventsRequestFilter: func(req *ListEnvironmentEventsRequest) (map[string]interface{}, error) {
 			filter := map[string]interface{}{}
 			filter["environment_id"] = req.EnvironmentId
-			return filter, nil
-		},
-	}
-}
-
-// State Query Service for %sDeployment
-// QuerySet is the query set for the Deployment service.
-
-type DeploymentPSMQuerySet = psm.StateQuerySet[
-	*GetDeploymentRequest,
-	*GetDeploymentResponse,
-	*ListDeploymentsRequest,
-	*ListDeploymentsResponse,
-	*ListDeploymentEventsRequest,
-	*ListDeploymentEventsResponse,
-]
-
-func NewDeploymentPSMQuerySet(
-	smSpec psm.QuerySpec[
-		*GetDeploymentRequest,
-		*GetDeploymentResponse,
-		*ListDeploymentsRequest,
-		*ListDeploymentsResponse,
-		*ListDeploymentEventsRequest,
-		*ListDeploymentEventsResponse,
-	],
-	options psm.StateQueryOptions,
-) (*DeploymentPSMQuerySet, error) {
-	return psm.BuildStateQuerySet[
-		*GetDeploymentRequest,
-		*GetDeploymentResponse,
-		*ListDeploymentsRequest,
-		*ListDeploymentsResponse,
-		*ListDeploymentEventsRequest,
-		*ListDeploymentEventsResponse,
-	](smSpec, options)
-}
-
-type DeploymentPSMQuerySpec = psm.QuerySpec[
-	*GetDeploymentRequest,
-	*GetDeploymentResponse,
-	*ListDeploymentsRequest,
-	*ListDeploymentsResponse,
-	*ListDeploymentEventsRequest,
-	*ListDeploymentEventsResponse,
-]
-
-func DefaultDeploymentPSMQuerySpec(tableSpec psm.QueryTableSpec) DeploymentPSMQuerySpec {
-	return psm.QuerySpec[
-		*GetDeploymentRequest,
-		*GetDeploymentResponse,
-		*ListDeploymentsRequest,
-		*ListDeploymentsResponse,
-		*ListDeploymentEventsRequest,
-		*ListDeploymentEventsResponse,
-	]{
-		QueryTableSpec: tableSpec,
-		ListRequestFilter: func(req *ListDeploymentsRequest) (map[string]interface{}, error) {
-			filter := map[string]interface{}{}
-			return filter, nil
-		},
-		ListEventsRequestFilter: func(req *ListDeploymentEventsRequest) (map[string]interface{}, error) {
-			filter := map[string]interface{}{}
-			filter["deployment_id"] = req.DeploymentId
 			return filter, nil
 		},
 	}

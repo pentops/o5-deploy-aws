@@ -7,17 +7,16 @@ package awsinfra_tpb
 
 import (
 	context "context"
-
 	messaging_pb "github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	o5msg "github.com/pentops/o5-messaging.go/o5msg"
 )
 
 // Service: ECSRequestTopic
-type ECSRequestTopicSender[C any] struct {
-	Sender o5msg.Sender[C]
+type ECSRequestTopicTxSender[C any] struct {
+	sender o5msg.TxSender[C]
 }
 
-func NewECSRequestTopicSender[C any](sender o5msg.Sender[C]) *ECSRequestTopicSender[C] {
+func NewECSRequestTopicTxSender[C any](sender o5msg.TxSender[C]) *ECSRequestTopicTxSender[C] {
 	sender.Register(o5msg.TopicDescriptor{
 		Service: "o5.awsinfra.v1.topic.ECSRequestTopic",
 		Methods: []o5msg.MethodDescriptor{
@@ -27,11 +26,11 @@ func NewECSRequestTopicSender[C any](sender o5msg.Sender[C]) *ECSRequestTopicSen
 			},
 		},
 	})
-	return &ECSRequestTopicSender[C]{Sender: sender}
+	return &ECSRequestTopicTxSender[C]{sender: sender}
 }
 
 type ECSRequestTopicCollector[C any] struct {
-	Collector o5msg.Collector[C]
+	collector o5msg.Collector[C]
 }
 
 func NewECSRequestTopicCollector[C any](collector o5msg.Collector[C]) *ECSRequestTopicCollector[C] {
@@ -44,7 +43,24 @@ func NewECSRequestTopicCollector[C any](collector o5msg.Collector[C]) *ECSReques
 			},
 		},
 	})
-	return &ECSRequestTopicCollector[C]{Collector: collector}
+	return &ECSRequestTopicCollector[C]{collector: collector}
+}
+
+type ECSRequestTopicPublisher struct {
+	publisher o5msg.Publisher
+}
+
+func NewECSRequestTopicPublisher(publisher o5msg.Publisher) *ECSRequestTopicPublisher {
+	publisher.Register(o5msg.TopicDescriptor{
+		Service: "o5.awsinfra.v1.topic.ECSRequestTopic",
+		Methods: []o5msg.MethodDescriptor{
+			{
+				Name:    "RunECSTask",
+				Message: (*RunECSTaskMessage).ProtoReflect(nil).Descriptor(),
+			},
+		},
+	})
+	return &ECSRequestTopicPublisher{publisher: publisher}
 }
 
 // Method: RunECSTask
@@ -59,20 +75,24 @@ func (msg *RunECSTaskMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send ECSRequestTopicSender[C]) RunECSTask(ctx context.Context, sendContext C, msg *RunECSTaskMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send ECSRequestTopicTxSender[C]) RunECSTask(ctx context.Context, sendContext C, msg *RunECSTaskMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect ECSRequestTopicCollector[C]) RunECSTask(sendContext C, msg *RunECSTaskMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish ECSRequestTopicPublisher) RunECSTask(ctx context.Context, msg *RunECSTaskMessage) {
+	publish.publisher.Publish(ctx, msg)
 }
 
 // Service: ECSReplyTopic
-type ECSReplyTopicSender[C any] struct {
-	Sender o5msg.Sender[C]
+type ECSReplyTopicTxSender[C any] struct {
+	sender o5msg.TxSender[C]
 }
 
-func NewECSReplyTopicSender[C any](sender o5msg.Sender[C]) *ECSReplyTopicSender[C] {
+func NewECSReplyTopicTxSender[C any](sender o5msg.TxSender[C]) *ECSReplyTopicTxSender[C] {
 	sender.Register(o5msg.TopicDescriptor{
 		Service: "o5.awsinfra.v1.topic.ECSReplyTopic",
 		Methods: []o5msg.MethodDescriptor{
@@ -82,11 +102,11 @@ func NewECSReplyTopicSender[C any](sender o5msg.Sender[C]) *ECSReplyTopicSender[
 			},
 		},
 	})
-	return &ECSReplyTopicSender[C]{Sender: sender}
+	return &ECSReplyTopicTxSender[C]{sender: sender}
 }
 
 type ECSReplyTopicCollector[C any] struct {
-	Collector o5msg.Collector[C]
+	collector o5msg.Collector[C]
 }
 
 func NewECSReplyTopicCollector[C any](collector o5msg.Collector[C]) *ECSReplyTopicCollector[C] {
@@ -99,7 +119,24 @@ func NewECSReplyTopicCollector[C any](collector o5msg.Collector[C]) *ECSReplyTop
 			},
 		},
 	})
-	return &ECSReplyTopicCollector[C]{Collector: collector}
+	return &ECSReplyTopicCollector[C]{collector: collector}
+}
+
+type ECSReplyTopicPublisher struct {
+	publisher o5msg.Publisher
+}
+
+func NewECSReplyTopicPublisher(publisher o5msg.Publisher) *ECSReplyTopicPublisher {
+	publisher.Register(o5msg.TopicDescriptor{
+		Service: "o5.awsinfra.v1.topic.ECSReplyTopic",
+		Methods: []o5msg.MethodDescriptor{
+			{
+				Name:    "ECSTaskStatus",
+				Message: (*ECSTaskStatusMessage).ProtoReflect(nil).Descriptor(),
+			},
+		},
+	})
+	return &ECSReplyTopicPublisher{publisher: publisher}
 }
 
 // Method: ECSTaskStatus
@@ -121,10 +158,14 @@ func (msg *ECSTaskStatusMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send ECSReplyTopicSender[C]) ECSTaskStatus(ctx context.Context, sendContext C, msg *ECSTaskStatusMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send ECSReplyTopicTxSender[C]) ECSTaskStatus(ctx context.Context, sendContext C, msg *ECSTaskStatusMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect ECSReplyTopicCollector[C]) ECSTaskStatus(sendContext C, msg *ECSTaskStatusMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish ECSReplyTopicPublisher) ECSTaskStatus(ctx context.Context, msg *ECSTaskStatusMessage) {
+	publish.publisher.Publish(ctx, msg)
 }

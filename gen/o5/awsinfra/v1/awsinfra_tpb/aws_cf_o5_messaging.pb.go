@@ -7,17 +7,16 @@ package awsinfra_tpb
 
 import (
 	context "context"
-
 	messaging_pb "github.com/pentops/o5-go/messaging/v1/messaging_pb"
 	o5msg "github.com/pentops/o5-messaging.go/o5msg"
 )
 
 // Service: CloudFormationRequestTopic
-type CloudFormationRequestTopicSender[C any] struct {
-	Sender o5msg.Sender[C]
+type CloudFormationRequestTopicTxSender[C any] struct {
+	sender o5msg.TxSender[C]
 }
 
-func NewCloudFormationRequestTopicSender[C any](sender o5msg.Sender[C]) *CloudFormationRequestTopicSender[C] {
+func NewCloudFormationRequestTopicTxSender[C any](sender o5msg.TxSender[C]) *CloudFormationRequestTopicTxSender[C] {
 	sender.Register(o5msg.TopicDescriptor{
 		Service: "o5.awsinfra.v1.topic.CloudFormationRequestTopic",
 		Methods: []o5msg.MethodDescriptor{
@@ -55,11 +54,11 @@ func NewCloudFormationRequestTopicSender[C any](sender o5msg.Sender[C]) *CloudFo
 			},
 		},
 	})
-	return &CloudFormationRequestTopicSender[C]{Sender: sender}
+	return &CloudFormationRequestTopicTxSender[C]{sender: sender}
 }
 
 type CloudFormationRequestTopicCollector[C any] struct {
-	Collector o5msg.Collector[C]
+	collector o5msg.Collector[C]
 }
 
 func NewCloudFormationRequestTopicCollector[C any](collector o5msg.Collector[C]) *CloudFormationRequestTopicCollector[C] {
@@ -100,7 +99,52 @@ func NewCloudFormationRequestTopicCollector[C any](collector o5msg.Collector[C])
 			},
 		},
 	})
-	return &CloudFormationRequestTopicCollector[C]{Collector: collector}
+	return &CloudFormationRequestTopicCollector[C]{collector: collector}
+}
+
+type CloudFormationRequestTopicPublisher struct {
+	publisher o5msg.Publisher
+}
+
+func NewCloudFormationRequestTopicPublisher(publisher o5msg.Publisher) *CloudFormationRequestTopicPublisher {
+	publisher.Register(o5msg.TopicDescriptor{
+		Service: "o5.awsinfra.v1.topic.CloudFormationRequestTopic",
+		Methods: []o5msg.MethodDescriptor{
+			{
+				Name:    "CreateNewStack",
+				Message: (*CreateNewStackMessage).ProtoReflect(nil).Descriptor(),
+			},
+			{
+				Name:    "UpdateStack",
+				Message: (*UpdateStackMessage).ProtoReflect(nil).Descriptor(),
+			},
+			{
+				Name:    "CreateChangeSet",
+				Message: (*CreateChangeSetMessage).ProtoReflect(nil).Descriptor(),
+			},
+			{
+				Name:    "ApplyChangeSet",
+				Message: (*ApplyChangeSetMessage).ProtoReflect(nil).Descriptor(),
+			},
+			{
+				Name:    "DeleteStack",
+				Message: (*DeleteStackMessage).ProtoReflect(nil).Descriptor(),
+			},
+			{
+				Name:    "ScaleStack",
+				Message: (*ScaleStackMessage).ProtoReflect(nil).Descriptor(),
+			},
+			{
+				Name:    "CancelStackUpdate",
+				Message: (*CancelStackUpdateMessage).ProtoReflect(nil).Descriptor(),
+			},
+			{
+				Name:    "StabalizeStack",
+				Message: (*StabalizeStackMessage).ProtoReflect(nil).Descriptor(),
+			},
+		},
+	})
+	return &CloudFormationRequestTopicPublisher{publisher: publisher}
 }
 
 // Method: CreateNewStack
@@ -115,12 +159,16 @@ func (msg *CreateNewStackMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send CloudFormationRequestTopicSender[C]) CreateNewStack(ctx context.Context, sendContext C, msg *CreateNewStackMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send CloudFormationRequestTopicTxSender[C]) CreateNewStack(ctx context.Context, sendContext C, msg *CreateNewStackMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect CloudFormationRequestTopicCollector[C]) CreateNewStack(sendContext C, msg *CreateNewStackMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish CloudFormationRequestTopicPublisher) CreateNewStack(ctx context.Context, msg *CreateNewStackMessage) {
+	publish.publisher.Publish(ctx, msg)
 }
 
 // Method: UpdateStack
@@ -135,12 +183,16 @@ func (msg *UpdateStackMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send CloudFormationRequestTopicSender[C]) UpdateStack(ctx context.Context, sendContext C, msg *UpdateStackMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send CloudFormationRequestTopicTxSender[C]) UpdateStack(ctx context.Context, sendContext C, msg *UpdateStackMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect CloudFormationRequestTopicCollector[C]) UpdateStack(sendContext C, msg *UpdateStackMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish CloudFormationRequestTopicPublisher) UpdateStack(ctx context.Context, msg *UpdateStackMessage) {
+	publish.publisher.Publish(ctx, msg)
 }
 
 // Method: CreateChangeSet
@@ -155,12 +207,16 @@ func (msg *CreateChangeSetMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send CloudFormationRequestTopicSender[C]) CreateChangeSet(ctx context.Context, sendContext C, msg *CreateChangeSetMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send CloudFormationRequestTopicTxSender[C]) CreateChangeSet(ctx context.Context, sendContext C, msg *CreateChangeSetMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect CloudFormationRequestTopicCollector[C]) CreateChangeSet(sendContext C, msg *CreateChangeSetMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish CloudFormationRequestTopicPublisher) CreateChangeSet(ctx context.Context, msg *CreateChangeSetMessage) {
+	publish.publisher.Publish(ctx, msg)
 }
 
 // Method: ApplyChangeSet
@@ -175,12 +231,16 @@ func (msg *ApplyChangeSetMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send CloudFormationRequestTopicSender[C]) ApplyChangeSet(ctx context.Context, sendContext C, msg *ApplyChangeSetMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send CloudFormationRequestTopicTxSender[C]) ApplyChangeSet(ctx context.Context, sendContext C, msg *ApplyChangeSetMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect CloudFormationRequestTopicCollector[C]) ApplyChangeSet(sendContext C, msg *ApplyChangeSetMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish CloudFormationRequestTopicPublisher) ApplyChangeSet(ctx context.Context, msg *ApplyChangeSetMessage) {
+	publish.publisher.Publish(ctx, msg)
 }
 
 // Method: DeleteStack
@@ -195,12 +255,16 @@ func (msg *DeleteStackMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send CloudFormationRequestTopicSender[C]) DeleteStack(ctx context.Context, sendContext C, msg *DeleteStackMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send CloudFormationRequestTopicTxSender[C]) DeleteStack(ctx context.Context, sendContext C, msg *DeleteStackMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect CloudFormationRequestTopicCollector[C]) DeleteStack(sendContext C, msg *DeleteStackMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish CloudFormationRequestTopicPublisher) DeleteStack(ctx context.Context, msg *DeleteStackMessage) {
+	publish.publisher.Publish(ctx, msg)
 }
 
 // Method: ScaleStack
@@ -215,12 +279,16 @@ func (msg *ScaleStackMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send CloudFormationRequestTopicSender[C]) ScaleStack(ctx context.Context, sendContext C, msg *ScaleStackMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send CloudFormationRequestTopicTxSender[C]) ScaleStack(ctx context.Context, sendContext C, msg *ScaleStackMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect CloudFormationRequestTopicCollector[C]) ScaleStack(sendContext C, msg *ScaleStackMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish CloudFormationRequestTopicPublisher) ScaleStack(ctx context.Context, msg *ScaleStackMessage) {
+	publish.publisher.Publish(ctx, msg)
 }
 
 // Method: CancelStackUpdate
@@ -235,12 +303,16 @@ func (msg *CancelStackUpdateMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send CloudFormationRequestTopicSender[C]) CancelStackUpdate(ctx context.Context, sendContext C, msg *CancelStackUpdateMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send CloudFormationRequestTopicTxSender[C]) CancelStackUpdate(ctx context.Context, sendContext C, msg *CancelStackUpdateMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect CloudFormationRequestTopicCollector[C]) CancelStackUpdate(sendContext C, msg *CancelStackUpdateMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish CloudFormationRequestTopicPublisher) CancelStackUpdate(ctx context.Context, msg *CancelStackUpdateMessage) {
+	publish.publisher.Publish(ctx, msg)
 }
 
 // Method: StabalizeStack
@@ -255,20 +327,24 @@ func (msg *StabalizeStackMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send CloudFormationRequestTopicSender[C]) StabalizeStack(ctx context.Context, sendContext C, msg *StabalizeStackMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send CloudFormationRequestTopicTxSender[C]) StabalizeStack(ctx context.Context, sendContext C, msg *StabalizeStackMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect CloudFormationRequestTopicCollector[C]) StabalizeStack(sendContext C, msg *StabalizeStackMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish CloudFormationRequestTopicPublisher) StabalizeStack(ctx context.Context, msg *StabalizeStackMessage) {
+	publish.publisher.Publish(ctx, msg)
 }
 
 // Service: CloudFormationReplyTopic
-type CloudFormationReplyTopicSender[C any] struct {
-	Sender o5msg.Sender[C]
+type CloudFormationReplyTopicTxSender[C any] struct {
+	sender o5msg.TxSender[C]
 }
 
-func NewCloudFormationReplyTopicSender[C any](sender o5msg.Sender[C]) *CloudFormationReplyTopicSender[C] {
+func NewCloudFormationReplyTopicTxSender[C any](sender o5msg.TxSender[C]) *CloudFormationReplyTopicTxSender[C] {
 	sender.Register(o5msg.TopicDescriptor{
 		Service: "o5.awsinfra.v1.topic.CloudFormationReplyTopic",
 		Methods: []o5msg.MethodDescriptor{
@@ -282,11 +358,11 @@ func NewCloudFormationReplyTopicSender[C any](sender o5msg.Sender[C]) *CloudForm
 			},
 		},
 	})
-	return &CloudFormationReplyTopicSender[C]{Sender: sender}
+	return &CloudFormationReplyTopicTxSender[C]{sender: sender}
 }
 
 type CloudFormationReplyTopicCollector[C any] struct {
-	Collector o5msg.Collector[C]
+	collector o5msg.Collector[C]
 }
 
 func NewCloudFormationReplyTopicCollector[C any](collector o5msg.Collector[C]) *CloudFormationReplyTopicCollector[C] {
@@ -303,7 +379,28 @@ func NewCloudFormationReplyTopicCollector[C any](collector o5msg.Collector[C]) *
 			},
 		},
 	})
-	return &CloudFormationReplyTopicCollector[C]{Collector: collector}
+	return &CloudFormationReplyTopicCollector[C]{collector: collector}
+}
+
+type CloudFormationReplyTopicPublisher struct {
+	publisher o5msg.Publisher
+}
+
+func NewCloudFormationReplyTopicPublisher(publisher o5msg.Publisher) *CloudFormationReplyTopicPublisher {
+	publisher.Register(o5msg.TopicDescriptor{
+		Service: "o5.awsinfra.v1.topic.CloudFormationReplyTopic",
+		Methods: []o5msg.MethodDescriptor{
+			{
+				Name:    "StackStatusChanged",
+				Message: (*StackStatusChangedMessage).ProtoReflect(nil).Descriptor(),
+			},
+			{
+				Name:    "ChangeSetStatusChanged",
+				Message: (*ChangeSetStatusChangedMessage).ProtoReflect(nil).Descriptor(),
+			},
+		},
+	})
+	return &CloudFormationReplyTopicPublisher{publisher: publisher}
 }
 
 // Method: StackStatusChanged
@@ -325,12 +422,16 @@ func (msg *StackStatusChangedMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send CloudFormationReplyTopicSender[C]) StackStatusChanged(ctx context.Context, sendContext C, msg *StackStatusChangedMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send CloudFormationReplyTopicTxSender[C]) StackStatusChanged(ctx context.Context, sendContext C, msg *StackStatusChangedMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect CloudFormationReplyTopicCollector[C]) StackStatusChanged(sendContext C, msg *StackStatusChangedMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish CloudFormationReplyTopicPublisher) StackStatusChanged(ctx context.Context, msg *StackStatusChangedMessage) {
+	publish.publisher.Publish(ctx, msg)
 }
 
 // Method: ChangeSetStatusChanged
@@ -352,10 +453,14 @@ func (msg *ChangeSetStatusChangedMessage) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send CloudFormationReplyTopicSender[C]) ChangeSetStatusChanged(ctx context.Context, sendContext C, msg *ChangeSetStatusChangedMessage) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send CloudFormationReplyTopicTxSender[C]) ChangeSetStatusChanged(ctx context.Context, sendContext C, msg *ChangeSetStatusChangedMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect CloudFormationReplyTopicCollector[C]) ChangeSetStatusChanged(sendContext C, msg *ChangeSetStatusChangedMessage) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish CloudFormationReplyTopicPublisher) ChangeSetStatusChanged(ctx context.Context, msg *ChangeSetStatusChangedMessage) {
+	publish.publisher.Publish(ctx, msg)
 }
