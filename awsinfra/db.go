@@ -8,7 +8,8 @@ import (
 	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
-	"github.com/pentops/outbox.pg.go/outbox"
+	"github.com/pentops/o5-messaging.go/o5msg"
+	"github.com/pentops/o5-messaging.go/outbox"
 	"github.com/pentops/sqrlx.go/sqrlx"
 )
 
@@ -27,7 +28,7 @@ func NewStorage(conn sqrlx.Connection) (*Storage, error) {
 	}, nil
 }
 
-func (s *Storage) PublishEvent(ctx context.Context, msg outbox.OutboxMessage) error {
+func (s *Storage) PublishEvent(ctx context.Context, msg o5msg.Message) error {
 	return s.db.Transact(ctx, &sqrlx.TxOptions{
 		Isolation: sql.LevelReadCommitted,
 		ReadOnly:  false,

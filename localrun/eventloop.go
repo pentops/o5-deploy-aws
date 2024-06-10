@@ -16,7 +16,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
-	"github.com/pentops/outbox.pg.go/outbox"
+	"github.com/pentops/o5-messaging.go/o5msg"
 	"github.com/pentops/protostate/gen/state/v1/psm_pb"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -53,7 +53,7 @@ func NewEventLoop(awsRunner IInfra, stateStore *StateStore, specBuilder *deploye
 
 type TransitionData struct {
 	CausedBy    *awsdeployer_pb.DeploymentEvent
-	SideEffects []outbox.OutboxMessage
+	SideEffects []o5msg.Message
 	ChainEvents []awsdeployer_pb.DeploymentPSMEvent
 }
 
@@ -61,7 +61,7 @@ func (td *TransitionData) ChainEvent(event awsdeployer_pb.DeploymentPSMEvent) {
 	td.ChainEvents = append(td.ChainEvents, event)
 }
 
-func (td *TransitionData) SideEffect(msg outbox.OutboxMessage) {
+func (td *TransitionData) SideEffect(msg o5msg.Message) {
 	td.SideEffects = append(td.SideEffects, msg)
 }
 

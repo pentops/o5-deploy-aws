@@ -20,9 +20,9 @@ import (
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
-	"github.com/pentops/outbox.pg.go/outboxtest"
+	"github.com/pentops/o5-messaging.go/outbox/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
-	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type UniverseAsserter struct {
@@ -38,12 +38,13 @@ func (ua *UniverseAsserter) afterEach(ctx context.Context) {
 	ua.Helper()
 	hadMessages := false
 	suggestions := []string{}
-	ua.Outbox.ForEachMessage(ua, func(topic, service string, data []byte) {
+	ua.Outbox.ForEachMessage(ua, func(msg *messaging_pb.Message) {
 
-		switch service {
+		fullTopic := fmt.Sprintf("/%s/%s", msg.GrpcService, msg.GrpcMethod)
+		switch fullTopic {
 		case "/o5.awsdeployer.v1.events.DeployerEvents/Stack":
 			event := &awsdeployer_epb.StackEvent{}
-			if err := proto.Unmarshal(data, event); err != nil {
+			if err := protojson.Unmarshal(msg.Body.Value, event); err != nil {
 				ua.Fatalf("unmarshal error: %v", err)
 			}
 			ua.Logf("Unexpected Stack Event: %s -> %s", event.Event.PSMEventKey(), event.Status.ShortString())
@@ -51,13 +52,13 @@ func (ua *UniverseAsserter) afterEach(ctx context.Context) {
 
 		case "/o5.awsdeployer.v1.events.DeployerEvents/Deployment":
 			event := &awsdeployer_epb.DeploymentEvent{}
-			if err := proto.Unmarshal(data, event); err != nil {
+			if err := protojson.Unmarshal(msg.Body.Value, event); err != nil {
 				ua.Fatalf("unmarshal error: %v", err)
 			}
 			ua.Logf("Unexpected Deployment Event: %s -> %s", event.Event.PSMEventKey(), event.Status.ShortString())
 			suggestions = append(suggestions, fmt.Sprintf("t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEvent%s, awsdeployer_pb.DeploymentStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.Status.ShortString()))
 		default:
-			ua.Fatalf("unexpected message %s %s", topic, service)
+			ua.Fatalf("unexpected message %s %s", fullTopic)
 		}
 
 		hadMessages = true
@@ -177,7 +178,7 @@ func (cf *cfMock) StackCreateComplete(t flowtest.TB) {
 func (uu *Universe) PopStackEvent(t flowtest.TB, eventKey awsdeployer_pb.StackPSMEventKey, status awsdeployer_pb.StackStatus) *awsdeployer_epb.StackEvent {
 	t.Helper()
 	event := &awsdeployer_epb.StackEvent{}
-	uu.Outbox.PopMatching(t, outboxtest.NewMatcher(event, func(evt *awsdeployer_epb.StackEvent) bool {
+	uu.Outbox.PopMessage(t, event, outboxtest.MessageBodyMatches(func(evt *awsdeployer_epb.StackEvent) bool {
 		return evt.Event.PSMEventKey() == eventKey
 	}))
 	if status != event.Status {
@@ -189,7 +190,7 @@ func (uu *Universe) PopStackEvent(t flowtest.TB, eventKey awsdeployer_pb.StackPS
 func (uu *Universe) PopDeploymentEvent(t flowtest.TB, eventKey awsdeployer_pb.DeploymentPSMEventKey, status awsdeployer_pb.DeploymentStatus) *awsdeployer_epb.DeploymentEvent {
 	t.Helper()
 	event := &awsdeployer_epb.DeploymentEvent{}
-	uu.Outbox.PopMatching(t, outboxtest.NewMatcher(event, func(evt *awsdeployer_epb.DeploymentEvent) bool {
+	uu.Outbox.PopMessage(t, event, outboxtest.MessageBodyMatches(func(evt *awsdeployer_epb.DeploymentEvent) bool {
 		return evt.Event.PSMEventKey() == eventKey
 	}))
 	if status != event.Status {
@@ -201,11 +202,14 @@ func (uu *Universe) PopDeploymentEvent(t flowtest.TB, eventKey awsdeployer_pb.De
 func (uu *Universe) PopEnvironmentEvent(t flowtest.TB, eventKey awsdeployer_pb.EnvironmentPSMEventKey, status awsdeployer_pb.EnvironmentStatus) *awsdeployer_epb.EnvironmentEvent {
 	t.Helper()
 	event := &awsdeployer_epb.EnvironmentEvent{}
-	uu.Outbox.PopMatching(t, outboxtest.NewMatcher(event))
-	gotKey := event.Event.PSMEventKey()
-	if gotKey != eventKey {
-		t.Fatalf("unexpected Environment event: %v, want %v", gotKey, eventKey)
-	}
+	uu.Outbox.PopMessage(t, event, outboxtest.MessageBodyMatches(func(evt *awsdeployer_epb.EnvironmentEvent) bool {
+
+		got := evt.Event.PSMEventKey()
+		mm := string(got) == string(eventKey)
+		t.Logf("event \n %q (%T) \n %q (%T) is %+v", got, got, eventKey, eventKey, mm)
+		return mm
+
+	}))
 	if status != event.Status {
 		t.Fatalf("unexpected Environment status: %v, want %v", event.Status, status)
 	}

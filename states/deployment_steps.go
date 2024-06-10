@@ -9,7 +9,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
-	"github.com/pentops/outbox.pg.go/outbox"
+	"github.com/pentops/o5-messaging.go/o5msg"
 )
 
 type planInput struct {
@@ -400,7 +400,7 @@ func stepNext(ctx context.Context, tb awsdeployer_pb.DeploymentPSMHookBaton, dep
 	return nil
 }
 
-func stepToSideEffect(step *awsdeployer_pb.DeploymentStep, deployment *awsdeployer_pb.DeploymentState, dependencies map[string]*awsdeployer_pb.DeploymentStep) (outbox.OutboxMessage, error) {
+func stepToSideEffect(step *awsdeployer_pb.DeploymentStep, deployment *awsdeployer_pb.DeploymentState, dependencies map[string]*awsdeployer_pb.DeploymentStep) (o5msg.Message, error) {
 	requestMetadata, err := buildRequestMetadata(&awsdeployer_pb.StepContext{
 		StepId:       &step.Id,
 		Phase:        awsdeployer_pb.StepPhase_STEPS,

@@ -10,12 +10,12 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
-	"github.com/pentops/outbox.pg.go/outbox"
+	"github.com/pentops/o5-messaging.go/o5msg"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type DBLite interface {
-	PublishEvent(context.Context, outbox.OutboxMessage) error
+	PublishEvent(context.Context, o5msg.Message) error
 	RequestToClientToken(context.Context, *messaging_pb.RequestMetadata) (string, error)
 	ClientTokenToRequest(context.Context, string) (*messaging_pb.RequestMetadata, error)
 }
@@ -36,7 +36,7 @@ func NewInfraWorker(db DBLite, adapter *CFClient) *InfraWorker {
 	}
 }
 
-func (cf *InfraWorker) eventOut(ctx context.Context, msg outbox.OutboxMessage) error {
+func (cf *InfraWorker) eventOut(ctx context.Context, msg o5msg.Message) error {
 	return cf.db.PublishEvent(ctx, msg)
 }
 
