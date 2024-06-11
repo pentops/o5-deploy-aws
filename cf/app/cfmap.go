@@ -52,9 +52,6 @@ type globalData struct {
 	databases map[string]DatabaseReference
 	secrets   map[string]*cf.Resource[*secretsmanager.Secret]
 	buckets   map[string]*bucketInfo
-
-	replayChance     int64
-	deadletterChance int64
 }
 
 type bucketInfo struct {
@@ -185,6 +182,7 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 				SecretOutputName: secretName,
 				DbExtensions:     dbType.Postgres.DbExtensions,
 			}
+
 			if dbType.Postgres.DbName != "" {
 				def.DbName = dbType.Postgres.DbName
 			}

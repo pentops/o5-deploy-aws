@@ -86,17 +86,26 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		}},
 	}
 
-	if globals.deadletterChance > 0 {
-		runtimeSidecar.Environment = append(runtimeSidecar.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  cf.String("DEADLETTER_CHANCE"),
-			Value: cf.String(fmt.Sprintf("%v", globals.deadletterChance)),
-		})
-	}
-	if globals.replayChance > 0 {
-		runtimeSidecar.Environment = append(runtimeSidecar.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  cf.String("RESEND_CHANCE"),
-			Value: cf.String(fmt.Sprintf("%v", globals.replayChance)),
-		})
+	if runtime.WorkerConfig != nil {
+		cfg := runtime.WorkerConfig
+		if cfg.DeadletterChance > 0 {
+			runtimeSidecar.Environment = append(runtimeSidecar.Environment, ecs.TaskDefinition_KeyValuePair{
+				Name:  cf.String("DEADLETTER_CHANCE"),
+				Value: cf.String(fmt.Sprintf("%v", cfg.DeadletterChance)),
+			})
+		}
+		if cfg.ReplayChance > 0 {
+			runtimeSidecar.Environment = append(runtimeSidecar.Environment, ecs.TaskDefinition_KeyValuePair{
+				Name:  cf.String("RESEND_CHANCE"),
+				Value: cf.String(fmt.Sprintf("%v", cfg.ReplayChance)),
+			})
+		}
+		if cfg.NoDeadletters {
+			runtimeSidecar.Environment = append(runtimeSidecar.Environment, ecs.TaskDefinition_KeyValuePair{
+				Name:  cf.String("NO_DEADLETTERS"),
+				Value: cf.String("true"),
+			})
+		}
 	}
 
 	addLogs(runtimeSidecar, globals.appName)
