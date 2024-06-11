@@ -7,13 +7,12 @@
 package awsdeployer_pb
 
 import (
-	reflect "reflect"
-	sync "sync"
-
 	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	application_pb "github.com/pentops/o5-go/application/v1/application_pb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	reflect "reflect"
+	sync "sync"
 )
 
 const (

@@ -25,12 +25,13 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/iancoleman/strcase v0.3.0
 	github.com/lib/pq v1.10.9
+	github.com/pentops/envconf.go v0.0.0-20240607014745-65480a3da726
 	github.com/pentops/flowtest v0.0.0-20240607020132-7dda31076e79
 	github.com/pentops/go-grpc-helpers v0.0.0-20230815045451-2524ee695ebb
 	github.com/pentops/j5 v0.0.0-20240606040938-7f6c198fdc0d
 	github.com/pentops/log.go v0.0.0-20240523172444-85c9292a83db
-	github.com/pentops/o5-go v0.0.0-20240610185652-b7c07a9e678a
-	github.com/pentops/o5-messaging.go v0.0.0-20240610211256-59be1b5a7531
+	github.com/pentops/o5-go v0.0.0-20240610223907-ad5d22e3975f
+	github.com/pentops/o5-messaging.go v0.0.0-20240610220232-02f44a1806f1
 	github.com/pentops/pgtest.go v0.0.0-20240604005819-2035f4562734
 	github.com/pentops/protostate v0.0.0-20240610211526-361e6c3ed773
 	github.com/pentops/runner v0.0.0-20240525192419-d655233635e9
@@ -43,7 +44,6 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20240610135401-a8a62080eff3
 	google.golang.org/grpc v1.64.0
 	google.golang.org/protobuf v1.34.2-0.20240529085009-ca837e5c658b
-	gopkg.daemonl.com/envconf v0.0.0-20220909014755-d65ec77bd452
 )
 
 require (

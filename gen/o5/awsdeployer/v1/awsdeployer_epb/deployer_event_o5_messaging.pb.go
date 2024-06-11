@@ -7,16 +7,15 @@ package awsdeployer_epb
 
 import (
 	context "context"
-
 	o5msg "github.com/pentops/o5-messaging.go/o5msg"
 )
 
 // Service: DeployerEvents
-type DeployerEventsSender[C any] struct {
-	Sender o5msg.Sender[C]
+type DeployerEventsTxSender[C any] struct {
+	sender o5msg.TxSender[C]
 }
 
-func NewDeployerEventsSender[C any](sender o5msg.Sender[C]) *DeployerEventsSender[C] {
+func NewDeployerEventsTxSender[C any](sender o5msg.TxSender[C]) *DeployerEventsTxSender[C] {
 	sender.Register(o5msg.TopicDescriptor{
 		Service: "o5.awsdeployer.v1.events.DeployerEvents",
 		Methods: []o5msg.MethodDescriptor{
@@ -34,11 +33,11 @@ func NewDeployerEventsSender[C any](sender o5msg.Sender[C]) *DeployerEventsSende
 			},
 		},
 	})
-	return &DeployerEventsSender[C]{Sender: sender}
+	return &DeployerEventsTxSender[C]{sender: sender}
 }
 
 type DeployerEventsCollector[C any] struct {
-	Collector o5msg.Collector[C]
+	collector o5msg.Collector[C]
 }
 
 func NewDeployerEventsCollector[C any](collector o5msg.Collector[C]) *DeployerEventsCollector[C] {
@@ -59,7 +58,32 @@ func NewDeployerEventsCollector[C any](collector o5msg.Collector[C]) *DeployerEv
 			},
 		},
 	})
-	return &DeployerEventsCollector[C]{Collector: collector}
+	return &DeployerEventsCollector[C]{collector: collector}
+}
+
+type DeployerEventsPublisher struct {
+	publisher o5msg.Publisher
+}
+
+func NewDeployerEventsPublisher(publisher o5msg.Publisher) *DeployerEventsPublisher {
+	publisher.Register(o5msg.TopicDescriptor{
+		Service: "o5.awsdeployer.v1.events.DeployerEvents",
+		Methods: []o5msg.MethodDescriptor{
+			{
+				Name:    "Deployment",
+				Message: (*DeploymentEvent).ProtoReflect(nil).Descriptor(),
+			},
+			{
+				Name:    "Stack",
+				Message: (*StackEvent).ProtoReflect(nil).Descriptor(),
+			},
+			{
+				Name:    "Environment",
+				Message: (*EnvironmentEvent).ProtoReflect(nil).Descriptor(),
+			},
+		},
+	})
+	return &DeployerEventsPublisher{publisher: publisher}
 }
 
 // Method: Deployment
@@ -74,12 +98,16 @@ func (msg *DeploymentEvent) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send DeployerEventsSender[C]) Deployment(ctx context.Context, sendContext C, msg *DeploymentEvent) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send DeployerEventsTxSender[C]) Deployment(ctx context.Context, sendContext C, msg *DeploymentEvent) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect DeployerEventsCollector[C]) Deployment(sendContext C, msg *DeploymentEvent) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish DeployerEventsPublisher) Deployment(ctx context.Context, msg *DeploymentEvent) {
+	publish.publisher.Publish(ctx, msg)
 }
 
 // Method: Stack
@@ -94,12 +122,16 @@ func (msg *StackEvent) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send DeployerEventsSender[C]) Stack(ctx context.Context, sendContext C, msg *StackEvent) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send DeployerEventsTxSender[C]) Stack(ctx context.Context, sendContext C, msg *StackEvent) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect DeployerEventsCollector[C]) Stack(sendContext C, msg *StackEvent) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish DeployerEventsPublisher) Stack(ctx context.Context, msg *StackEvent) {
+	publish.publisher.Publish(ctx, msg)
 }
 
 // Method: Environment
@@ -114,10 +146,14 @@ func (msg *EnvironmentEvent) O5MessageHeader() o5msg.Header {
 	return header
 }
 
-func (send DeployerEventsSender[C]) Environment(ctx context.Context, sendContext C, msg *EnvironmentEvent) error {
-	return send.Sender.Send(ctx, sendContext, msg)
+func (send DeployerEventsTxSender[C]) Environment(ctx context.Context, sendContext C, msg *EnvironmentEvent) error {
+	return send.sender.Send(ctx, sendContext, msg)
 }
 
 func (collect DeployerEventsCollector[C]) Environment(sendContext C, msg *EnvironmentEvent) {
-	collect.Collector.Collect(sendContext, msg)
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish DeployerEventsPublisher) Environment(ctx context.Context, msg *EnvironmentEvent) {
+	publish.publisher.Publish(ctx, msg)
 }

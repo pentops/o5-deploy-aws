@@ -7,9 +7,6 @@
 package awsdeployer_spb
 
 import (
-	reflect "reflect"
-	sync "sync"
-
 	awsdeployer_pb "github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	_ "github.com/pentops/o5-go/auth/v1/auth_pb"
 	psml_pb "github.com/pentops/protostate/gen/list/v1/psml_pb"
@@ -17,6 +14,8 @@ import (
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	reflect "reflect"
+	sync "sync"
 )
 
 const (
