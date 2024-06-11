@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/pentops/o5-deploy-aws/internal/cf/app"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/internal/cf/app"
 	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
 

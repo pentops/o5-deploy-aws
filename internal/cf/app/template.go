@@ -2,8 +2,8 @@ package app
 
 import (
 	"github.com/awslabs/goformation/v7/cloudformation"
-	"github.com/pentops/o5-deploy-aws/internal/cf"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/internal/cf"
 )
 
 type BuiltApplication struct {
