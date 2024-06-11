@@ -9,6 +9,7 @@ import (
 
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/pentops/o5-go/application/v1/application_pb"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestEventBusRules(t *testing.T) {
@@ -32,6 +33,20 @@ func TestEventBusRules(t *testing.T) {
 		want: []map[string]interface{}{{
 			"detail": map[string]interface{}{
 				"sourceEnv":        []interface{}{localEnvRef},
+				"destinationTopic": []interface{}{"test"},
+			},
+		}},
+	}, {
+
+		name: "wildcard env",
+		input: &application_pb.Runtime{
+			Subscriptions: []*application_pb.Subscription{{
+				Name:    "test",
+				EnvName: proto.String("*"),
+			}},
+		},
+		want: []map[string]interface{}{{
+			"detail": map[string]interface{}{
 				"destinationTopic": []interface{}{"test"},
 			},
 		}},
