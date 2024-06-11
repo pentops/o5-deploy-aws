@@ -31,8 +31,8 @@ func TestEventBusRules(t *testing.T) {
 		},
 		want: []map[string]interface{}{{
 			"detail": map[string]interface{}{
-				"sourceEnvironment": []interface{}{localEnvRef},
-				"destinationTopic":  []interface{}{"test"},
+				"sourceEnv":        []interface{}{localEnvRef},
+				"destinationTopic": []interface{}{"test"},
 			},
 		}},
 	}, {
@@ -46,8 +46,8 @@ func TestEventBusRules(t *testing.T) {
 		},
 		want: []map[string]interface{}{{
 			"detail": map[string]interface{}{
-				"sourceEnvironment": []interface{}{localEnvRef},
-				"destinationTopic":  []interface{}{"test", "test2"},
+				"sourceEnv":        []interface{}{localEnvRef},
+				"destinationTopic": []interface{}{"test", "test2"},
 			},
 		}},
 	}, {
@@ -59,8 +59,8 @@ func TestEventBusRules(t *testing.T) {
 		},
 		want: []map[string]interface{}{{
 			"detail": map[string]interface{}{
-				"sourceEnvironment": []interface{}{localEnvRef},
-				"grpcService":       []interface{}{"foo.v1.Bar"},
+				"sourceEnv":   []interface{}{localEnvRef},
+				"grpcService": []interface{}{"foo.v1.Bar"},
 			},
 		}},
 	}, {
@@ -72,9 +72,9 @@ func TestEventBusRules(t *testing.T) {
 		},
 		want: []map[string]interface{}{{
 			"detail": map[string]interface{}{
-				"sourceEnvironment": []interface{}{localEnvRef},
-				"grpcService":       []interface{}{"foo.v1.Bar"},
-				"grpcMethod":        []interface{}{"Baz"},
+				"sourceEnv":   []interface{}{localEnvRef},
+				"grpcService": []interface{}{"foo.v1.Bar"},
+				"grpcMethod":  []interface{}{"Baz"},
 			},
 		}},
 	}, {
@@ -88,9 +88,9 @@ func TestEventBusRules(t *testing.T) {
 		},
 		want: []map[string]interface{}{{
 			"detail": map[string]interface{}{
-				"sourceEnvironment": []interface{}{localEnvRef},
-				"grpcService":       []interface{}{"foo.v1.Bar"},
-				"grpcMethod":        []interface{}{"Baz", "Qux"},
+				"sourceEnv":   []interface{}{localEnvRef},
+				"grpcService": []interface{}{"foo.v1.Bar"},
+				"grpcMethod":  []interface{}{"Baz", "Qux"},
 			},
 		}},
 	}, {
@@ -106,13 +106,13 @@ func TestEventBusRules(t *testing.T) {
 			"detail": map[string]interface{}{
 				"$or": []interface{}{
 					map[string]interface{}{
-						"sourceEnvironment": []interface{}{localEnvRef},
-						"grpcService":       []interface{}{"foo.v1.Qux"},
+						"sourceEnv":   []interface{}{localEnvRef},
+						"grpcService": []interface{}{"foo.v1.Qux"},
 					},
 					map[string]interface{}{
-						"sourceEnvironment": []interface{}{localEnvRef},
-						"grpcService":       []interface{}{"foo.v1.Bar"},
-						"grpcMethod":        []interface{}{"Baz"},
+						"sourceEnv":   []interface{}{localEnvRef},
+						"grpcService": []interface{}{"foo.v1.Bar"},
+						"grpcMethod":  []interface{}{"Baz"},
 					},
 				},
 			},

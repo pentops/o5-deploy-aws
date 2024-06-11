@@ -201,6 +201,7 @@ func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
 			"awslogs-stream-prefix": def.Name,
 		},
 	}
+
 }
 
 func (rs *RuntimeService) Apply(template *Application) error {
@@ -286,7 +287,7 @@ func (rs *RuntimeService) Apply(template *Application) error {
 				}},
 				EventPattern: sub.eventPattern,
 			}
-			template.AddResource(cf.NewResource(cf.CleanParameterName(rs.Name, sub.name), eventBusSubscription))
+			template.AddResource(cf.NewResource(cf.CleanParameterName(rs.Name, "subscription", sub.name), eventBusSubscription))
 		}
 
 		queuePolicyStatement := []interface{}{

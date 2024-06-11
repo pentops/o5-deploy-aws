@@ -53,10 +53,10 @@ type busDetailPattern struct {
 }
 
 type singlePattern struct {
-	DestinationTopic  []string `json:"destinationTopic,omitempty"`
-	GRPCService       []string `json:"grpcService,omitempty"`
-	GRPCMethod        []string `json:"grpcMethod,omitempty"`
-	SourceEnvironment []string `json:"sourceEnvironment"`
+	DestinationTopic []string `json:"destinationTopic,omitempty"`
+	GRPCService      []string `json:"grpcService,omitempty"`
+	GRPCMethod       []string `json:"grpcMethod,omitempty"`
+	SourceEnv        []string `json:"sourceEnv"`
 }
 
 func buildSubscriptionPlan(spec *application_pb.Runtime) (*subscriptionPlan, error) {
@@ -73,6 +73,7 @@ func buildSubscriptionPlan(spec *application_pb.Runtime) (*subscriptionPlan, err
 	rulesByEnv[""] = localEnvRules
 
 	for _, sub := range spec.Subscriptions {
+
 		if sub.TargetContainer == "" {
 			sub.TargetContainer = spec.Containers[0].Name
 		}
@@ -159,15 +160,15 @@ func buildSubscriptionPlan(spec *application_pb.Runtime) (*subscriptionPlan, err
 
 		if len(rules.topics) > 0 {
 			rulePatterns = append(rulePatterns, singlePattern{
-				DestinationTopic:  rules.topics,
-				SourceEnvironment: []string{rules.sourceEnvRef},
+				DestinationTopic: rules.topics,
+				SourceEnv:        []string{rules.sourceEnvRef},
 			})
 		}
 
 		if len(rules.services) > 0 {
 			rulePatterns = append(rulePatterns, singlePattern{
-				GRPCService:       rules.services,
-				SourceEnvironment: []string{rules.sourceEnvRef},
+				GRPCService: rules.services,
+				SourceEnv:   []string{rules.sourceEnvRef},
 			})
 		}
 
@@ -177,9 +178,9 @@ func buildSubscriptionPlan(spec *application_pb.Runtime) (*subscriptionPlan, err
 				mm, ok := methodMatchers[method.service]
 				if !ok {
 					mm = singlePattern{
-						GRPCService:       []string{method.service},
-						GRPCMethod:        []string{},
-						SourceEnvironment: []string{rules.sourceEnvRef},
+						GRPCService: []string{method.service},
+						GRPCMethod:  []string{},
+						SourceEnv:   []string{rules.sourceEnvRef},
 					}
 				}
 				mm.GRPCMethod = append(mm.GRPCMethod, method.method)
