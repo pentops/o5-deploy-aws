@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -75,6 +76,15 @@ func NewSpecBuilder(templateStore TemplateStore) (*SpecBuilder, error) {
 	}, nil
 }
 
+func safeDBName(dbName string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) {
+			return r
+		}
+		return '_'
+	}, dbName)
+}
+
 func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage, cluster *environment_pb.Cluster, environment *environment_pb.Environment) (*awsdeployer_pb.DeploymentSpec, error) {
 	app, err := app.BuildApplication(trigger.Application, trigger.Version)
 	if err != nil {
@@ -109,8 +119,9 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 
 	dbSpecs := make([]*awsdeployer_pb.PostgresSpec, len(app.PostgresDatabases))
 	for idx, db := range app.PostgresDatabases {
+		fullName := safeDBName(fmt.Sprintf("%s_%s_%s", environment.FullName, app.Name, db.DbName))
 		dbSpec := &awsdeployer_pb.PostgresSpec{
-			DbName:                  db.DbName,
+			DbName:                  fullName,
 			DbExtensions:            db.DbExtensions,
 			MigrationTaskOutputName: db.MigrationTaskOutputName,
 			SecretOutputName:        db.SecretOutputName,
