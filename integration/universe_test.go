@@ -19,8 +19,8 @@ import (
 	"github.com/pentops/o5-deploy-aws/service"
 	"github.com/pentops/o5-deploy-aws/states"
 	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
-	"github.com/pentops/o5-go/messaging/v1/messaging_pb"
-	"github.com/pentops/o5-messaging.go/outbox/outboxtest"
+	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
+	"github.com/pentops/o5-messaging/outbox/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
 	"google.golang.org/protobuf/encoding/protojson"
 )

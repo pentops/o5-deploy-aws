@@ -6,7 +6,6 @@ import (
 	context "context"
 	fmt "fmt"
 	psm_pb "github.com/pentops/protostate/gen/state/v1/psm_pb"
-	pgstore "github.com/pentops/protostate/pgstore"
 	psm "github.com/pentops/protostate/psm"
 	sqrlx "github.com/pentops/sqrlx.go/sqrlx"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -263,15 +262,15 @@ var DefaultStackPSMTableSpec = StackPSMTableSpec{
 	TableMap: psm.TableMap{
 		State: psm.StateTableSpec{
 			TableName: "stack",
-			Root:      &pgstore.ProtoFieldSpec{ColumnName: "state", PathFromRoot: pgstore.ProtoPathSpec{}},
+			Root:      &psm.FieldSpec{ColumnName: "state"},
 		},
 		Event: psm.EventTableSpec{
 			TableName:     "stack_event",
-			Root:          &pgstore.ProtoFieldSpec{ColumnName: "data", PathFromRoot: pgstore.ProtoPathSpec{}},
-			ID:            &pgstore.ProtoFieldSpec{ColumnName: "id", PathFromRoot: pgstore.ProtoPathSpec{}},
-			Timestamp:     &pgstore.ProtoFieldSpec{ColumnName: "timestamp", PathFromRoot: pgstore.ProtoPathSpec{}},
-			Sequence:      &pgstore.ProtoFieldSpec{ColumnName: "sequence", PathFromRoot: pgstore.ProtoPathSpec{}},
-			StateSnapshot: &pgstore.ProtoFieldSpec{ColumnName: "state", PathFromRoot: pgstore.ProtoPathSpec{}},
+			Root:          &psm.FieldSpec{ColumnName: "data"},
+			ID:            &psm.FieldSpec{ColumnName: "id"},
+			Timestamp:     &psm.FieldSpec{ColumnName: "timestamp"},
+			Sequence:      &psm.FieldSpec{ColumnName: "sequence"},
+			StateSnapshot: &psm.FieldSpec{ColumnName: "state"},
 		},
 		KeyColumns: []psm.KeyColumn{{
 			ColumnName: "stack_id",
