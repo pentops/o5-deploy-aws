@@ -17,19 +17,10 @@ func mapResources(app *application_pb.Application, stackTemplate *Application) (
 
 	global := globalData{
 
-		appName:          app.Name,
-		databases:        map[string]DatabaseReference{},
-		secrets:          map[string]*cf.Resource[*secretsmanager.Secret]{},
-		buckets:          map[string]*bucketInfo{},
-		replayChance:     0,
-		deadletterChance: 0,
-	}
-
-	if app.SidecarConfig != nil && app.SidecarConfig.DeadletterChance > 0 {
-		global.deadletterChance = app.SidecarConfig.DeadletterChance
-	}
-	if app.SidecarConfig != nil && app.SidecarConfig.ReplayChance > 0 {
-		global.replayChance = app.SidecarConfig.ReplayChance
+		appName:   app.Name,
+		databases: map[string]DatabaseReference{},
+		secrets:   map[string]*cf.Resource[*secretsmanager.Secret]{},
+		buckets:   map[string]*bucketInfo{},
 	}
 
 	for _, blobstoreDef := range app.Blobstores {

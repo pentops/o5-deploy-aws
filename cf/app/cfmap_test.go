@@ -164,13 +164,15 @@ func TestRuntime(t *testing.T) {
 
 func TestSidecarConfigRuntime(t *testing.T) {
 	global := globalData{
-		appName:          "Test",
-		replayChance:     1,
-		deadletterChance: 2,
+		appName: "Test",
 	}
 
 	rs, err := NewRuntimeService(global, &application_pb.Runtime{
 		Name: "main",
+		WorkerConfig: &application_pb.WorkerConfig{
+			ReplayChance:     1,
+			DeadletterChance: 2,
+		},
 		Containers: []*application_pb.Container{{
 			Name: "main",
 			Source: &application_pb.Container_Image_{
