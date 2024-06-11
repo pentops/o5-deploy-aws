@@ -9,7 +9,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-messaging.go/o5msg"
+	"github.com/pentops/o5-messaging/o5msg"
 )
 
 type planInput struct {

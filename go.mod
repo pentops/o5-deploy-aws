@@ -28,12 +28,12 @@ require (
 	github.com/pentops/envconf.go v0.0.0-20240607014745-65480a3da726
 	github.com/pentops/flowtest v0.0.0-20240607020132-7dda31076e79
 	github.com/pentops/go-grpc-helpers v0.0.0-20230815045451-2524ee695ebb
-	github.com/pentops/j5 v0.0.0-20240606040938-7f6c198fdc0d
+	github.com/pentops/j5 v0.0.0-20240611220935-212e7c4e61f2
 	github.com/pentops/log.go v0.0.0-20240523172444-85c9292a83db
-	github.com/pentops/o5-go v0.0.0-20240611065114-e8143d8387f4
-	github.com/pentops/o5-messaging.go v0.0.0-20240610220232-02f44a1806f1
+	github.com/pentops/o5-go v0.0.0-20240611214452-99a6f6789ff8
+	github.com/pentops/o5-messaging v0.0.0-20240611214218-4ac153f68bc9
 	github.com/pentops/pgtest.go v0.0.0-20240604005819-2035f4562734
-	github.com/pentops/protostate v0.0.0-20240610211526-361e6c3ed773
+	github.com/pentops/protostate v0.0.0-20240611232313-1fb3a679db51
 	github.com/pentops/runner v0.0.0-20240525192419-d655233635e9
 	github.com/pentops/sqrlx.go v0.0.0-20240523172712-b615a994d8c0
 	github.com/pressly/goose v2.7.0+incompatible
