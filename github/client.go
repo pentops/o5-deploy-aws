@@ -10,10 +10,10 @@ import (
 	"path"
 
 	"github.com/bradleyfalzon/ghinstallation"
+	"github.com/pentops/envconf.go/envconf"
 	"github.com/pentops/o5-deploy-aws/protoread"
 	"github.com/pentops/o5-go/application/v1/application_pb"
 	"golang.org/x/oauth2"
-	"gopkg.daemonl.com/envconf"
 
 	"github.com/google/go-github/v47/github"
 )
