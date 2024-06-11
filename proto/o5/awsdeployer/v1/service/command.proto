@@ -5,6 +5,7 @@ package o5.awsdeployer.v1.service;
 import "buf/validate/validate.proto";
 import "google/api/annotations.proto";
 import "j5/ext/v1/annotations.proto";
+import "o5/application/v1/application.proto";
 import "o5/auth/v1/annotations.proto";
 import "o5/awsdeployer/v1/cluster.proto";
 import "o5/awsdeployer/v1/deployment.proto";
@@ -66,6 +67,7 @@ message TriggerSource {
   option (j5.ext.v1.message).is_oneof_wrapper = true;
   oneof type {
     GithubSource github = 10;
+    InlineSource inline = 11;
   }
 
   message GithubSource {
@@ -76,6 +78,11 @@ message TriggerSource {
       string tag = 5;
       string commit = 6;
     }
+  }
+
+  message InlineSource {
+    string version = 1 [(buf.validate.field).required = true];
+    o5.application.v1.Application application = 2 [(buf.validate.field).required = true];
   }
 }
 

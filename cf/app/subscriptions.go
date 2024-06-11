@@ -28,7 +28,7 @@ type eventBusRules struct {
 	topics        []string
 	services      []string
 	methods       []serviceAndMethod
-	sourceEnvRef  string
+	sourceEnvRef  []string
 	sourceEnvName string
 }
 
@@ -56,7 +56,7 @@ type singlePattern struct {
 	DestinationTopic []string `json:"destinationTopic,omitempty"`
 	GRPCService      []string `json:"grpcService,omitempty"`
 	GRPCMethod       []string `json:"grpcMethod,omitempty"`
-	SourceEnv        []string `json:"sourceEnv"`
+	SourceEnv        []string `json:"sourceEnv,omitempty"`
 }
 
 func buildSubscriptionPlan(spec *application_pb.Runtime) (*subscriptionPlan, error) {
@@ -68,7 +68,7 @@ func buildSubscriptionPlan(spec *application_pb.Runtime) (*subscriptionPlan, err
 	rulesByEnv := map[string]*eventBusRules{}
 	localEnvRules := &eventBusRules{
 		sourceEnvName: "local",
-		sourceEnvRef:  cloudformation.Ref(EnvNameParameter),
+		sourceEnvRef:  []string{cloudformation.Ref(EnvNameParameter)},
 	}
 	rulesByEnv[""] = localEnvRules
 
@@ -116,22 +116,27 @@ func buildSubscriptionPlan(spec *application_pb.Runtime) (*subscriptionPlan, err
 				ruleSet = &eventBusRules{}
 				rulesByEnv[*sub.EnvName] = ruleSet
 			}
-			envParamName := cf.CleanParameterName(*sub.EnvName, "FullName")
-			ruleSet.sourceEnvRef = cloudformation.Ref(envParamName)
-			ruleSet.sourceEnvName = *sub.EnvName
 
-			plan.parameters = append(plan.parameters, &awsdeployer_pb.Parameter{
-				Name: envParamName,
-				Type: "String",
-				Source: &awsdeployer_pb.ParameterSourceType{
-					Type: &awsdeployer_pb.ParameterSourceType_CrossEnvAttr_{
-						CrossEnvAttr: &awsdeployer_pb.ParameterSourceType_CrossEnvAttr{
-							EnvName: *sub.EnvName,
-							Attr:    awsdeployer_pb.EnvAttr_FULL_NAME,
+			ruleSet.sourceEnvName = *sub.EnvName
+			if *sub.EnvName == "*" {
+				ruleSet.sourceEnvRef = nil // Don't filter the env.
+			} else {
+				envParamName := cf.CleanParameterName(*sub.EnvName, "FullName")
+				ruleSet.sourceEnvRef = []string{cloudformation.Ref(envParamName)}
+
+				plan.parameters = append(plan.parameters, &awsdeployer_pb.Parameter{
+					Name: envParamName,
+					Type: "String",
+					Source: &awsdeployer_pb.ParameterSourceType{
+						Type: &awsdeployer_pb.ParameterSourceType_CrossEnvAttr_{
+							CrossEnvAttr: &awsdeployer_pb.ParameterSourceType_CrossEnvAttr{
+								EnvName: *sub.EnvName,
+								Attr:    awsdeployer_pb.EnvAttr_FULL_NAME,
+							},
 						},
 					},
-				},
-			})
+				})
+			}
 		}
 
 		topicParts := strings.Split(sub.Name, "/")
@@ -161,14 +166,14 @@ func buildSubscriptionPlan(spec *application_pb.Runtime) (*subscriptionPlan, err
 		if len(rules.topics) > 0 {
 			rulePatterns = append(rulePatterns, singlePattern{
 				DestinationTopic: rules.topics,
-				SourceEnv:        []string{rules.sourceEnvRef},
+				SourceEnv:        rules.sourceEnvRef,
 			})
 		}
 
 		if len(rules.services) > 0 {
 			rulePatterns = append(rulePatterns, singlePattern{
 				GRPCService: rules.services,
-				SourceEnv:   []string{rules.sourceEnvRef},
+				SourceEnv:   rules.sourceEnvRef,
 			})
 		}
 
@@ -180,7 +185,7 @@ func buildSubscriptionPlan(spec *application_pb.Runtime) (*subscriptionPlan, err
 					mm = singlePattern{
 						GRPCService: []string{method.service},
 						GRPCMethod:  []string{},
-						SourceEnv:   []string{rules.sourceEnvRef},
+						SourceEnv:   rules.sourceEnvRef,
 					}
 				}
 				mm.GRPCMethod = append(mm.GRPCMethod, method.method)
