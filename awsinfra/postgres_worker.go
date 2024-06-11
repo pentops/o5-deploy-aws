@@ -110,6 +110,7 @@ func (d *PostgresMigrateWorker) MigratePostgresDatabase(ctx context.Context, msg
 		Request:     request,
 		MigrationId: msg.GetMigrationId(),
 		Status:      awsinfra_tpb.PostgresStatus_STARTED,
+		EventId:     uuid.NewSHA1(migrationNamespace, []byte(fmt.Sprintf("migrate-%s-started", msg.MigrationId))).String(),
 	}); err != nil {
 		return nil, err
 	}
