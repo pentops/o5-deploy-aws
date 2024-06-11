@@ -212,20 +212,22 @@ func (rs *RuntimeService) Apply(template *Application) error {
 	// capture beofre running subscriptions as that adds to this set
 	ingressNeedsPublicPort := len(rs.ingressEndpoints) > 0
 
+	needsAdapterSidecar := false
 	if len(rs.spec.Subscriptions) > 0 {
-		for _, sub := range rs.spec.Subscriptions {
-			if sub.TargetContainer == "" {
-				sub.TargetContainer = rs.spec.Containers[0].Name
-			}
-			if sub.Port == 0 {
-				sub.Port = 8080
-			}
 
+		needsAdapterSidecar = true
+
+		subscriptionPlan, err := buildSubscriptionPlan(rs.spec)
+		if err != nil {
+			return err
+		}
+
+		for endpoint := range subscriptionPlan.ingressEndpoints {
 			// TODO: This registers the whole endpoint for proto reflection, but isn't hard-linked to
 			// the queue or subscriptions.
 			// If multiple containers both subscribe to the same topic via the
 			// proto reflection, it's random which one will receive the message.
-			rs.ingressEndpoints[fmt.Sprintf("%s:%d", rs.spec.Containers[0].Name, sub.Port)] = struct{}{}
+			rs.ingressEndpoints[endpoint] = struct{}{}
 		}
 
 		queueResource := cf.NewResource(rs.Name, &sqs.Queue{
@@ -238,93 +240,46 @@ func (rs *RuntimeService) Apply(template *Application) error {
 		})
 
 		template.AddResource(queueResource)
+
 		rs.Policy.AddSQSSubscribe(queueResource.GetAtt("Arn"))
+
 		rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
 			Name:  cf.String("SQS_URL"),
 			Value: cf.String(queueResource.Ref()),
 		})
 
-		topicARNs := []string{}
-		for _, sub := range rs.spec.Subscriptions {
-			detailPattern := map[string]interface{}{}
-			detailPattern["sourceEnv"] = []string{cloudformation.Ref(EnvNameParameter)}
-			if sub.EnvName != nil {
-
-				envParamName := cf.CleanParameterName(*sub.EnvName, "FullName")
-				template.AddParameter(&awsdeployer_pb.Parameter{
-					Name: envParamName,
-					Type: "String",
-					Source: &awsdeployer_pb.ParameterSourceType{
-						Type: &awsdeployer_pb.ParameterSourceType_CrossEnvAttr_{
-							CrossEnvAttr: &awsdeployer_pb.ParameterSourceType_CrossEnvAttr{
-								EnvName: *sub.EnvName,
-								Attr:    awsdeployer_pb.EnvAttr_FULL_NAME,
-							},
-						},
-					},
-				})
-
-				detailPattern["sourceEnv"] = []string{cloudformation.Ref(envParamName)}
-
-			}
-			if strings.HasPrefix(sub.Name, "o5-infra/") {
-				topicName := sub.Name[len("o5-infra/"):]
-				if !rs.spec.GrantMetaDeployPermissions {
-					return fmt.Errorf("o5-infra subscription requires meta deploy permissions")
-				}
-				snsTopicARN := cloudformation.Join("", []string{
-					"arn:aws:sns:",
-					cloudformation.Ref("AWS::Region"),
-					":",
-					cloudformation.Ref("AWS::AccountId"),
-					":",
-					// Note this is the Cluster name, not the env name, one o5 listener per cluster.
-					cloudformation.Ref(ClusterNameParameter),
-					"-",
-					topicName,
-				})
-
-				subscription := cf.NewResource(cf.CleanParameterName(rs.Name, sub.Name), &sns.Subscription{
-					TopicArn:           snsTopicARN,
-					Protocol:           "sqs",
-					RawMessageDelivery: cf.Bool(false), // Always include the SNS header info for infra events.
-					Endpoint:           cf.String(queueResource.GetAtt("Arn")),
-				})
-
-				// The topic is not added to the stack, it should already exist
-				// in this case.
-				template.AddResource(subscription)
-				topicARNs = append(topicARNs, snsTopicARN)
-
-			} else {
-
-				topicParts := strings.Split(sub.Name, "/")
-
-				if len(topicParts) == 1 {
-					detailPattern["topicName"] = []string{topicParts[0]}
-				} else if len(topicParts) == 2 {
-					detailPattern["grpcService"] = []string{topicParts[1]}
-				} else if len(topicParts) == 3 {
-					detailPattern["grpcService"] = []string{topicParts[1]}
-					detailPattern["grpcMethod"] = []string{topicParts[2]}
-				} else {
-					return fmt.Errorf("invalid topic name %s", sub.Name)
-				}
-
-				eventBusSubscription := &events.Rule{
-					Description:  cf.String(fmt.Sprintf("Subscription for app %s %s", rs.Name, sub.Name)),
-					EventBusName: cloudformation.RefPtr(EventBusARNParameter),
-					Targets: []events.Rule_Target{{
-						Arn: queueResource.GetAtt("Arn"),
-						Id:  "SQS",
-					}},
-					EventPattern: map[string]interface{}{
-						"detail": detailPattern,
-					},
-				}
-				template.AddResource(cf.NewResource(cf.CleanParameterName(rs.Name, sub.Name), eventBusSubscription))
-			}
+		for _, param := range subscriptionPlan.parameters {
+			template.AddParameter(param)
 		}
+
+		topicARNs := []string{}
+		for _, sub := range subscriptionPlan.snsSubscriptions {
+			subscription := cf.NewResource(cf.CleanParameterName(rs.Name, sub.name), &sns.Subscription{
+				TopicArn:           sub.topicARN,
+				Protocol:           "sqs",
+				RawMessageDelivery: cf.Bool(false), // Always include the SNS header info for infra events.
+				Endpoint:           cf.String(queueResource.GetAtt("Arn")),
+			})
+
+			// The topic is not added to the stack, it should already exist
+			// in this case.
+			template.AddResource(subscription)
+			topicARNs = append(topicARNs, sub.topicARN)
+		}
+
+		for _, sub := range subscriptionPlan.eventBusSubscriptions {
+			eventBusSubscription := &events.Rule{
+				Description:  cf.String(fmt.Sprintf("Subscription for app %s %s", rs.Name, sub.name)),
+				EventBusName: cloudformation.RefPtr(EventBusARNParameter),
+				Targets: []events.Rule_Target{{
+					Arn: queueResource.GetAtt("Arn"),
+					Id:  "SQS",
+				}},
+				EventPattern: sub.eventPattern,
+			}
+			template.AddResource(cf.NewResource(cf.CleanParameterName(rs.Name, sub.name), eventBusSubscription))
+		}
+
 		queuePolicyStatement := []interface{}{
 			map[string]interface{}{
 				"Effect": "Allow",
@@ -360,7 +315,6 @@ func (rs *RuntimeService) Apply(template *Application) error {
 		}))
 	}
 
-	needsAdapterSidecar := false
 	if len(rs.ingressEndpoints) > 0 {
 		needsAdapterSidecar = true
 		ingressEndpoints := make([]string, 0, len(rs.ingressEndpoints))
