@@ -11,8 +11,8 @@ import (
 
 	"github.com/bradleyfalzon/ghinstallation"
 	"github.com/pentops/envconf.go/envconf"
-	"github.com/pentops/o5-deploy-aws/internal/protoread"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
+	"github.com/pentops/o5-deploy-aws/internal/protoread"
 	"golang.org/x/oauth2"
 
 	"github.com/google/go-github/v47/github"
