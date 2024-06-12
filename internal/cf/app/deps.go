@@ -7,8 +7,8 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/policies"
 	"github.com/awslabs/goformation/v7/cloudformation/s3"
 	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
-	"github.com/pentops/o5-deploy-aws/internal/cf"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
+	"github.com/pentops/o5-deploy-aws/internal/cf"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )

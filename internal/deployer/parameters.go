@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/internal/cf/app"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
+	"github.com/pentops/o5-deploy-aws/internal/cf/app"
 )
 
 const (
