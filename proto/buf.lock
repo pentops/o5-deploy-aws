@@ -29,8 +29,8 @@ deps:
   - remote: buf.build
     owner: pentops
     repository: o5
-    commit: a1e8f369c70549ada4a4cd9019120323
-    digest: shake256:cc204b9eac200778ca277180469a7f0151585c9d82f313de3ac8f781d627525c1e9060b06b957e48bbe3cca38c6b352108c7af5707caaab878b438609cbcfffc
+    commit: e7891d0b748549a9b981f4455a22ae90
+    digest: shake256:d11e289224e748f4d9e6f109ba48568a36d8c811b0e92fea26f363ea4d513fba55bc6d18f31898c32d976d9ef89d658a50752d0c13af69cfb61546afd08d0ba4
   - remote: buf.build
     owner: pentops
     repository: protostate

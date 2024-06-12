@@ -6,9 +6,9 @@ import (
 
 	"github.com/awslabs/goformation/v7/cloudformation"
 	elbv2 "github.com/awslabs/goformation/v7/cloudformation/elasticloadbalancingv2"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/internal/cf"
-	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 )
 
 type ListenerRuleSet struct {

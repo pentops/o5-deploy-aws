@@ -15,8 +15,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_spb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/awsinfra"
 	"github.com/pentops/o5-deploy-aws/internal/cf/app"
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
@@ -25,10 +29,6 @@ import (
 	"github.com/pentops/o5-deploy-aws/internal/protoread"
 	"github.com/pentops/o5-deploy-aws/internal/service"
 	"github.com/pentops/o5-deploy-aws/internal/states"
-	"github.com/pentops/o5-go/application/v1/application_pb"
-	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
-	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_tpb"
 	"github.com/pentops/runner/commander"
 	"github.com/pressly/goose"
@@ -182,7 +182,7 @@ func runServe(ctx context.Context, cfg struct {
 	awsdeployer_spb.RegisterDeploymentQueryServiceServer(grpcServer, queryService)
 	awsdeployer_spb.RegisterDeploymentCommandServiceServer(grpcServer, commandService)
 
-	deployer_tpb.RegisterDeploymentRequestTopicServer(grpcServer, deploymentWorker)
+	awsdeployer_tpb.RegisterDeploymentRequestTopicServer(grpcServer, deploymentWorker)
 
 	messaging_tpb.RegisterRawMessageTopicServer(grpcServer, rawWorker)
 
@@ -335,7 +335,7 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		EnvConfig:     env,
 		ClusterConfig: cluster,
 		ConfirmPlan:   !cfg.Auto,
-		Flags: &deployer_pb.DeploymentFlags{
+		Flags: &awsdeployer_pb.DeploymentFlags{
 			RotateCredentials: cfg.RotateSecrets,
 			QuickMode:         cfg.QuickMode,
 			InfraOnly:         cfg.InfraOnly,

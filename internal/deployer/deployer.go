@@ -11,12 +11,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/awsinfra"
 	"github.com/pentops/o5-deploy-aws/internal/cf/app"
-	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
-	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
 
 type TemplateStore interface {
@@ -85,7 +84,7 @@ func safeDBName(dbName string) string {
 	}, dbName)
 }
 
-func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage, cluster *environment_pb.Cluster, environment *environment_pb.Environment) (*awsdeployer_pb.DeploymentSpec, error) {
+func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.RequestDeploymentMessage, cluster *environment_pb.Cluster, environment *environment_pb.Environment) (*awsdeployer_pb.DeploymentSpec, error) {
 	app, err := app.BuildApplication(trigger.Application, trigger.Version)
 	if err != nil {
 		return nil, err
@@ -159,7 +158,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *deployer_tpb.Requ
 	}
 
 	if trigger.Flags == nil {
-		trigger.Flags = &deployer_pb.DeploymentFlags{}
+		trigger.Flags = &awsdeployer_pb.DeploymentFlags{}
 	}
 
 	if app.QuickMode {

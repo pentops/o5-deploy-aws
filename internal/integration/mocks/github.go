@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 )
 
 type Github struct {

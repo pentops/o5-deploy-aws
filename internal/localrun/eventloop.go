@@ -11,11 +11,11 @@ import (
 	"github.com/bufbuild/protovalidate-go"
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
 	"github.com/pentops/o5-deploy-aws/internal/states"
-	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
-	"github.com/pentops/o5-go/environment/v1/environment_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-messaging/o5msg"
 	"github.com/pentops/protostate/gen/state/v1/psm_pb"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -81,7 +81,7 @@ func (td *TransitionData) FullCause() *awsdeployer_pb.DeploymentEvent {
 	return td.CausedBy
 }
 
-func (lel *EventLoop) Run(ctx context.Context, trigger *deployer_tpb.RequestDeploymentMessage, cluster *environment_pb.Cluster, environment *environment_pb.Environment) error {
+func (lel *EventLoop) Run(ctx context.Context, trigger *awsdeployer_tpb.RequestDeploymentMessage, cluster *environment_pb.Cluster, environment *environment_pb.Environment) error {
 	if err := lel.validator.Validate(trigger); err != nil {
 		return err
 	}

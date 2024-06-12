@@ -6,15 +6,14 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/google/uuid"
+	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/states"
-	"github.com/pentops/o5-go/application/v1/application_pb"
-	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
-	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
 
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_spb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 )
 
@@ -25,7 +24,7 @@ func TestDeploymentFlow(t *testing.T) {
 	defer ss.RunSteps(t)
 
 	// Trigger the deployment by pushing to the configured branch
-	request := &deployer_tpb.RequestDeploymentMessage{
+	request := &awsdeployer_tpb.RequestDeploymentMessage{
 		DeploymentId: uuid.NewString(),
 		Application:  &application_pb.Application{Name: "app"},
 		Version:      "1",
@@ -249,12 +248,12 @@ func TestStackLock(t *testing.T) {
 	})
 
 	ss.Step("Request and begin first deployment", func(ctx context.Context, t UniverseAsserter) {
-		firstDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
+		firstDeploymentRequest := &awsdeployer_tpb.RequestDeploymentMessage{
 			DeploymentId:  firstDeploymentID,
 			Application:   appDef,
 			Version:       "1",
 			EnvironmentId: environmentID,
-			Flags: &deployer_pb.DeploymentFlags{
+			Flags: &awsdeployer_pb.DeploymentFlags{
 				QuickMode: true,
 			},
 		}
@@ -298,7 +297,7 @@ func TestStackLock(t *testing.T) {
 	})
 
 	ss.Step("Request a second deployment", func(ctx context.Context, t UniverseAsserter) {
-		secondDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
+		secondDeploymentRequest := &awsdeployer_tpb.RequestDeploymentMessage{
 			DeploymentId:  secondDeploymentID,
 			Application:   appDef,
 			Version:       "2",
@@ -394,7 +393,7 @@ func TestStackLock(t *testing.T) {
 
 	ss.Step("A third deployment should begin immediately", func(ctx context.Context, t UniverseAsserter) {
 
-		thirdDeploymentRequest := &deployer_tpb.RequestDeploymentMessage{
+		thirdDeploymentRequest := &awsdeployer_tpb.RequestDeploymentMessage{
 			DeploymentId:  uuid.NewString(),
 			Application:   appDef,
 			Version:       "3",

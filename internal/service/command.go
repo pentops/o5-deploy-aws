@@ -10,14 +10,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/pentops/envconf.go/envconf"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_spb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/protoread"
 	"github.com/pentops/o5-deploy-aws/internal/states"
-	"github.com/pentops/o5-go/application/v1/application_pb"
-	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
-	"github.com/pentops/o5-go/environment/v1/environment_pb"
 	"github.com/pentops/o5-messaging/outbox"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc/codes"
@@ -126,10 +125,10 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *awsdeploye
 	}
 
 	if req.Flags == nil {
-		req.Flags = &deployer_pb.DeploymentFlags{}
+		req.Flags = &awsdeployer_pb.DeploymentFlags{}
 	}
 
-	requestMessage := &deployer_tpb.RequestDeploymentMessage{
+	requestMessage := &awsdeployer_tpb.RequestDeploymentMessage{
 		DeploymentId:  req.DeploymentId,
 		Application:   apps[0],
 		Version:       gh.GetCommit(),

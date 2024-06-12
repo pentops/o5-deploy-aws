@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             (unknown)
-// source: o5/awsinfra/v1/topic/aws_pg.proto
+// source: o5/aws/infra/v1/topic/aws_pg.proto
 
 package awsinfra_tpb
 
@@ -38,7 +38,7 @@ func NewPostgresRequestTopicClient(cc grpc.ClientConnInterface) PostgresRequestT
 
 func (c *postgresRequestTopicClient) UpsertPostgresDatabase(ctx context.Context, in *UpsertPostgresDatabaseMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.PostgresRequestTopic/UpsertPostgresDatabase", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.PostgresRequestTopic/UpsertPostgresDatabase", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (c *postgresRequestTopicClient) UpsertPostgresDatabase(ctx context.Context,
 
 func (c *postgresRequestTopicClient) MigratePostgresDatabase(ctx context.Context, in *MigratePostgresDatabaseMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.PostgresRequestTopic/MigratePostgresDatabase", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.PostgresRequestTopic/MigratePostgresDatabase", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (c *postgresRequestTopicClient) MigratePostgresDatabase(ctx context.Context
 
 func (c *postgresRequestTopicClient) CleanupPostgresDatabase(ctx context.Context, in *CleanupPostgresDatabaseMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.PostgresRequestTopic/CleanupPostgresDatabase", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.PostgresRequestTopic/CleanupPostgresDatabase", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func _PostgresRequestTopic_UpsertPostgresDatabase_Handler(srv interface{}, ctx c
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.PostgresRequestTopic/UpsertPostgresDatabase",
+		FullMethod: "/o5.aws.infra.v1.topic.PostgresRequestTopic/UpsertPostgresDatabase",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(PostgresRequestTopicServer).UpsertPostgresDatabase(ctx, req.(*UpsertPostgresDatabaseMessage))
@@ -127,7 +127,7 @@ func _PostgresRequestTopic_MigratePostgresDatabase_Handler(srv interface{}, ctx 
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.PostgresRequestTopic/MigratePostgresDatabase",
+		FullMethod: "/o5.aws.infra.v1.topic.PostgresRequestTopic/MigratePostgresDatabase",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(PostgresRequestTopicServer).MigratePostgresDatabase(ctx, req.(*MigratePostgresDatabaseMessage))
@@ -145,7 +145,7 @@ func _PostgresRequestTopic_CleanupPostgresDatabase_Handler(srv interface{}, ctx 
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.PostgresRequestTopic/CleanupPostgresDatabase",
+		FullMethod: "/o5.aws.infra.v1.topic.PostgresRequestTopic/CleanupPostgresDatabase",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(PostgresRequestTopicServer).CleanupPostgresDatabase(ctx, req.(*CleanupPostgresDatabaseMessage))
@@ -157,7 +157,7 @@ func _PostgresRequestTopic_CleanupPostgresDatabase_Handler(srv interface{}, ctx 
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var PostgresRequestTopic_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "o5.awsinfra.v1.topic.PostgresRequestTopic",
+	ServiceName: "o5.aws.infra.v1.topic.PostgresRequestTopic",
 	HandlerType: (*PostgresRequestTopicServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -174,7 +174,7 @@ var PostgresRequestTopic_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "o5/awsinfra/v1/topic/aws_pg.proto",
+	Metadata: "o5/aws/infra/v1/topic/aws_pg.proto",
 }
 
 // PostgresReplyTopicClient is the client API for PostgresReplyTopic service.
@@ -194,7 +194,7 @@ func NewPostgresReplyTopicClient(cc grpc.ClientConnInterface) PostgresReplyTopic
 
 func (c *postgresReplyTopicClient) PostgresDatabaseStatus(ctx context.Context, in *PostgresDatabaseStatusMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.PostgresReplyTopic/PostgresDatabaseStatus", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.PostgresReplyTopic/PostgresDatabaseStatus", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +239,7 @@ func _PostgresReplyTopic_PostgresDatabaseStatus_Handler(srv interface{}, ctx con
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.PostgresReplyTopic/PostgresDatabaseStatus",
+		FullMethod: "/o5.aws.infra.v1.topic.PostgresReplyTopic/PostgresDatabaseStatus",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(PostgresReplyTopicServer).PostgresDatabaseStatus(ctx, req.(*PostgresDatabaseStatusMessage))
@@ -251,7 +251,7 @@ func _PostgresReplyTopic_PostgresDatabaseStatus_Handler(srv interface{}, ctx con
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var PostgresReplyTopic_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "o5.awsinfra.v1.topic.PostgresReplyTopic",
+	ServiceName: "o5.aws.infra.v1.topic.PostgresReplyTopic",
 	HandlerType: (*PostgresReplyTopicServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -260,5 +260,5 @@ var PostgresReplyTopic_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "o5/awsinfra/v1/topic/aws_pg.proto",
+	Metadata: "o5/aws/infra/v1/topic/aws_pg.proto",
 }

@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package o5.environment.v1;
+
+import "o5/environment/v1/environment.proto";
+
+option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb";
+
+message Cluster {
+  string name = 1;
+
+  oneof provider {
+    ECSCluster ecs_cluster = 10;
+  }
+}
+
+message CombinedConfig {
+  string name = 1;
+
+  oneof provider {
+    ECSCluster ecs_cluster = 10;
+  }
+
+  repeated Environment environments = 2;
+}
+
+message ECSCluster {
+  string listener_arn = 1;
+  string ecs_cluster_name = 2;
+  string ecs_repo = 3;
+  string ecs_task_execution_role = 4;
+  string vpc_id = 5;
+  string aws_account = 6;
+  string aws_region = 7;
+  string event_bus_arn = 16;
+
+  // The role to assume when deploying to this environment
+  string o5_deployer_assume_role = 8;
+
+  // The roles which a deployer service (e.g. o5 itself) should be allowed to
+  // assume, when grant_meta_deploy_permissions is set in the application config
+  repeated string o5_deployer_grant_roles = 9;
+
+  repeated RDSHost rds_hosts = 11;
+
+  optional string sidecar_image_version = 13; // defaults to latest
+  optional string sidecar_image_repo = 14; // defaults to ghcr.io/pentops/o5-runtime-sidecar
+
+  // S3 buckets (and others?) must be globally unique for all AWS accounts and regions,
+  // buckets are named {name}-{app}-{environment}-{region}-{global_namespace}
+  string global_namespace = 15;
+}
+
+message RDSHost {
+  string server_group = 1;
+  string secret_name = 2;
+}

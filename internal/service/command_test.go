@@ -5,13 +5,13 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_spb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
 	"github.com/pentops/o5-deploy-aws/internal/integration/mocks"
 	"github.com/pentops/o5-deploy-aws/internal/states"
-	"github.com/pentops/o5-go/application/v1/application_pb"
-	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
-	"github.com/pentops/o5-go/environment/v1/environment_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-messaging/outbox/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
 	"google.golang.org/grpc/codes"
@@ -184,7 +184,7 @@ func TestTriggerDeployment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reqMsg := &deployer_tpb.RequestDeploymentMessage{}
+	reqMsg := &awsdeployer_tpb.RequestDeploymentMessage{}
 	outbox.PopMessage(t, reqMsg)
 
 	if reqMsg.EnvironmentId != triggerRes.EnvironmentId {

@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             (unknown)
-// source: o5/awsinfra/v1/topic/aws_ecs.proto
+// source: o5/aws/infra/v1/topic/aws_ecs.proto
 
 package awsinfra_tpb
 
@@ -36,7 +36,7 @@ func NewECSRequestTopicClient(cc grpc.ClientConnInterface) ECSRequestTopicClient
 
 func (c *eCSRequestTopicClient) RunECSTask(ctx context.Context, in *RunECSTaskMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.ECSRequestTopic/RunECSTask", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.ECSRequestTopic/RunECSTask", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func _ECSRequestTopic_RunECSTask_Handler(srv interface{}, ctx context.Context, d
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.ECSRequestTopic/RunECSTask",
+		FullMethod: "/o5.aws.infra.v1.topic.ECSRequestTopic/RunECSTask",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ECSRequestTopicServer).RunECSTask(ctx, req.(*RunECSTaskMessage))
@@ -93,7 +93,7 @@ func _ECSRequestTopic_RunECSTask_Handler(srv interface{}, ctx context.Context, d
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ECSRequestTopic_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "o5.awsinfra.v1.topic.ECSRequestTopic",
+	ServiceName: "o5.aws.infra.v1.topic.ECSRequestTopic",
 	HandlerType: (*ECSRequestTopicServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -102,7 +102,7 @@ var ECSRequestTopic_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "o5/awsinfra/v1/topic/aws_ecs.proto",
+	Metadata: "o5/aws/infra/v1/topic/aws_ecs.proto",
 }
 
 // ECSReplyTopicClient is the client API for ECSReplyTopic service.
@@ -122,7 +122,7 @@ func NewECSReplyTopicClient(cc grpc.ClientConnInterface) ECSReplyTopicClient {
 
 func (c *eCSReplyTopicClient) ECSTaskStatus(ctx context.Context, in *ECSTaskStatusMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.ECSReplyTopic/ECSTaskStatus", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.ECSReplyTopic/ECSTaskStatus", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +167,7 @@ func _ECSReplyTopic_ECSTaskStatus_Handler(srv interface{}, ctx context.Context, 
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.ECSReplyTopic/ECSTaskStatus",
+		FullMethod: "/o5.aws.infra.v1.topic.ECSReplyTopic/ECSTaskStatus",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ECSReplyTopicServer).ECSTaskStatus(ctx, req.(*ECSTaskStatusMessage))
@@ -179,7 +179,7 @@ func _ECSReplyTopic_ECSTaskStatus_Handler(srv interface{}, ctx context.Context, 
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ECSReplyTopic_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "o5.awsinfra.v1.topic.ECSReplyTopic",
+	ServiceName: "o5.aws.infra.v1.topic.ECSReplyTopic",
 	HandlerType: (*ECSReplyTopicServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -188,5 +188,5 @@ var ECSReplyTopic_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "o5/awsinfra/v1/topic/aws_ecs.proto",
+	Metadata: "o5/aws/infra/v1/topic/aws_ecs.proto",
 }
