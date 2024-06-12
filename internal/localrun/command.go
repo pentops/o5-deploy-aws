@@ -6,12 +6,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
-	"github.com/pentops/o5-go/application/v1/application_pb"
-	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
-	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
-	"github.com/pentops/o5-go/environment/v1/environment_pb"
 )
 
 type Spec struct {
@@ -20,7 +19,7 @@ type Spec struct {
 	ClusterConfig *environment_pb.Cluster
 	EnvConfig     *environment_pb.Environment
 	ScratchBucket string
-	Flags         *deployer_pb.DeploymentFlags
+	Flags         *awsdeployer_pb.DeploymentFlags
 	ConfirmPlan   bool
 }
 
@@ -36,7 +35,7 @@ func RunLocalDeploy(ctx context.Context, templateStore deployer.TemplateStore, i
 	eventLoop.confirmPlan = spec.ConfirmPlan
 	var environmentID = uuid.NewString()
 
-	trigger := &deployer_tpb.RequestDeploymentMessage{
+	trigger := &awsdeployer_tpb.RequestDeploymentMessage{
 		DeploymentId:  uuid.NewString(),
 		Application:   spec.AppConfig,
 		Version:       spec.Version,

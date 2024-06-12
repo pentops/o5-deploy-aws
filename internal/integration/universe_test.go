@@ -10,15 +10,15 @@ import (
 	"github.com/iancoleman/strcase"
 	"github.com/pentops/flowtest"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_epb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_spb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_epb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
 	"github.com/pentops/o5-deploy-aws/internal/integration/mocks"
 	"github.com/pentops/o5-deploy-aws/internal/service"
 	"github.com/pentops/o5-deploy-aws/internal/states"
-	"github.com/pentops/o5-go/deployer/v1/deployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
 	"github.com/pentops/o5-messaging/outbox/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
@@ -97,7 +97,7 @@ func NewStepper(ctx context.Context, t testing.TB) *Stepper {
 }
 
 type Universe struct {
-	DeployerTopic deployer_tpb.DeploymentRequestTopicClient
+	DeployerTopic awsdeployer_tpb.DeploymentRequestTopicClient
 	CFReplyTopic  awsinfra_tpb.CloudFormationReplyTopicClient
 
 	DeployerQuery   awsdeployer_spb.DeploymentQueryServiceClient
@@ -259,8 +259,8 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	deployer_tpb.RegisterDeploymentRequestTopicServer(topicPair.Server, deploymentWorker)
-	uu.DeployerTopic = deployer_tpb.NewDeploymentRequestTopicClient(topicPair.Client)
+	awsdeployer_tpb.RegisterDeploymentRequestTopicServer(topicPair.Server, deploymentWorker)
+	uu.DeployerTopic = awsdeployer_tpb.NewDeploymentRequestTopicClient(topicPair.Client)
 
 	awsinfra_tpb.RegisterCloudFormationReplyTopicServer(topicPair.Server, deploymentWorker)
 	uu.CFReplyTopic = awsinfra_tpb.NewCloudFormationReplyTopicClient(topicPair.Client)

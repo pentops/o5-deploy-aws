@@ -3,7 +3,7 @@ package app
 import (
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/iam"
-	"github.com/pentops/o5-go/application/v1/application_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 )
 
 type PolicyBuilder struct {

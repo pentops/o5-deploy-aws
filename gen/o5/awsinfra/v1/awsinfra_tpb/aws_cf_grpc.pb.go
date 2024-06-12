@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             (unknown)
-// source: o5/awsinfra/v1/topic/aws_cf.proto
+// source: o5/aws/infra/v1/topic/aws_cf.proto
 
 package awsinfra_tpb
 
@@ -43,7 +43,7 @@ func NewCloudFormationRequestTopicClient(cc grpc.ClientConnInterface) CloudForma
 
 func (c *cloudFormationRequestTopicClient) CreateNewStack(ctx context.Context, in *CreateNewStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/CreateNewStack", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/CreateNewStack", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ func (c *cloudFormationRequestTopicClient) CreateNewStack(ctx context.Context, i
 
 func (c *cloudFormationRequestTopicClient) UpdateStack(ctx context.Context, in *UpdateStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/UpdateStack", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/UpdateStack", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (c *cloudFormationRequestTopicClient) UpdateStack(ctx context.Context, in *
 
 func (c *cloudFormationRequestTopicClient) CreateChangeSet(ctx context.Context, in *CreateChangeSetMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/CreateChangeSet", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/CreateChangeSet", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +70,7 @@ func (c *cloudFormationRequestTopicClient) CreateChangeSet(ctx context.Context, 
 
 func (c *cloudFormationRequestTopicClient) ApplyChangeSet(ctx context.Context, in *ApplyChangeSetMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/ApplyChangeSet", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/ApplyChangeSet", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (c *cloudFormationRequestTopicClient) ApplyChangeSet(ctx context.Context, i
 
 func (c *cloudFormationRequestTopicClient) DeleteStack(ctx context.Context, in *DeleteStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/DeleteStack", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/DeleteStack", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +88,7 @@ func (c *cloudFormationRequestTopicClient) DeleteStack(ctx context.Context, in *
 
 func (c *cloudFormationRequestTopicClient) ScaleStack(ctx context.Context, in *ScaleStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/ScaleStack", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/ScaleStack", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func (c *cloudFormationRequestTopicClient) ScaleStack(ctx context.Context, in *S
 
 func (c *cloudFormationRequestTopicClient) CancelStackUpdate(ctx context.Context, in *CancelStackUpdateMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/CancelStackUpdate", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/CancelStackUpdate", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func (c *cloudFormationRequestTopicClient) CancelStackUpdate(ctx context.Context
 
 func (c *cloudFormationRequestTopicClient) StabalizeStack(ctx context.Context, in *StabalizeStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/StabalizeStack", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/StabalizeStack", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +180,7 @@ func _CloudFormationRequestTopic_CreateNewStack_Handler(srv interface{}, ctx con
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/CreateNewStack",
+		FullMethod: "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/CreateNewStack",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CloudFormationRequestTopicServer).CreateNewStack(ctx, req.(*CreateNewStackMessage))
@@ -198,7 +198,7 @@ func _CloudFormationRequestTopic_UpdateStack_Handler(srv interface{}, ctx contex
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/UpdateStack",
+		FullMethod: "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/UpdateStack",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CloudFormationRequestTopicServer).UpdateStack(ctx, req.(*UpdateStackMessage))
@@ -216,7 +216,7 @@ func _CloudFormationRequestTopic_CreateChangeSet_Handler(srv interface{}, ctx co
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/CreateChangeSet",
+		FullMethod: "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/CreateChangeSet",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CloudFormationRequestTopicServer).CreateChangeSet(ctx, req.(*CreateChangeSetMessage))
@@ -234,7 +234,7 @@ func _CloudFormationRequestTopic_ApplyChangeSet_Handler(srv interface{}, ctx con
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/ApplyChangeSet",
+		FullMethod: "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/ApplyChangeSet",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CloudFormationRequestTopicServer).ApplyChangeSet(ctx, req.(*ApplyChangeSetMessage))
@@ -252,7 +252,7 @@ func _CloudFormationRequestTopic_DeleteStack_Handler(srv interface{}, ctx contex
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/DeleteStack",
+		FullMethod: "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/DeleteStack",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CloudFormationRequestTopicServer).DeleteStack(ctx, req.(*DeleteStackMessage))
@@ -270,7 +270,7 @@ func _CloudFormationRequestTopic_ScaleStack_Handler(srv interface{}, ctx context
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/ScaleStack",
+		FullMethod: "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/ScaleStack",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CloudFormationRequestTopicServer).ScaleStack(ctx, req.(*ScaleStackMessage))
@@ -288,7 +288,7 @@ func _CloudFormationRequestTopic_CancelStackUpdate_Handler(srv interface{}, ctx 
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/CancelStackUpdate",
+		FullMethod: "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/CancelStackUpdate",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CloudFormationRequestTopicServer).CancelStackUpdate(ctx, req.(*CancelStackUpdateMessage))
@@ -306,7 +306,7 @@ func _CloudFormationRequestTopic_StabalizeStack_Handler(srv interface{}, ctx con
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.CloudFormationRequestTopic/StabalizeStack",
+		FullMethod: "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/StabalizeStack",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CloudFormationRequestTopicServer).StabalizeStack(ctx, req.(*StabalizeStackMessage))
@@ -318,7 +318,7 @@ func _CloudFormationRequestTopic_StabalizeStack_Handler(srv interface{}, ctx con
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var CloudFormationRequestTopic_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "o5.awsinfra.v1.topic.CloudFormationRequestTopic",
+	ServiceName: "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
 	HandlerType: (*CloudFormationRequestTopicServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -355,7 +355,7 @@ var CloudFormationRequestTopic_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "o5/awsinfra/v1/topic/aws_cf.proto",
+	Metadata: "o5/aws/infra/v1/topic/aws_cf.proto",
 }
 
 // CloudFormationReplyTopicClient is the client API for CloudFormationReplyTopic service.
@@ -376,7 +376,7 @@ func NewCloudFormationReplyTopicClient(cc grpc.ClientConnInterface) CloudFormati
 
 func (c *cloudFormationReplyTopicClient) StackStatusChanged(ctx context.Context, in *StackStatusChangedMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.CloudFormationReplyTopic/StackStatusChanged", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.CloudFormationReplyTopic/StackStatusChanged", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -385,7 +385,7 @@ func (c *cloudFormationReplyTopicClient) StackStatusChanged(ctx context.Context,
 
 func (c *cloudFormationReplyTopicClient) ChangeSetStatusChanged(ctx context.Context, in *ChangeSetStatusChangedMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, "/o5.awsinfra.v1.topic.CloudFormationReplyTopic/ChangeSetStatusChanged", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/o5.aws.infra.v1.topic.CloudFormationReplyTopic/ChangeSetStatusChanged", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -435,7 +435,7 @@ func _CloudFormationReplyTopic_StackStatusChanged_Handler(srv interface{}, ctx c
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.CloudFormationReplyTopic/StackStatusChanged",
+		FullMethod: "/o5.aws.infra.v1.topic.CloudFormationReplyTopic/StackStatusChanged",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CloudFormationReplyTopicServer).StackStatusChanged(ctx, req.(*StackStatusChangedMessage))
@@ -453,7 +453,7 @@ func _CloudFormationReplyTopic_ChangeSetStatusChanged_Handler(srv interface{}, c
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/o5.awsinfra.v1.topic.CloudFormationReplyTopic/ChangeSetStatusChanged",
+		FullMethod: "/o5.aws.infra.v1.topic.CloudFormationReplyTopic/ChangeSetStatusChanged",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CloudFormationReplyTopicServer).ChangeSetStatusChanged(ctx, req.(*ChangeSetStatusChangedMessage))
@@ -465,7 +465,7 @@ func _CloudFormationReplyTopic_ChangeSetStatusChanged_Handler(srv interface{}, c
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var CloudFormationReplyTopic_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "o5.awsinfra.v1.topic.CloudFormationReplyTopic",
+	ServiceName: "o5.aws.infra.v1.topic.CloudFormationReplyTopic",
 	HandlerType: (*CloudFormationReplyTopicServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -478,5 +478,5 @@ var CloudFormationReplyTopic_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "o5/awsinfra/v1/topic/aws_cf.proto",
+	Metadata: "o5/aws/infra/v1/topic/aws_cf.proto",
 }

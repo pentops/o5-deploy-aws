@@ -1,0 +1,299 @@
+syntax = "proto3";
+
+package o5.application.v1;
+
+import "buf/validate/validate.proto";
+import "psm/list/v1/annotations.proto";
+
+option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb";
+
+message Application {
+  string name = 1 [(buf.validate.field).string.pattern = "^[a-z][a-z0-9]+$"];
+
+  repeated Target targets = 4;
+  repeated Blobstore blobstores = 7;
+  repeated Database databases = 8;
+  repeated Runtime runtimes = 9;
+  repeated Secret secrets = 10;
+
+  DeploymentConfig deployment_config = 11;
+
+  // Only valid when deployed onto AWS, this should be used only for
+  // infrastructure adapters, e.g. a service which sends emails using SES, the
+  // o5 deployer itself, dante etc.
+  AWSConfig aws_config = 12;
+}
+
+message DeploymentConfig {
+  // Migrates the stack in one single call, not compatible with database
+  // migration
+  bool quick_mode = 1;
+}
+
+message Target {
+  string name = 1;
+  //Topology topology = 2;
+}
+
+message Blobstore {
+  string name = 1;
+  repeated Grant grants = 2;
+
+  // The blobstore is a reference to a one owned by another application, it will
+  // not be created in the stack for the current application, but permissions
+  // will be granted.
+  BlobstoreRef ref = 3;
+}
+
+message BlobstoreRef {
+  // This application is allowed to read from the
+  // bucket. Default is true unless write_permission is true.
+  bool read_permission = 1;
+
+  // This application is allowed to write to the bucket. Does not imply
+  // read_permissions. Default is false.
+  bool write_permission = 2;
+
+  oneof source {
+    string application = 10; // `application.name` for an app in the same environment
+    // Full name of the 'bucket' for the blobstore,
+    // does not follow any patterns.
+    string bucket_name = 11;
+  }
+}
+
+message Grant {
+  string principal = 1; // This is a lookup in the env file
+}
+
+message Database {
+  string name = 1;
+
+  oneof engine {
+    option (psm.list.v1.oneof).filtering.filterable = true;
+
+    Postgres postgres = 10;
+  }
+
+  message Postgres {
+    // The name of the database within the postgres instance, default is the
+    // name in the parent message
+    string db_name = 1;
+
+    // default is 'default' - identifies which database server from the
+    // environment config this belongs with
+    string server_group = 2;
+
+    repeated string db_extensions = 3;
+
+    Container migrate_container = 4;
+
+    bool run_outbox = 5 [(psm.list.v1.field).bool.filtering.filterable = true];
+  }
+}
+
+message Runtime {
+  string name = 1 [(buf.validate.field).string.pattern = "^[a-z][a-z0-9]+$"];
+
+  // When true, HTTP and gRPC requests will be routed directly to the runtime
+  // container, not via the ingress sidecar. The runtime container is
+  // responsible for all security, throttling etc.
+  bool direct_ingress = 2;
+
+  repeated Container containers = 3;
+
+  repeated Route routes = 4;
+
+  repeated Subscription subscriptions = 5;
+
+  // when true, marks this application as a deployer app, meaning it should have
+  // permissions to deploy itself and other permissions
+  bool grant_meta_deploy_permissions = 6;
+
+  WorkerConfig worker_config = 13;
+}
+
+message WorkerConfig {
+  // chance percentage of sidecar behavior: replay message or process then treat as a deadletter
+  int64 replay_chance = 1 [
+    (buf.validate.field).int64.gte = 0,
+    (buf.validate.field).int64.lte = 100
+  ];
+  int64 deadletter_chance = 2 [
+    (buf.validate.field).int64.gte = 0,
+    (buf.validate.field).int64.lte = 100
+  ];
+
+  // if true, sidecar will not send dead letter messages, should only be used
+  // for dead-letter handlers (e.g. dante)
+  bool no_deadletters = 3;
+}
+
+message Subscription {
+  string name = 1;
+  optional string env_name = 2;
+
+  string target_container = 3; // Default: first defined container
+  int64 port = 4; // Default: 8080
+
+  // Baz in the method /foo.bar.v1.FooBar/Baz
+  // Subscribes only to the method, if not set, subscribes to all methods
+  optional string grpc_method = 5;
+
+  // For request-reply replies, filters to the reply.reply_to field
+  optional string reply_to = 6;
+
+  // The payload is not the standard messaging payload
+  // It should be parsed into a o5.messaging.v1.topic.RawMessage
+  // Used for infrastructure messages, e.g. AWS EventBridge or CloudWatch events.
+  // Setting non_grpc in AWS will set 'rawMessageDelivery' to *false*, i.e., the SNS wrapper
+  // will be included.
+  bool raw_message = 7;
+
+  // Subscribes to infra events, e.g. AWS ECS Task status
+  // Requires grant_meta_deploy_permissions to be true
+  bool meta_infra_events = 8;
+}
+
+message Route {
+  // Default is not to filter, but requires the route_group to be FALLBACK
+  string prefix = 1;
+
+  // For envifonments which support subdomains, this becomes the prefix on the
+  // domain filter. Wildcards are supported.
+  repeated string subdomains = 7;
+
+  RouteProtocol protocol = 2 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+
+  string target_container = 3; // Default: first defined container
+  bool bypass_ingress = 4; // Default: false
+  int64 port = 5; // Default: 8080
+  RouteGroup route_group = 6; // Default: NORMAL
+}
+
+enum RouteProtocol {
+  ROUTE_PROTOCOL_UNSPECIFIED = 0;
+  ROUTE_PROTOCOL_HTTP = 1;
+  ROUTE_PROTOCOL_GRPC = 2;
+}
+
+enum RouteGroup {
+  ROUTE_GROUP_UNSPECIFIED = 0;
+  ROUTE_GROUP_FIRST = 1;
+  ROUTE_GROUP_NORMAL = 2;
+  ROUTE_GROUP_FALLBACK = 3;
+}
+
+enum Demand {
+  DEMAND_UNSPECIFIED = 0;
+  DEMAND_LIGHT = 1;
+  DEMAND_MEDIUM = 2;
+  DEMAND_HEAVY = 3;
+}
+
+message Container {
+  string name = 1;
+
+  oneof source {
+    option (psm.list.v1.oneof).filtering.filterable = true;
+
+    string image_url = 2;
+    Image image = 3;
+  }
+
+  repeated string command = 4;
+
+  message Image {
+    string name = 1;
+
+    // Defaults to the full git hash being deployed (or passed in --version
+    // parameter)
+    optional string tag = 2;
+
+    // Defaults to the environment's registry, set here to override
+    optional string registry = 3;
+  }
+
+  // The amount of Memory and CPU to allocate to the container
+  Demand demand = 5 [(psm.list.v1.field).enum.filtering = {filterable: true}];
+
+  repeated EnvironmentVariable env_vars = 6;
+
+  // gives access to /var/run/docker.sock in the container
+  bool mount_docker_socket = 7;
+}
+
+message EnvironmentVariable {
+  string name = 1;
+
+  oneof spec {
+    option (psm.list.v1.oneof).filtering.filterable = true;
+
+    string value = 9;
+    DatabaseEnvVar database = 10;
+    BlobstoreEnvVar blobstore = 11;
+    MapEnvVar env_map = 12;
+    FromEnvVar from_env = 13;
+    SecretEnvVar secret = 14;
+    O5Var o5 = 15;
+  }
+}
+
+message DatabaseEnvVar {
+  // references a database in the top level array
+  string database_name = 1;
+
+  // TODO: Formats. Default is a full URI which might do.
+}
+
+message BlobstoreEnvVar {
+  string name = 1;
+  optional string sub_path = 2;
+
+  oneof format {
+    option (psm.list.v1.oneof).filtering.filterable = true;
+
+    // Sets the variable as s3://<bucket>/<?sub_path>
+    // TODO: Deprecate this and build a wrapper through the sidecar
+    bool s3_direct = 10 [(psm.list.v1.field).bool.filtering.filterable = true];
+  }
+}
+
+message MapEnvVar {}
+
+message FromEnvVar {
+  string name = 1;
+}
+
+message SecretEnvVar {
+  string secret_name = 1;
+  string json_key = 2;
+}
+
+message Secret {
+  string name = 1;
+}
+
+message AWSConfig {
+  SES ses = 1;
+
+  message SES {
+    bool send_email = 1;
+  }
+
+  SQSPublishAnywhere sqs_publish_anywhere = 2;
+
+  message SQSPublishAnywhere {
+    bool send_anywhere = 1;
+  }
+}
+
+enum O5Var {
+  O5_VAR_UNSPECIFIED = 0;
+
+  // address of the sidecar / adapter for gRPC dial
+  O5_VAR_ADAPTER_ENDPOINT = 1;
+}

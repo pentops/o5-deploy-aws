@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	sq "github.com/elgris/sqrl"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_spb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
 	"github.com/pentops/o5-deploy-aws/internal/states"
 	"github.com/pentops/protostate/psm"
 	"github.com/pentops/sqrlx.go/sqrlx"

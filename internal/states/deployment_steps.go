@@ -6,15 +6,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsdeployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
-	"github.com/pentops/o5-go/deployer/v1/deployer_pb"
 	"github.com/pentops/o5-messaging/o5msg"
 )
 
 type planInput struct {
 	stackStatus *awsdeployer_pb.CFStackOutput
-	flags       *deployer_pb.DeploymentFlags
+	flags       *awsdeployer_pb.DeploymentFlags
 }
 
 func planDeploymentSteps(ctx context.Context, deployment *awsdeployer_pb.DeploymentStateData, input planInput) ([]*awsdeployer_pb.DeploymentStep, error) {
