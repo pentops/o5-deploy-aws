@@ -11,7 +11,6 @@ import "o5/aws/deployer/v1/cluster.proto";
 import "o5/aws/deployer/v1/deployment.proto";
 import "o5/aws/deployer/v1/environment.proto";
 import "o5/aws/deployer/v1/stack.proto";
-import "o5/deployer/v1/deployer.proto";
 import "o5/environment/v1/cluster.proto";
 import "o5/environment/v1/environment.proto";
 
