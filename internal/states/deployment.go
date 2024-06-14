@@ -2,13 +2,12 @@ package states
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
+	"github.com/pentops/o5-deploy-aws/internal/states/plan"
 	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
 	"github.com/pentops/protostate/psm"
-	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -26,10 +25,9 @@ func buildRequestMetadata(contextMessage proto.Message) (*messaging_pb.RequestMe
 }
 
 func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
-	config := awsdeployer_pb.DefaultDeploymentPSMConfig().
-		SystemActor(psm.MustSystemActor("9C88DF5B-6ED0-46DF-A389-474F27A7395F"))
-
-	sm, err := config.NewStateMachine()
+	sm, err := awsdeployer_pb.DeploymentPSMBuilder().
+		SystemActor(psm.MustSystemActor("9C88DF5B-6ED0-46DF-A389-474F27A7395F")).
+		BuildStateMachine()
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +41,6 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 			event *awsdeployer_pb.DeploymentEventType_Created,
 		) error {
 			deployment.Spec = event.Spec
-			deployment.StackName = fmt.Sprintf("%s-%s", event.Spec.EnvironmentName, event.Spec.AppName)
 
 			// No follow on, the stack state will trigger
 
@@ -54,9 +51,8 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 	sm.From(awsdeployer_pb.DeploymentStatus_QUEUED).
 		OnEvent(awsdeployer_pb.DeploymentPSMEventTriggered).
 		SetStatus(awsdeployer_pb.DeploymentStatus_TRIGGERED).
-		Hook(awsdeployer_pb.DeploymentPSMHook(func(
+		LogicHook(awsdeployer_pb.DeploymentPSMLogicHook(func(
 			ctx context.Context,
-			tx sqrlx.Transaction,
 			tb awsdeployer_pb.DeploymentPSMHookBaton,
 			deployment *awsdeployer_pb.DeploymentState,
 			event *awsdeployer_pb.DeploymentEventType_Triggered,
@@ -71,9 +67,8 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 	sm.From(awsdeployer_pb.DeploymentStatus_TRIGGERED).
 		OnEvent(awsdeployer_pb.DeploymentPSMEventStackWait).
 		SetStatus(awsdeployer_pb.DeploymentStatus_WAITING).
-		Hook(awsdeployer_pb.DeploymentPSMHook(func(
+		LogicHook(awsdeployer_pb.DeploymentPSMLogicHook(func(
 			ctx context.Context,
-			tx sqrlx.Transaction,
 			tb awsdeployer_pb.DeploymentPSMHookBaton,
 			deployment *awsdeployer_pb.DeploymentState,
 			event *awsdeployer_pb.DeploymentEventType_StackWait,
@@ -88,7 +83,7 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 
 			tb.SideEffect(&awsinfra_tpb.StabalizeStackMessage{
 				Request:      requestMetadata,
-				StackName:    deployment.Data.StackName,
+				StackName:    deployment.Data.Spec.CfStackName,
 				CancelUpdate: deployment.Data.Spec.Flags.CancelUpdates,
 			})
 
@@ -105,17 +100,16 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 	sm.From(awsdeployer_pb.DeploymentStatus_WAITING).
 		OnEvent(awsdeployer_pb.DeploymentPSMEventStackAvailable).
 		SetStatus(awsdeployer_pb.DeploymentStatus_AVAILABLE).
-		Hook(awsdeployer_pb.DeploymentPSMHook(func(
+		LogicHook(awsdeployer_pb.DeploymentPSMLogicHook(func(
 			ctx context.Context,
-			tx sqrlx.Transaction,
 			tb awsdeployer_pb.DeploymentPSMHookBaton,
 			deployment *awsdeployer_pb.DeploymentState,
 			event *awsdeployer_pb.DeploymentEventType_StackAvailable,
 		) error {
 
-			plan, err := planDeploymentSteps(ctx, deployment.Data, planInput{
-				stackStatus: event.StackOutput,
-				flags:       deployment.Data.Spec.Flags,
+			plan, err := plan.DeploymentSteps(ctx, plan.DeploymentInput{
+				Deployment:  deployment.Data.Spec,
+				StackStatus: event.StackOutput,
 			})
 			if err != nil {
 				return err
@@ -138,19 +132,15 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 		) error {
 
 			deployment.Steps = event.Steps
-			if err := updateStepDependencies(deployment); err != nil {
-				return err
-			}
-			return nil
+			return plan.UpdateStepDependencies(deployment.Steps)
 		})).
-		Hook(awsdeployer_pb.DeploymentPSMHook(func(
+		LogicHook(awsdeployer_pb.DeploymentPSMLogicHook(func(
 			ctx context.Context,
-			tx sqrlx.Transaction,
 			tb awsdeployer_pb.DeploymentPSMHookBaton,
 			deployment *awsdeployer_pb.DeploymentState,
 			event *awsdeployer_pb.DeploymentEventType_RunSteps,
 		) error {
-			return stepNext(ctx, tb, deployment)
+			return plan.StepNext(ctx, tb, deployment.Data.Steps)
 		}))
 
 	// RUNNING --> RUNNING : StepResult
@@ -159,16 +149,15 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 			deployment *awsdeployer_pb.DeploymentStateData,
 			event *awsdeployer_pb.DeploymentEventType_StepResult,
 		) error {
-			return updateDeploymentStep(deployment, event)
+			return plan.UpdateDeploymentStep(deployment.Steps, event)
 		})).
-		Hook(awsdeployer_pb.DeploymentPSMHook(func(
+		LogicHook(awsdeployer_pb.DeploymentPSMLogicHook(func(
 			ctx context.Context,
-			tx sqrlx.Transaction,
 			tb awsdeployer_pb.DeploymentPSMHookBaton,
 			deployment *awsdeployer_pb.DeploymentState,
 			event *awsdeployer_pb.DeploymentEventType_StepResult,
 		) error {
-			return stepNext(ctx, tb, deployment)
+			return plan.StepNext(ctx, tb, deployment.Data.Steps)
 		}))
 
 	// RUNNING --> RUNNING : RunStep
@@ -178,46 +167,21 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 			deployment *awsdeployer_pb.DeploymentStateData,
 			event *awsdeployer_pb.DeploymentEventType_RunStep,
 		) error {
-			for _, step := range deployment.Steps {
-				if step.Id == event.StepId {
-					step.Status = awsdeployer_pb.StepStatus_ACTIVE
-
-				}
-			}
-			return nil
+			return plan.ActivateDeploymentStep(deployment.Steps, event)
 		})).
-		Hook(awsdeployer_pb.DeploymentPSMHook(func(
+		LogicHook(awsdeployer_pb.DeploymentPSMLogicHook(func(
 			ctx context.Context,
-			tx sqrlx.Transaction,
 			tb awsdeployer_pb.DeploymentPSMHookBaton,
 			deployment *awsdeployer_pb.DeploymentState,
 			event *awsdeployer_pb.DeploymentEventType_RunStep,
 		) error {
-			stepMap := map[string]*awsdeployer_pb.DeploymentStep{}
-			for _, search := range deployment.Data.Steps {
-				stepMap[search.Id] = search
-			}
-
-			thisStep, ok := stepMap[event.StepId]
-			if !ok {
-				return fmt.Errorf("step not found: %s", event.StepId)
-			}
-
-			depMap := map[string]*awsdeployer_pb.DeploymentStep{}
-
-			for _, dep := range thisStep.DependsOn {
-				depMap[dep], ok = stepMap[dep]
-				if !ok {
-					return fmt.Errorf("dependency not found: %s", dep)
-				}
-			}
-
-			sideEffect, err := stepToSideEffect(thisStep, deployment, depMap)
+			sideEffect, err := plan.RunStep(ctx, deployment.Keys, deployment.Data.Steps, event)
 			if err != nil {
 				return err
 			}
-			tb.SideEffect(sideEffect)
-
+			if sideEffect != nil {
+				tb.SideEffect(sideEffect)
+			}
 			return nil
 		}))
 
@@ -249,7 +213,7 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 			deployment *awsdeployer_pb.DeploymentStateData,
 			event *awsdeployer_pb.DeploymentEventType_StepResult,
 		) error {
-			return updateDeploymentStep(deployment, event)
+			return plan.UpdateDeploymentStep(deployment.Steps, event)
 		}))
 
 	return sm, nil

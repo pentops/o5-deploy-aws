@@ -6,10 +6,8 @@ import (
 )
 
 func NewClusterEventer() (*awsdeployer_pb.ClusterPSM, error) {
-	config := awsdeployer_pb.DefaultClusterPSMConfig().
-		SystemActor(psm.MustSystemActor("D777D42C-3FE6-4A0D-9F70-5BC1348516F5"))
-
-	sm, err := awsdeployer_pb.NewClusterPSM(config)
+	sm, err := awsdeployer_pb.ClusterPSMBuilder().
+		SystemActor(psm.MustSystemActor("D777D42C-3FE6-4A0D-9F70-5BC1348516F5")).BuildStateMachine()
 	if err != nil {
 		return nil, err
 	}

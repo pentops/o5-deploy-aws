@@ -6,10 +6,9 @@ import (
 )
 
 func NewEnvironmentEventer() (*awsdeployer_pb.EnvironmentPSM, error) {
-	config := awsdeployer_pb.DefaultEnvironmentPSMConfig().
-		SystemActor(psm.MustSystemActor("216B6C2E-D996-492C-B80C-9AAD0CCFEEC4"))
-
-	sm, err := awsdeployer_pb.NewEnvironmentPSM(config)
+	sm, err := awsdeployer_pb.EnvironmentPSMBuilder().
+		SystemActor(psm.MustSystemActor("216B6C2E-D996-492C-B80C-9AAD0CCFEEC4")).
+		BuildStateMachine()
 	if err != nil {
 		return nil, err
 	}

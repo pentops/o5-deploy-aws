@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/protostate/psm"
-	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -19,10 +18,9 @@ func StackID(envName, appName string) string {
 }
 
 func NewStackEventer() (*awsdeployer_pb.StackPSM, error) {
-	config := awsdeployer_pb.DefaultStackPSMConfig().
-		SystemActor(psm.MustSystemActor("0F34118E-6263-4634-A5FB-5C04D71203D2"))
-
-	sm, err := config.NewStateMachine()
+	sm, err := awsdeployer_pb.StackPSMBuilder().
+		SystemActor(psm.MustSystemActor("0F34118E-6263-4634-A5FB-5C04D71203D2")).
+		BuildStateMachine()
 	if err != nil {
 		return nil, err
 	}
@@ -142,9 +140,8 @@ func NewStackEventer() (*awsdeployer_pb.StackPSM, error) {
 
 		// After any event, if the status is AVAILABLE And there are queued
 		// deployments, run the next one.
-	sm.GeneralHook(awsdeployer_pb.StackPSMGeneralHook(func(
+	sm.LogicHook(awsdeployer_pb.StackPSMGeneralLogicHook(func(
 		ctx context.Context,
-		tx sqrlx.Transaction,
 		tb awsdeployer_pb.StackPSMHookBaton,
 		state *awsdeployer_pb.StackState,
 		event *awsdeployer_pb.StackEvent,

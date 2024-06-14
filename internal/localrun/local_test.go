@@ -33,8 +33,13 @@ func (m *MockTemplateStore) PutTemplate(ctx context.Context, envName, appName, d
 }
 
 type MockInfra struct {
-	incoming chan proto.Message
-	outgoing chan awsdeployer_pb.DeploymentPSMEvent
+	incoming        chan proto.Message
+	outgoing        chan awsdeployer_pb.DeploymentPSMEvent
+	stabalizeResult *awsinfra_tpb.StackStatusChangedMessage
+}
+
+func (m *MockInfra) StabalizeStack(ctx context.Context, msg *awsinfra_tpb.StabalizeStackMessage) (*awsinfra_tpb.StackStatusChangedMessage, error) {
+	return m.stabalizeResult, nil
 }
 
 func (m *MockInfra) HandleMessage(ctx context.Context, msg proto.Message) (*awsdeployer_pb.DeploymentPSMEventSpec, error) {
@@ -154,18 +159,10 @@ func TestLocalRun(t *testing.T) {
 	infra := &MockInfra{
 		incoming: make(chan proto.Message),
 		outgoing: make(chan awsdeployer_pb.DeploymentPSMEvent),
+		stabalizeResult: &awsinfra_tpb.StackStatusChangedMessage{
+			Lifecycle: awsdeployer_pb.CFLifecycle_MISSING,
+		},
 	}
-
-	ss.Step("Stabalize", func(ctx context.Context, t flowtest.Asserter) {
-		_, ok := infra.Pop(t, ctx).(*awsinfra_tpb.StabalizeStackMessage)
-		if !ok {
-			t.Fatalf("expected StabalizeStackMessage")
-		}
-
-		infra.Send(&awsdeployer_pb.DeploymentEventType_StackAvailable{
-			StackOutput: nil,
-		})
-	})
 
 	ss.Step("CreateNewStack", func(ctx context.Context, t flowtest.Asserter) {
 		req, ok := infra.Pop(t, ctx).(*awsinfra_tpb.CreateNewStackMessage)

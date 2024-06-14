@@ -175,6 +175,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 		Parameters:      parameters,
 		SnsTopics:       snsTopics,
 		Flags:           trigger.Flags,
+		CfStackName:     fmt.Sprintf("%s-%s", environment.FullName, app.Name),
 
 		EcsCluster: ecsCluster.EcsClusterName,
 	}

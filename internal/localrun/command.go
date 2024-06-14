@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
@@ -29,10 +28,6 @@ func RunLocalDeploy(ctx context.Context, templateStore deployer.TemplateStore, i
 	if err != nil {
 		return err
 	}
-	stateStore := NewStateStore()
-	eventLoop := NewEventLoop(infraAdapter, stateStore, deploymentManager)
-
-	eventLoop.confirmPlan = spec.ConfirmPlan
 	var environmentID = uuid.NewString()
 
 	trigger := &awsdeployer_tpb.RequestDeploymentMessage{
@@ -50,21 +45,18 @@ func RunLocalDeploy(ctx context.Context, templateStore deployer.TemplateStore, i
 		return fmt.Errorf("Cluster config is required")
 	}
 
-	err = eventLoop.Run(ctx, trigger, spec.ClusterConfig, spec.EnvConfig)
+	rr := &Runner{
+		awsRunner:   infraAdapter,
+		specBuilder: deploymentManager,
+		confirmPlan: spec.ConfirmPlan,
+	}
+
+	deploymentSpec, err := deploymentManager.BuildSpec(ctx, trigger, spec.ClusterConfig, spec.EnvConfig)
 	if err != nil {
-		return fmt.Errorf("Error *running* event loop (errors are not expected): %w", err)
+		return err
 	}
 
-	endState, err := stateStore.GetDeployment(ctx, trigger.DeploymentId)
-	if err != nil {
-		return fmt.Errorf("Error getting deployment state: %w", err)
-	}
-
-	log.WithField(ctx, "End Status", endState.Status.ShortString()).Info("Deployment completed")
-
-	if endState.Status != awsdeployer_pb.DeploymentStatus_DONE {
-		return fmt.Errorf("Deployment did not complete successfully: %s", endState.Status)
-	}
-
-	return err
+	return rr.RunDeployment(ctx, &awsdeployer_pb.DeploymentStateData{
+		Spec: deploymentSpec,
+	})
 }
