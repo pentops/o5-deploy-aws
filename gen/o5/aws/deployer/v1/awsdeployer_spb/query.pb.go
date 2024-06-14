@@ -7,8 +7,8 @@
 package awsdeployer_spb
 
 import (
+	_ "github.com/pentops/o5-auth/gen/o5/auth/v1/auth_pb"
 	awsdeployer_pb "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	_ "github.com/pentops/o5-go/auth/v1/auth_pb"
 	psml_pb "github.com/pentops/protostate/gen/list/v1/psml_pb"
 	_ "github.com/pentops/protostate/gen/state/v1/psm_pb"
 	_ "google.golang.org/genproto/googleapis/api/annotations"

@@ -4,7 +4,7 @@ plugins:
     out: .
     opt: paths=import,module=github.com/pentops/o5-deploy-aws
 
-  - local: protoc-gen-go-o5-messaging # github.com/pentops/o5-messaging.go/cmd/protoc-gen-go-o5-messaging
+  - local: protoc-gen-go-o5-messaging # github.com/pentops/o5-messaging/cmd/protoc-gen-go-o5-messaging
     out: .
     opt: paths=import,module=github.com/pentops/o5-deploy-aws
 
