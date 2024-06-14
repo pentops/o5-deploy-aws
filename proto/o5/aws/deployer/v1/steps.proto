@@ -101,6 +101,8 @@ message StepRequestType {
     // the step with cloudformation outputs
     // containing the secret ARN
     string infra_output_step_id = 2;
+
+    bool rotate_credentials = 3;
   }
 
   message PGEvaluate {
@@ -117,6 +119,8 @@ message StepRequestType {
     // the step with cloudformation outputs
     // containing the migration task ARN and secret ARN
     string infra_output_step_id = 2;
+
+    string ecs_cluster_name = 3;
   }
 }
 

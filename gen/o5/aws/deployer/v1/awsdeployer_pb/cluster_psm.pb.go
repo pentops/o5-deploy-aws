@@ -8,7 +8,6 @@ import (
 	psm_pb "github.com/pentops/protostate/gen/state/v1/psm_pb"
 	psm "github.com/pentops/protostate/psm"
 	sqrlx "github.com/pentops/sqrlx.go/sqrlx"
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // PSM ClusterPSM
@@ -23,15 +22,6 @@ type ClusterPSM = psm.StateMachine[
 ]
 
 type ClusterPSMDB = psm.DBStateMachine[
-	*ClusterKeys,      // implements psm.IKeyset
-	*ClusterState,     // implements psm.IState
-	ClusterStatus,     // implements psm.IStatusEnum
-	*ClusterStateData, // implements psm.IStateData
-	*ClusterEvent,     // implements psm.IEvent
-	ClusterPSMEvent,   // implements psm.IInnerEvent
-]
-
-type ClusterPSMEventer = psm.Eventer[
 	*ClusterKeys,      // implements psm.IKeyset
 	*ClusterState,     // implements psm.IState
 	ClusterStatus,     // implements psm.IStatusEnum
@@ -66,6 +56,12 @@ func (msg *ClusterKeys) PSMIsSet() bool {
 // PSMFullName returns the full name of state machine with package prefix
 func (msg *ClusterKeys) PSMFullName() string {
 	return "o5.aws.deployer.v1.cluster"
+}
+func (msg *ClusterKeys) PSMKeyValues() (map[string]string, error) {
+	keyset := map[string]string{
+		"cluster_id": msg.ClusterId,
+	}
+	return keyset, nil
 }
 
 // EXTEND ClusterState with the psm.IState interface
@@ -185,45 +181,7 @@ func (*ClusterEventType_Configured) PSMEventKey() ClusterPSMEventKey {
 	return ClusterPSMEventConfigured
 }
 
-type ClusterPSMTableSpec = psm.PSMTableSpec[
-	*ClusterKeys,      // implements psm.IKeyset
-	*ClusterState,     // implements psm.IState
-	ClusterStatus,     // implements psm.IStatusEnum
-	*ClusterStateData, // implements psm.IStateData
-	*ClusterEvent,     // implements psm.IEvent
-	ClusterPSMEvent,   // implements psm.IInnerEvent
-]
-
-var DefaultClusterPSMTableSpec = ClusterPSMTableSpec{
-	TableMap: psm.TableMap{
-		State: psm.StateTableSpec{
-			TableName: "cluster",
-			Root:      &psm.FieldSpec{ColumnName: "state"},
-		},
-		Event: psm.EventTableSpec{
-			TableName:     "cluster_event",
-			Root:          &psm.FieldSpec{ColumnName: "data"},
-			ID:            &psm.FieldSpec{ColumnName: "id"},
-			Timestamp:     &psm.FieldSpec{ColumnName: "timestamp"},
-			Sequence:      &psm.FieldSpec{ColumnName: "sequence"},
-			StateSnapshot: &psm.FieldSpec{ColumnName: "state"},
-		},
-		KeyColumns: []psm.KeyColumn{{
-			ColumnName: "cluster_id",
-			ProtoName:  protoreflect.Name("cluster_id"),
-			Primary:    true,
-			Required:   true,
-		}},
-	},
-	KeyValues: func(keys *ClusterKeys) (map[string]string, error) {
-		keyset := map[string]string{
-			"cluster_id": keys.ClusterId,
-		}
-		return keyset, nil
-	},
-}
-
-func DefaultClusterPSMConfig() *psm.StateMachineConfig[
+func ClusterPSMBuilder() *psm.StateMachineConfig[
 	*ClusterKeys,      // implements psm.IKeyset
 	*ClusterState,     // implements psm.IState
 	ClusterStatus,     // implements psm.IStatusEnum
@@ -231,35 +189,17 @@ func DefaultClusterPSMConfig() *psm.StateMachineConfig[
 	*ClusterEvent,     // implements psm.IEvent
 	ClusterPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.NewStateMachineConfig[
+	return &psm.StateMachineConfig[
 		*ClusterKeys,      // implements psm.IKeyset
 		*ClusterState,     // implements psm.IState
 		ClusterStatus,     // implements psm.IStatusEnum
 		*ClusterStateData, // implements psm.IStateData
 		*ClusterEvent,     // implements psm.IEvent
 		ClusterPSMEvent,   // implements psm.IInnerEvent
-	](DefaultClusterPSMTableSpec)
+	]{}
 }
 
-func NewClusterPSM(config *psm.StateMachineConfig[
-	*ClusterKeys,      // implements psm.IKeyset
-	*ClusterState,     // implements psm.IState
-	ClusterStatus,     // implements psm.IStatusEnum
-	*ClusterStateData, // implements psm.IStateData
-	*ClusterEvent,     // implements psm.IEvent
-	ClusterPSMEvent,   // implements psm.IInnerEvent
-]) (*ClusterPSM, error) {
-	return psm.NewStateMachine[
-		*ClusterKeys,      // implements psm.IKeyset
-		*ClusterState,     // implements psm.IState
-		ClusterStatus,     // implements psm.IStatusEnum
-		*ClusterStateData, // implements psm.IStateData
-		*ClusterEvent,     // implements psm.IEvent
-		ClusterPSMEvent,   // implements psm.IInnerEvent
-	](config)
-}
-
-func ClusterPSMMutation[SE ClusterPSMEvent](cb func(*ClusterStateData, SE) error) psm.PSMMutationFunc[
+func ClusterPSMMutation[SE ClusterPSMEvent](cb func(*ClusterStateData, SE) error) psm.TransitionMutation[
 	*ClusterKeys,      // implements psm.IKeyset
 	*ClusterState,     // implements psm.IState
 	ClusterStatus,     // implements psm.IStatusEnum
@@ -268,7 +208,7 @@ func ClusterPSMMutation[SE ClusterPSMEvent](cb func(*ClusterStateData, SE) error
 	ClusterPSMEvent,   // implements psm.IInnerEvent
 	SE,                // Specific event type for the transition
 ] {
-	return psm.PSMMutationFunc[
+	return psm.TransitionMutation[
 		*ClusterKeys,      // implements psm.IKeyset
 		*ClusterState,     // implements psm.IState
 		ClusterStatus,     // implements psm.IStatusEnum
@@ -288,7 +228,7 @@ type ClusterPSMHookBaton = psm.HookBaton[
 	ClusterPSMEvent,   // implements psm.IInnerEvent
 ]
 
-func ClusterPSMHook[SE ClusterPSMEvent](cb func(context.Context, sqrlx.Transaction, ClusterPSMHookBaton, *ClusterState, SE) error) psm.PSMHookFunc[
+func ClusterPSMLogicHook[SE ClusterPSMEvent](cb func(context.Context, ClusterPSMHookBaton, *ClusterState, SE) error) psm.TransitionLogicHook[
 	*ClusterKeys,      // implements psm.IKeyset
 	*ClusterState,     // implements psm.IState
 	ClusterStatus,     // implements psm.IStatusEnum
@@ -297,7 +237,7 @@ func ClusterPSMHook[SE ClusterPSMEvent](cb func(context.Context, sqrlx.Transacti
 	ClusterPSMEvent,   // implements psm.IInnerEvent
 	SE,                // Specific event type for the transition
 ] {
-	return psm.PSMHookFunc[
+	return psm.TransitionLogicHook[
 		*ClusterKeys,      // implements psm.IKeyset
 		*ClusterState,     // implements psm.IState
 		ClusterStatus,     // implements psm.IStatusEnum
@@ -307,7 +247,55 @@ func ClusterPSMHook[SE ClusterPSMEvent](cb func(context.Context, sqrlx.Transacti
 		SE,                // Specific event type for the transition
 	](cb)
 }
-func ClusterPSMGeneralHook(cb func(context.Context, sqrlx.Transaction, ClusterPSMHookBaton, *ClusterState, *ClusterEvent) error) psm.GeneralStateHook[
+func ClusterPSMDataHook[SE ClusterPSMEvent](cb func(context.Context, sqrlx.Transaction, *ClusterState, SE) error) psm.TransitionDataHook[
+	*ClusterKeys,      // implements psm.IKeyset
+	*ClusterState,     // implements psm.IState
+	ClusterStatus,     // implements psm.IStatusEnum
+	*ClusterStateData, // implements psm.IStateData
+	*ClusterEvent,     // implements psm.IEvent
+	ClusterPSMEvent,   // implements psm.IInnerEvent
+	SE,                // Specific event type for the transition
+] {
+	return psm.TransitionDataHook[
+		*ClusterKeys,      // implements psm.IKeyset
+		*ClusterState,     // implements psm.IState
+		ClusterStatus,     // implements psm.IStatusEnum
+		*ClusterStateData, // implements psm.IStateData
+		*ClusterEvent,     // implements psm.IEvent
+		ClusterPSMEvent,   // implements psm.IInnerEvent
+		SE,                // Specific event type for the transition
+	](cb)
+}
+func ClusterPSMLinkHook[SE ClusterPSMEvent, DK psm.IKeyset, DIE psm.IInnerEvent](
+	linkDestination psm.LinkDestination[DK, DIE],
+	cb func(context.Context, *ClusterState, SE) (DK, DIE, error),
+) psm.LinkHook[
+	*ClusterKeys,      // implements psm.IKeyset
+	*ClusterState,     // implements psm.IState
+	ClusterStatus,     // implements psm.IStatusEnum
+	*ClusterStateData, // implements psm.IStateData
+	*ClusterEvent,     // implements psm.IEvent
+	ClusterPSMEvent,   // implements psm.IInnerEvent
+	SE,                // Specific event type for the transition
+	DK,                // Destination Keys
+	DIE,               // Destination Inner Event
+] {
+	return psm.LinkHook[
+		*ClusterKeys,      // implements psm.IKeyset
+		*ClusterState,     // implements psm.IState
+		ClusterStatus,     // implements psm.IStatusEnum
+		*ClusterStateData, // implements psm.IStateData
+		*ClusterEvent,     // implements psm.IEvent
+		ClusterPSMEvent,   // implements psm.IInnerEvent
+		SE,                // Specific event type for the transition
+		DK,                // Destination Keys
+		DIE,               // Destination Inner Event
+	]{
+		Derive:      cb,
+		Destination: linkDestination,
+	}
+}
+func ClusterPSMGeneralLogicHook(cb func(context.Context, ClusterPSMHookBaton, *ClusterState, *ClusterEvent) error) psm.GeneralLogicHook[
 	*ClusterKeys,      // implements psm.IKeyset
 	*ClusterState,     // implements psm.IState
 	ClusterStatus,     // implements psm.IStatusEnum
@@ -315,7 +303,41 @@ func ClusterPSMGeneralHook(cb func(context.Context, sqrlx.Transaction, ClusterPS
 	*ClusterEvent,     // implements psm.IEvent
 	ClusterPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.GeneralStateHook[
+	return psm.GeneralLogicHook[
+		*ClusterKeys,      // implements psm.IKeyset
+		*ClusterState,     // implements psm.IState
+		ClusterStatus,     // implements psm.IStatusEnum
+		*ClusterStateData, // implements psm.IStateData
+		*ClusterEvent,     // implements psm.IEvent
+		ClusterPSMEvent,   // implements psm.IInnerEvent
+	](cb)
+}
+func ClusterPSMGeneralStateDataHook(cb func(context.Context, sqrlx.Transaction, *ClusterState) error) psm.GeneralStateDataHook[
+	*ClusterKeys,      // implements psm.IKeyset
+	*ClusterState,     // implements psm.IState
+	ClusterStatus,     // implements psm.IStatusEnum
+	*ClusterStateData, // implements psm.IStateData
+	*ClusterEvent,     // implements psm.IEvent
+	ClusterPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralStateDataHook[
+		*ClusterKeys,      // implements psm.IKeyset
+		*ClusterState,     // implements psm.IState
+		ClusterStatus,     // implements psm.IStatusEnum
+		*ClusterStateData, // implements psm.IStateData
+		*ClusterEvent,     // implements psm.IEvent
+		ClusterPSMEvent,   // implements psm.IInnerEvent
+	](cb)
+}
+func ClusterPSMGeneralEventDataHook(cb func(context.Context, sqrlx.Transaction, *ClusterState, *ClusterEvent) error) psm.GeneralEventDataHook[
+	*ClusterKeys,      // implements psm.IKeyset
+	*ClusterState,     // implements psm.IState
+	ClusterStatus,     // implements psm.IStatusEnum
+	*ClusterStateData, // implements psm.IStateData
+	*ClusterEvent,     // implements psm.IEvent
+	ClusterPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralEventDataHook[
 		*ClusterKeys,      // implements psm.IKeyset
 		*ClusterState,     // implements psm.IState
 		ClusterStatus,     // implements psm.IStatusEnum

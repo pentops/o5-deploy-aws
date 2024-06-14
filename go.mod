@@ -1,19 +1,19 @@
 module github.com/pentops/o5-deploy-aws
 
-go 1.22.3
+go 1.22.4
 
 require (
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.34.1-20240508200655-46a4cf4ba109.1
-	github.com/aws/aws-sdk-go-v2 v1.27.0
-	github.com/aws/aws-sdk-go-v2/config v1.27.16
-	github.com/aws/aws-sdk-go-v2/credentials v1.17.16
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.34.2-20240508200655-46a4cf4ba109.2
+	github.com/aws/aws-sdk-go-v2 v1.27.2
+	github.com/aws/aws-sdk-go-v2/config v1.27.18
+	github.com/aws/aws-sdk-go-v2/credentials v1.17.18
 	github.com/aws/aws-sdk-go-v2/service/cloudformation v1.41.1
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.35.1
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.26.1
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.54.3
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.55.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.25.1
 	github.com/aws/aws-sdk-go-v2/service/sns v1.26.1
-	github.com/aws/aws-sdk-go-v2/service/sts v1.28.10
+	github.com/aws/aws-sdk-go-v2/service/sts v1.28.12
 	github.com/aws/smithy-go v1.20.2
 	github.com/awslabs/goformation/v7 v7.12.11
 	github.com/bradleyfalzon/ghinstallation v1.1.1
@@ -28,12 +28,12 @@ require (
 	github.com/pentops/envconf.go v0.0.0-20240607014745-65480a3da726
 	github.com/pentops/flowtest v0.0.0-20240607020132-7dda31076e79
 	github.com/pentops/go-grpc-helpers v0.0.0-20230815045451-2524ee695ebb
-	github.com/pentops/j5 v0.0.0-20240611220935-212e7c4e61f2
-	github.com/pentops/log.go v0.0.0-20240523172444-85c9292a83db
-	github.com/pentops/o5-go v0.0.0-20240611214452-99a6f6789ff8
-	github.com/pentops/o5-messaging v0.0.0-20240611214218-4ac153f68bc9
+	github.com/pentops/j5 v0.0.0-20240612184929-a822023f4261
+	github.com/pentops/log.go v0.0.0-20240612184720-79634792a21e
+	github.com/pentops/o5-go v0.0.0-20240612044618-47588bd0715f
+	github.com/pentops/o5-messaging v0.0.0-20240612154004-00ecaa53242b
 	github.com/pentops/pgtest.go v0.0.0-20240604005819-2035f4562734
-	github.com/pentops/protostate v0.0.0-20240611232313-1fb3a679db51
+	github.com/pentops/protostate v0.0.0-20240614030122-7f2dddcf6a30
 	github.com/pentops/runner v0.0.0-20240525192419-d655233635e9
 	github.com/pentops/sqrlx.go v0.0.0-20240523172712-b615a994d8c0
 	github.com/pressly/goose v2.7.0+incompatible
@@ -43,23 +43,23 @@ require (
 	golang.org/x/text v0.16.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20240610135401-a8a62080eff3
 	google.golang.org/grpc v1.64.0
-	google.golang.org/protobuf v1.34.2-0.20240529085009-ca837e5c658b
+	google.golang.org/protobuf v1.34.2
 )
 
 require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.2 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.3 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.7 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.7 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.5 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.9 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.6.9 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.8.0 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.3.7 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.3.9 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.11.2 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.3.9 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.11.9 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.17.7 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.20.9 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.24.3 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.3.11 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.11.11 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.17.9 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.20.11 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.24.5 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/fatih/color v1.17.0 // indirect

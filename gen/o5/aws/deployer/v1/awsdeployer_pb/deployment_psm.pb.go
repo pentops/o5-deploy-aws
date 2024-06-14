@@ -8,7 +8,6 @@ import (
 	psm_pb "github.com/pentops/protostate/gen/state/v1/psm_pb"
 	psm "github.com/pentops/protostate/psm"
 	sqrlx "github.com/pentops/sqrlx.go/sqrlx"
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // PSM DeploymentPSM
@@ -23,15 +22,6 @@ type DeploymentPSM = psm.StateMachine[
 ]
 
 type DeploymentPSMDB = psm.DBStateMachine[
-	*DeploymentKeys,      // implements psm.IKeyset
-	*DeploymentState,     // implements psm.IState
-	DeploymentStatus,     // implements psm.IStatusEnum
-	*DeploymentStateData, // implements psm.IStateData
-	*DeploymentEvent,     // implements psm.IEvent
-	DeploymentPSMEvent,   // implements psm.IInnerEvent
-]
-
-type DeploymentPSMEventer = psm.Eventer[
 	*DeploymentKeys,      // implements psm.IKeyset
 	*DeploymentState,     // implements psm.IState
 	DeploymentStatus,     // implements psm.IStatusEnum
@@ -76,6 +66,15 @@ func (msg *DeploymentKeys) PSMIsSet() bool {
 // PSMFullName returns the full name of state machine with package prefix
 func (msg *DeploymentKeys) PSMFullName() string {
 	return "o5.aws.deployer.v1.deployment"
+}
+func (msg *DeploymentKeys) PSMKeyValues() (map[string]string, error) {
+	keyset := map[string]string{
+		"deployment_id":  msg.DeploymentId,
+		"stack_id":       msg.StackId,
+		"environment_id": msg.EnvironmentId,
+		"cluster_id":     msg.ClusterId,
+	}
+	return keyset, nil
 }
 
 // EXTEND DeploymentState with the psm.IState interface
@@ -345,63 +344,7 @@ func (*DeploymentEventType_Terminated) PSMEventKey() DeploymentPSMEventKey {
 	return DeploymentPSMEventTerminated
 }
 
-type DeploymentPSMTableSpec = psm.PSMTableSpec[
-	*DeploymentKeys,      // implements psm.IKeyset
-	*DeploymentState,     // implements psm.IState
-	DeploymentStatus,     // implements psm.IStatusEnum
-	*DeploymentStateData, // implements psm.IStateData
-	*DeploymentEvent,     // implements psm.IEvent
-	DeploymentPSMEvent,   // implements psm.IInnerEvent
-]
-
-var DefaultDeploymentPSMTableSpec = DeploymentPSMTableSpec{
-	TableMap: psm.TableMap{
-		State: psm.StateTableSpec{
-			TableName: "deployment",
-			Root:      &psm.FieldSpec{ColumnName: "state"},
-		},
-		Event: psm.EventTableSpec{
-			TableName:     "deployment_event",
-			Root:          &psm.FieldSpec{ColumnName: "data"},
-			ID:            &psm.FieldSpec{ColumnName: "id"},
-			Timestamp:     &psm.FieldSpec{ColumnName: "timestamp"},
-			Sequence:      &psm.FieldSpec{ColumnName: "sequence"},
-			StateSnapshot: &psm.FieldSpec{ColumnName: "state"},
-		},
-		KeyColumns: []psm.KeyColumn{{
-			ColumnName: "deployment_id",
-			ProtoName:  protoreflect.Name("deployment_id"),
-			Primary:    true,
-			Required:   true,
-		}, {
-			ColumnName: "stack_id",
-			ProtoName:  protoreflect.Name("stack_id"),
-			Primary:    false,
-			Required:   true,
-		}, {
-			ColumnName: "environment_id",
-			ProtoName:  protoreflect.Name("environment_id"),
-			Primary:    false,
-			Required:   true,
-		}, {
-			ColumnName: "cluster_id",
-			ProtoName:  protoreflect.Name("cluster_id"),
-			Primary:    false,
-			Required:   true,
-		}},
-	},
-	KeyValues: func(keys *DeploymentKeys) (map[string]string, error) {
-		keyset := map[string]string{
-			"deployment_id":  keys.DeploymentId,
-			"stack_id":       keys.StackId,
-			"environment_id": keys.EnvironmentId,
-			"cluster_id":     keys.ClusterId,
-		}
-		return keyset, nil
-	},
-}
-
-func DefaultDeploymentPSMConfig() *psm.StateMachineConfig[
+func DeploymentPSMBuilder() *psm.StateMachineConfig[
 	*DeploymentKeys,      // implements psm.IKeyset
 	*DeploymentState,     // implements psm.IState
 	DeploymentStatus,     // implements psm.IStatusEnum
@@ -409,35 +352,17 @@ func DefaultDeploymentPSMConfig() *psm.StateMachineConfig[
 	*DeploymentEvent,     // implements psm.IEvent
 	DeploymentPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.NewStateMachineConfig[
+	return &psm.StateMachineConfig[
 		*DeploymentKeys,      // implements psm.IKeyset
 		*DeploymentState,     // implements psm.IState
 		DeploymentStatus,     // implements psm.IStatusEnum
 		*DeploymentStateData, // implements psm.IStateData
 		*DeploymentEvent,     // implements psm.IEvent
 		DeploymentPSMEvent,   // implements psm.IInnerEvent
-	](DefaultDeploymentPSMTableSpec)
+	]{}
 }
 
-func NewDeploymentPSM(config *psm.StateMachineConfig[
-	*DeploymentKeys,      // implements psm.IKeyset
-	*DeploymentState,     // implements psm.IState
-	DeploymentStatus,     // implements psm.IStatusEnum
-	*DeploymentStateData, // implements psm.IStateData
-	*DeploymentEvent,     // implements psm.IEvent
-	DeploymentPSMEvent,   // implements psm.IInnerEvent
-]) (*DeploymentPSM, error) {
-	return psm.NewStateMachine[
-		*DeploymentKeys,      // implements psm.IKeyset
-		*DeploymentState,     // implements psm.IState
-		DeploymentStatus,     // implements psm.IStatusEnum
-		*DeploymentStateData, // implements psm.IStateData
-		*DeploymentEvent,     // implements psm.IEvent
-		DeploymentPSMEvent,   // implements psm.IInnerEvent
-	](config)
-}
-
-func DeploymentPSMMutation[SE DeploymentPSMEvent](cb func(*DeploymentStateData, SE) error) psm.PSMMutationFunc[
+func DeploymentPSMMutation[SE DeploymentPSMEvent](cb func(*DeploymentStateData, SE) error) psm.TransitionMutation[
 	*DeploymentKeys,      // implements psm.IKeyset
 	*DeploymentState,     // implements psm.IState
 	DeploymentStatus,     // implements psm.IStatusEnum
@@ -446,7 +371,7 @@ func DeploymentPSMMutation[SE DeploymentPSMEvent](cb func(*DeploymentStateData, 
 	DeploymentPSMEvent,   // implements psm.IInnerEvent
 	SE,                   // Specific event type for the transition
 ] {
-	return psm.PSMMutationFunc[
+	return psm.TransitionMutation[
 		*DeploymentKeys,      // implements psm.IKeyset
 		*DeploymentState,     // implements psm.IState
 		DeploymentStatus,     // implements psm.IStatusEnum
@@ -466,7 +391,7 @@ type DeploymentPSMHookBaton = psm.HookBaton[
 	DeploymentPSMEvent,   // implements psm.IInnerEvent
 ]
 
-func DeploymentPSMHook[SE DeploymentPSMEvent](cb func(context.Context, sqrlx.Transaction, DeploymentPSMHookBaton, *DeploymentState, SE) error) psm.PSMHookFunc[
+func DeploymentPSMLogicHook[SE DeploymentPSMEvent](cb func(context.Context, DeploymentPSMHookBaton, *DeploymentState, SE) error) psm.TransitionLogicHook[
 	*DeploymentKeys,      // implements psm.IKeyset
 	*DeploymentState,     // implements psm.IState
 	DeploymentStatus,     // implements psm.IStatusEnum
@@ -475,7 +400,7 @@ func DeploymentPSMHook[SE DeploymentPSMEvent](cb func(context.Context, sqrlx.Tra
 	DeploymentPSMEvent,   // implements psm.IInnerEvent
 	SE,                   // Specific event type for the transition
 ] {
-	return psm.PSMHookFunc[
+	return psm.TransitionLogicHook[
 		*DeploymentKeys,      // implements psm.IKeyset
 		*DeploymentState,     // implements psm.IState
 		DeploymentStatus,     // implements psm.IStatusEnum
@@ -485,7 +410,55 @@ func DeploymentPSMHook[SE DeploymentPSMEvent](cb func(context.Context, sqrlx.Tra
 		SE,                   // Specific event type for the transition
 	](cb)
 }
-func DeploymentPSMGeneralHook(cb func(context.Context, sqrlx.Transaction, DeploymentPSMHookBaton, *DeploymentState, *DeploymentEvent) error) psm.GeneralStateHook[
+func DeploymentPSMDataHook[SE DeploymentPSMEvent](cb func(context.Context, sqrlx.Transaction, *DeploymentState, SE) error) psm.TransitionDataHook[
+	*DeploymentKeys,      // implements psm.IKeyset
+	*DeploymentState,     // implements psm.IState
+	DeploymentStatus,     // implements psm.IStatusEnum
+	*DeploymentStateData, // implements psm.IStateData
+	*DeploymentEvent,     // implements psm.IEvent
+	DeploymentPSMEvent,   // implements psm.IInnerEvent
+	SE,                   // Specific event type for the transition
+] {
+	return psm.TransitionDataHook[
+		*DeploymentKeys,      // implements psm.IKeyset
+		*DeploymentState,     // implements psm.IState
+		DeploymentStatus,     // implements psm.IStatusEnum
+		*DeploymentStateData, // implements psm.IStateData
+		*DeploymentEvent,     // implements psm.IEvent
+		DeploymentPSMEvent,   // implements psm.IInnerEvent
+		SE,                   // Specific event type for the transition
+	](cb)
+}
+func DeploymentPSMLinkHook[SE DeploymentPSMEvent, DK psm.IKeyset, DIE psm.IInnerEvent](
+	linkDestination psm.LinkDestination[DK, DIE],
+	cb func(context.Context, *DeploymentState, SE) (DK, DIE, error),
+) psm.LinkHook[
+	*DeploymentKeys,      // implements psm.IKeyset
+	*DeploymentState,     // implements psm.IState
+	DeploymentStatus,     // implements psm.IStatusEnum
+	*DeploymentStateData, // implements psm.IStateData
+	*DeploymentEvent,     // implements psm.IEvent
+	DeploymentPSMEvent,   // implements psm.IInnerEvent
+	SE,                   // Specific event type for the transition
+	DK,                   // Destination Keys
+	DIE,                  // Destination Inner Event
+] {
+	return psm.LinkHook[
+		*DeploymentKeys,      // implements psm.IKeyset
+		*DeploymentState,     // implements psm.IState
+		DeploymentStatus,     // implements psm.IStatusEnum
+		*DeploymentStateData, // implements psm.IStateData
+		*DeploymentEvent,     // implements psm.IEvent
+		DeploymentPSMEvent,   // implements psm.IInnerEvent
+		SE,                   // Specific event type for the transition
+		DK,                   // Destination Keys
+		DIE,                  // Destination Inner Event
+	]{
+		Derive:      cb,
+		Destination: linkDestination,
+	}
+}
+func DeploymentPSMGeneralLogicHook(cb func(context.Context, DeploymentPSMHookBaton, *DeploymentState, *DeploymentEvent) error) psm.GeneralLogicHook[
 	*DeploymentKeys,      // implements psm.IKeyset
 	*DeploymentState,     // implements psm.IState
 	DeploymentStatus,     // implements psm.IStatusEnum
@@ -493,7 +466,41 @@ func DeploymentPSMGeneralHook(cb func(context.Context, sqrlx.Transaction, Deploy
 	*DeploymentEvent,     // implements psm.IEvent
 	DeploymentPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.GeneralStateHook[
+	return psm.GeneralLogicHook[
+		*DeploymentKeys,      // implements psm.IKeyset
+		*DeploymentState,     // implements psm.IState
+		DeploymentStatus,     // implements psm.IStatusEnum
+		*DeploymentStateData, // implements psm.IStateData
+		*DeploymentEvent,     // implements psm.IEvent
+		DeploymentPSMEvent,   // implements psm.IInnerEvent
+	](cb)
+}
+func DeploymentPSMGeneralStateDataHook(cb func(context.Context, sqrlx.Transaction, *DeploymentState) error) psm.GeneralStateDataHook[
+	*DeploymentKeys,      // implements psm.IKeyset
+	*DeploymentState,     // implements psm.IState
+	DeploymentStatus,     // implements psm.IStatusEnum
+	*DeploymentStateData, // implements psm.IStateData
+	*DeploymentEvent,     // implements psm.IEvent
+	DeploymentPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralStateDataHook[
+		*DeploymentKeys,      // implements psm.IKeyset
+		*DeploymentState,     // implements psm.IState
+		DeploymentStatus,     // implements psm.IStatusEnum
+		*DeploymentStateData, // implements psm.IStateData
+		*DeploymentEvent,     // implements psm.IEvent
+		DeploymentPSMEvent,   // implements psm.IInnerEvent
+	](cb)
+}
+func DeploymentPSMGeneralEventDataHook(cb func(context.Context, sqrlx.Transaction, *DeploymentState, *DeploymentEvent) error) psm.GeneralEventDataHook[
+	*DeploymentKeys,      // implements psm.IKeyset
+	*DeploymentState,     // implements psm.IState
+	DeploymentStatus,     // implements psm.IStatusEnum
+	*DeploymentStateData, // implements psm.IStateData
+	*DeploymentEvent,     // implements psm.IEvent
+	DeploymentPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralEventDataHook[
 		*DeploymentKeys,      // implements psm.IKeyset
 		*DeploymentState,     // implements psm.IState
 		DeploymentStatus,     // implements psm.IStatusEnum

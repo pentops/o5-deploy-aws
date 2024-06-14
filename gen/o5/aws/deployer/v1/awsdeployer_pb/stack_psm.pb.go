@@ -8,7 +8,6 @@ import (
 	psm_pb "github.com/pentops/protostate/gen/state/v1/psm_pb"
 	psm "github.com/pentops/protostate/psm"
 	sqrlx "github.com/pentops/sqrlx.go/sqrlx"
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // PSM StackPSM
@@ -23,15 +22,6 @@ type StackPSM = psm.StateMachine[
 ]
 
 type StackPSMDB = psm.DBStateMachine[
-	*StackKeys,      // implements psm.IKeyset
-	*StackState,     // implements psm.IState
-	StackStatus,     // implements psm.IStatusEnum
-	*StackStateData, // implements psm.IStateData
-	*StackEvent,     // implements psm.IEvent
-	StackPSMEvent,   // implements psm.IInnerEvent
-]
-
-type StackPSMEventer = psm.Eventer[
 	*StackKeys,      // implements psm.IKeyset
 	*StackState,     // implements psm.IState
 	StackStatus,     // implements psm.IStatusEnum
@@ -70,6 +60,14 @@ func (msg *StackKeys) PSMIsSet() bool {
 // PSMFullName returns the full name of state machine with package prefix
 func (msg *StackKeys) PSMFullName() string {
 	return "o5.aws.deployer.v1.stack"
+}
+func (msg *StackKeys) PSMKeyValues() (map[string]string, error) {
+	keyset := map[string]string{
+		"stack_id":       msg.StackId,
+		"environment_id": msg.EnvironmentId,
+		"cluster_id":     msg.ClusterId,
+	}
+	return keyset, nil
 }
 
 // EXTEND StackState with the psm.IState interface
@@ -249,57 +247,7 @@ func (*StackEventType_RunDeployment) PSMEventKey() StackPSMEventKey {
 	return StackPSMEventRunDeployment
 }
 
-type StackPSMTableSpec = psm.PSMTableSpec[
-	*StackKeys,      // implements psm.IKeyset
-	*StackState,     // implements psm.IState
-	StackStatus,     // implements psm.IStatusEnum
-	*StackStateData, // implements psm.IStateData
-	*StackEvent,     // implements psm.IEvent
-	StackPSMEvent,   // implements psm.IInnerEvent
-]
-
-var DefaultStackPSMTableSpec = StackPSMTableSpec{
-	TableMap: psm.TableMap{
-		State: psm.StateTableSpec{
-			TableName: "stack",
-			Root:      &psm.FieldSpec{ColumnName: "state"},
-		},
-		Event: psm.EventTableSpec{
-			TableName:     "stack_event",
-			Root:          &psm.FieldSpec{ColumnName: "data"},
-			ID:            &psm.FieldSpec{ColumnName: "id"},
-			Timestamp:     &psm.FieldSpec{ColumnName: "timestamp"},
-			Sequence:      &psm.FieldSpec{ColumnName: "sequence"},
-			StateSnapshot: &psm.FieldSpec{ColumnName: "state"},
-		},
-		KeyColumns: []psm.KeyColumn{{
-			ColumnName: "stack_id",
-			ProtoName:  protoreflect.Name("stack_id"),
-			Primary:    true,
-			Required:   true,
-		}, {
-			ColumnName: "environment_id",
-			ProtoName:  protoreflect.Name("environment_id"),
-			Primary:    false,
-			Required:   true,
-		}, {
-			ColumnName: "cluster_id",
-			ProtoName:  protoreflect.Name("cluster_id"),
-			Primary:    false,
-			Required:   true,
-		}},
-	},
-	KeyValues: func(keys *StackKeys) (map[string]string, error) {
-		keyset := map[string]string{
-			"stack_id":       keys.StackId,
-			"environment_id": keys.EnvironmentId,
-			"cluster_id":     keys.ClusterId,
-		}
-		return keyset, nil
-	},
-}
-
-func DefaultStackPSMConfig() *psm.StateMachineConfig[
+func StackPSMBuilder() *psm.StateMachineConfig[
 	*StackKeys,      // implements psm.IKeyset
 	*StackState,     // implements psm.IState
 	StackStatus,     // implements psm.IStatusEnum
@@ -307,35 +255,17 @@ func DefaultStackPSMConfig() *psm.StateMachineConfig[
 	*StackEvent,     // implements psm.IEvent
 	StackPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.NewStateMachineConfig[
+	return &psm.StateMachineConfig[
 		*StackKeys,      // implements psm.IKeyset
 		*StackState,     // implements psm.IState
 		StackStatus,     // implements psm.IStatusEnum
 		*StackStateData, // implements psm.IStateData
 		*StackEvent,     // implements psm.IEvent
 		StackPSMEvent,   // implements psm.IInnerEvent
-	](DefaultStackPSMTableSpec)
+	]{}
 }
 
-func NewStackPSM(config *psm.StateMachineConfig[
-	*StackKeys,      // implements psm.IKeyset
-	*StackState,     // implements psm.IState
-	StackStatus,     // implements psm.IStatusEnum
-	*StackStateData, // implements psm.IStateData
-	*StackEvent,     // implements psm.IEvent
-	StackPSMEvent,   // implements psm.IInnerEvent
-]) (*StackPSM, error) {
-	return psm.NewStateMachine[
-		*StackKeys,      // implements psm.IKeyset
-		*StackState,     // implements psm.IState
-		StackStatus,     // implements psm.IStatusEnum
-		*StackStateData, // implements psm.IStateData
-		*StackEvent,     // implements psm.IEvent
-		StackPSMEvent,   // implements psm.IInnerEvent
-	](config)
-}
-
-func StackPSMMutation[SE StackPSMEvent](cb func(*StackStateData, SE) error) psm.PSMMutationFunc[
+func StackPSMMutation[SE StackPSMEvent](cb func(*StackStateData, SE) error) psm.TransitionMutation[
 	*StackKeys,      // implements psm.IKeyset
 	*StackState,     // implements psm.IState
 	StackStatus,     // implements psm.IStatusEnum
@@ -344,7 +274,7 @@ func StackPSMMutation[SE StackPSMEvent](cb func(*StackStateData, SE) error) psm.
 	StackPSMEvent,   // implements psm.IInnerEvent
 	SE,              // Specific event type for the transition
 ] {
-	return psm.PSMMutationFunc[
+	return psm.TransitionMutation[
 		*StackKeys,      // implements psm.IKeyset
 		*StackState,     // implements psm.IState
 		StackStatus,     // implements psm.IStatusEnum
@@ -364,7 +294,7 @@ type StackPSMHookBaton = psm.HookBaton[
 	StackPSMEvent,   // implements psm.IInnerEvent
 ]
 
-func StackPSMHook[SE StackPSMEvent](cb func(context.Context, sqrlx.Transaction, StackPSMHookBaton, *StackState, SE) error) psm.PSMHookFunc[
+func StackPSMLogicHook[SE StackPSMEvent](cb func(context.Context, StackPSMHookBaton, *StackState, SE) error) psm.TransitionLogicHook[
 	*StackKeys,      // implements psm.IKeyset
 	*StackState,     // implements psm.IState
 	StackStatus,     // implements psm.IStatusEnum
@@ -373,7 +303,7 @@ func StackPSMHook[SE StackPSMEvent](cb func(context.Context, sqrlx.Transaction, 
 	StackPSMEvent,   // implements psm.IInnerEvent
 	SE,              // Specific event type for the transition
 ] {
-	return psm.PSMHookFunc[
+	return psm.TransitionLogicHook[
 		*StackKeys,      // implements psm.IKeyset
 		*StackState,     // implements psm.IState
 		StackStatus,     // implements psm.IStatusEnum
@@ -383,7 +313,55 @@ func StackPSMHook[SE StackPSMEvent](cb func(context.Context, sqrlx.Transaction, 
 		SE,              // Specific event type for the transition
 	](cb)
 }
-func StackPSMGeneralHook(cb func(context.Context, sqrlx.Transaction, StackPSMHookBaton, *StackState, *StackEvent) error) psm.GeneralStateHook[
+func StackPSMDataHook[SE StackPSMEvent](cb func(context.Context, sqrlx.Transaction, *StackState, SE) error) psm.TransitionDataHook[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+	SE,              // Specific event type for the transition
+] {
+	return psm.TransitionDataHook[
+		*StackKeys,      // implements psm.IKeyset
+		*StackState,     // implements psm.IState
+		StackStatus,     // implements psm.IStatusEnum
+		*StackStateData, // implements psm.IStateData
+		*StackEvent,     // implements psm.IEvent
+		StackPSMEvent,   // implements psm.IInnerEvent
+		SE,              // Specific event type for the transition
+	](cb)
+}
+func StackPSMLinkHook[SE StackPSMEvent, DK psm.IKeyset, DIE psm.IInnerEvent](
+	linkDestination psm.LinkDestination[DK, DIE],
+	cb func(context.Context, *StackState, SE) (DK, DIE, error),
+) psm.LinkHook[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+	SE,              // Specific event type for the transition
+	DK,              // Destination Keys
+	DIE,             // Destination Inner Event
+] {
+	return psm.LinkHook[
+		*StackKeys,      // implements psm.IKeyset
+		*StackState,     // implements psm.IState
+		StackStatus,     // implements psm.IStatusEnum
+		*StackStateData, // implements psm.IStateData
+		*StackEvent,     // implements psm.IEvent
+		StackPSMEvent,   // implements psm.IInnerEvent
+		SE,              // Specific event type for the transition
+		DK,              // Destination Keys
+		DIE,             // Destination Inner Event
+	]{
+		Derive:      cb,
+		Destination: linkDestination,
+	}
+}
+func StackPSMGeneralLogicHook(cb func(context.Context, StackPSMHookBaton, *StackState, *StackEvent) error) psm.GeneralLogicHook[
 	*StackKeys,      // implements psm.IKeyset
 	*StackState,     // implements psm.IState
 	StackStatus,     // implements psm.IStatusEnum
@@ -391,7 +369,41 @@ func StackPSMGeneralHook(cb func(context.Context, sqrlx.Transaction, StackPSMHoo
 	*StackEvent,     // implements psm.IEvent
 	StackPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.GeneralStateHook[
+	return psm.GeneralLogicHook[
+		*StackKeys,      // implements psm.IKeyset
+		*StackState,     // implements psm.IState
+		StackStatus,     // implements psm.IStatusEnum
+		*StackStateData, // implements psm.IStateData
+		*StackEvent,     // implements psm.IEvent
+		StackPSMEvent,   // implements psm.IInnerEvent
+	](cb)
+}
+func StackPSMGeneralStateDataHook(cb func(context.Context, sqrlx.Transaction, *StackState) error) psm.GeneralStateDataHook[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralStateDataHook[
+		*StackKeys,      // implements psm.IKeyset
+		*StackState,     // implements psm.IState
+		StackStatus,     // implements psm.IStatusEnum
+		*StackStateData, // implements psm.IStateData
+		*StackEvent,     // implements psm.IEvent
+		StackPSMEvent,   // implements psm.IInnerEvent
+	](cb)
+}
+func StackPSMGeneralEventDataHook(cb func(context.Context, sqrlx.Transaction, *StackState, *StackEvent) error) psm.GeneralEventDataHook[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralEventDataHook[
 		*StackKeys,      // implements psm.IKeyset
 		*StackState,     // implements psm.IState
 		StackStatus,     // implements psm.IStatusEnum

@@ -8,7 +8,6 @@ import (
 	psm_pb "github.com/pentops/protostate/gen/state/v1/psm_pb"
 	psm "github.com/pentops/protostate/psm"
 	sqrlx "github.com/pentops/sqrlx.go/sqrlx"
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // PSM EnvironmentPSM
@@ -23,15 +22,6 @@ type EnvironmentPSM = psm.StateMachine[
 ]
 
 type EnvironmentPSMDB = psm.DBStateMachine[
-	*EnvironmentKeys,      // implements psm.IKeyset
-	*EnvironmentState,     // implements psm.IState
-	EnvironmentStatus,     // implements psm.IStatusEnum
-	*EnvironmentStateData, // implements psm.IStateData
-	*EnvironmentEvent,     // implements psm.IEvent
-	EnvironmentPSMEvent,   // implements psm.IInnerEvent
-]
-
-type EnvironmentPSMEventer = psm.Eventer[
 	*EnvironmentKeys,      // implements psm.IKeyset
 	*EnvironmentState,     // implements psm.IState
 	EnvironmentStatus,     // implements psm.IStatusEnum
@@ -66,6 +56,13 @@ func (msg *EnvironmentKeys) PSMIsSet() bool {
 // PSMFullName returns the full name of state machine with package prefix
 func (msg *EnvironmentKeys) PSMFullName() string {
 	return "o5.aws.deployer.v1.environment"
+}
+func (msg *EnvironmentKeys) PSMKeyValues() (map[string]string, error) {
+	keyset := map[string]string{
+		"environment_id": msg.EnvironmentId,
+		"cluster_id":     msg.ClusterId,
+	}
+	return keyset, nil
 }
 
 // EXTEND EnvironmentState with the psm.IState interface
@@ -185,51 +182,7 @@ func (*EnvironmentEventType_Configured) PSMEventKey() EnvironmentPSMEventKey {
 	return EnvironmentPSMEventConfigured
 }
 
-type EnvironmentPSMTableSpec = psm.PSMTableSpec[
-	*EnvironmentKeys,      // implements psm.IKeyset
-	*EnvironmentState,     // implements psm.IState
-	EnvironmentStatus,     // implements psm.IStatusEnum
-	*EnvironmentStateData, // implements psm.IStateData
-	*EnvironmentEvent,     // implements psm.IEvent
-	EnvironmentPSMEvent,   // implements psm.IInnerEvent
-]
-
-var DefaultEnvironmentPSMTableSpec = EnvironmentPSMTableSpec{
-	TableMap: psm.TableMap{
-		State: psm.StateTableSpec{
-			TableName: "environment",
-			Root:      &psm.FieldSpec{ColumnName: "state"},
-		},
-		Event: psm.EventTableSpec{
-			TableName:     "environment_event",
-			Root:          &psm.FieldSpec{ColumnName: "data"},
-			ID:            &psm.FieldSpec{ColumnName: "id"},
-			Timestamp:     &psm.FieldSpec{ColumnName: "timestamp"},
-			Sequence:      &psm.FieldSpec{ColumnName: "sequence"},
-			StateSnapshot: &psm.FieldSpec{ColumnName: "state"},
-		},
-		KeyColumns: []psm.KeyColumn{{
-			ColumnName: "environment_id",
-			ProtoName:  protoreflect.Name("environment_id"),
-			Primary:    true,
-			Required:   true,
-		}, {
-			ColumnName: "cluster_id",
-			ProtoName:  protoreflect.Name("cluster_id"),
-			Primary:    false,
-			Required:   true,
-		}},
-	},
-	KeyValues: func(keys *EnvironmentKeys) (map[string]string, error) {
-		keyset := map[string]string{
-			"environment_id": keys.EnvironmentId,
-			"cluster_id":     keys.ClusterId,
-		}
-		return keyset, nil
-	},
-}
-
-func DefaultEnvironmentPSMConfig() *psm.StateMachineConfig[
+func EnvironmentPSMBuilder() *psm.StateMachineConfig[
 	*EnvironmentKeys,      // implements psm.IKeyset
 	*EnvironmentState,     // implements psm.IState
 	EnvironmentStatus,     // implements psm.IStatusEnum
@@ -237,35 +190,17 @@ func DefaultEnvironmentPSMConfig() *psm.StateMachineConfig[
 	*EnvironmentEvent,     // implements psm.IEvent
 	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.NewStateMachineConfig[
+	return &psm.StateMachineConfig[
 		*EnvironmentKeys,      // implements psm.IKeyset
 		*EnvironmentState,     // implements psm.IState
 		EnvironmentStatus,     // implements psm.IStatusEnum
 		*EnvironmentStateData, // implements psm.IStateData
 		*EnvironmentEvent,     // implements psm.IEvent
 		EnvironmentPSMEvent,   // implements psm.IInnerEvent
-	](DefaultEnvironmentPSMTableSpec)
+	]{}
 }
 
-func NewEnvironmentPSM(config *psm.StateMachineConfig[
-	*EnvironmentKeys,      // implements psm.IKeyset
-	*EnvironmentState,     // implements psm.IState
-	EnvironmentStatus,     // implements psm.IStatusEnum
-	*EnvironmentStateData, // implements psm.IStateData
-	*EnvironmentEvent,     // implements psm.IEvent
-	EnvironmentPSMEvent,   // implements psm.IInnerEvent
-]) (*EnvironmentPSM, error) {
-	return psm.NewStateMachine[
-		*EnvironmentKeys,      // implements psm.IKeyset
-		*EnvironmentState,     // implements psm.IState
-		EnvironmentStatus,     // implements psm.IStatusEnum
-		*EnvironmentStateData, // implements psm.IStateData
-		*EnvironmentEvent,     // implements psm.IEvent
-		EnvironmentPSMEvent,   // implements psm.IInnerEvent
-	](config)
-}
-
-func EnvironmentPSMMutation[SE EnvironmentPSMEvent](cb func(*EnvironmentStateData, SE) error) psm.PSMMutationFunc[
+func EnvironmentPSMMutation[SE EnvironmentPSMEvent](cb func(*EnvironmentStateData, SE) error) psm.TransitionMutation[
 	*EnvironmentKeys,      // implements psm.IKeyset
 	*EnvironmentState,     // implements psm.IState
 	EnvironmentStatus,     // implements psm.IStatusEnum
@@ -274,7 +209,7 @@ func EnvironmentPSMMutation[SE EnvironmentPSMEvent](cb func(*EnvironmentStateDat
 	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 	SE,                    // Specific event type for the transition
 ] {
-	return psm.PSMMutationFunc[
+	return psm.TransitionMutation[
 		*EnvironmentKeys,      // implements psm.IKeyset
 		*EnvironmentState,     // implements psm.IState
 		EnvironmentStatus,     // implements psm.IStatusEnum
@@ -294,7 +229,7 @@ type EnvironmentPSMHookBaton = psm.HookBaton[
 	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 ]
 
-func EnvironmentPSMHook[SE EnvironmentPSMEvent](cb func(context.Context, sqrlx.Transaction, EnvironmentPSMHookBaton, *EnvironmentState, SE) error) psm.PSMHookFunc[
+func EnvironmentPSMLogicHook[SE EnvironmentPSMEvent](cb func(context.Context, EnvironmentPSMHookBaton, *EnvironmentState, SE) error) psm.TransitionLogicHook[
 	*EnvironmentKeys,      // implements psm.IKeyset
 	*EnvironmentState,     // implements psm.IState
 	EnvironmentStatus,     // implements psm.IStatusEnum
@@ -303,7 +238,7 @@ func EnvironmentPSMHook[SE EnvironmentPSMEvent](cb func(context.Context, sqrlx.T
 	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 	SE,                    // Specific event type for the transition
 ] {
-	return psm.PSMHookFunc[
+	return psm.TransitionLogicHook[
 		*EnvironmentKeys,      // implements psm.IKeyset
 		*EnvironmentState,     // implements psm.IState
 		EnvironmentStatus,     // implements psm.IStatusEnum
@@ -313,7 +248,55 @@ func EnvironmentPSMHook[SE EnvironmentPSMEvent](cb func(context.Context, sqrlx.T
 		SE,                    // Specific event type for the transition
 	](cb)
 }
-func EnvironmentPSMGeneralHook(cb func(context.Context, sqrlx.Transaction, EnvironmentPSMHookBaton, *EnvironmentState, *EnvironmentEvent) error) psm.GeneralStateHook[
+func EnvironmentPSMDataHook[SE EnvironmentPSMEvent](cb func(context.Context, sqrlx.Transaction, *EnvironmentState, SE) error) psm.TransitionDataHook[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
+	SE,                    // Specific event type for the transition
+] {
+	return psm.TransitionDataHook[
+		*EnvironmentKeys,      // implements psm.IKeyset
+		*EnvironmentState,     // implements psm.IState
+		EnvironmentStatus,     // implements psm.IStatusEnum
+		*EnvironmentStateData, // implements psm.IStateData
+		*EnvironmentEvent,     // implements psm.IEvent
+		EnvironmentPSMEvent,   // implements psm.IInnerEvent
+		SE,                    // Specific event type for the transition
+	](cb)
+}
+func EnvironmentPSMLinkHook[SE EnvironmentPSMEvent, DK psm.IKeyset, DIE psm.IInnerEvent](
+	linkDestination psm.LinkDestination[DK, DIE],
+	cb func(context.Context, *EnvironmentState, SE) (DK, DIE, error),
+) psm.LinkHook[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
+	SE,                    // Specific event type for the transition
+	DK,                    // Destination Keys
+	DIE,                   // Destination Inner Event
+] {
+	return psm.LinkHook[
+		*EnvironmentKeys,      // implements psm.IKeyset
+		*EnvironmentState,     // implements psm.IState
+		EnvironmentStatus,     // implements psm.IStatusEnum
+		*EnvironmentStateData, // implements psm.IStateData
+		*EnvironmentEvent,     // implements psm.IEvent
+		EnvironmentPSMEvent,   // implements psm.IInnerEvent
+		SE,                    // Specific event type for the transition
+		DK,                    // Destination Keys
+		DIE,                   // Destination Inner Event
+	]{
+		Derive:      cb,
+		Destination: linkDestination,
+	}
+}
+func EnvironmentPSMGeneralLogicHook(cb func(context.Context, EnvironmentPSMHookBaton, *EnvironmentState, *EnvironmentEvent) error) psm.GeneralLogicHook[
 	*EnvironmentKeys,      // implements psm.IKeyset
 	*EnvironmentState,     // implements psm.IState
 	EnvironmentStatus,     // implements psm.IStatusEnum
@@ -321,7 +304,41 @@ func EnvironmentPSMGeneralHook(cb func(context.Context, sqrlx.Transaction, Envir
 	*EnvironmentEvent,     // implements psm.IEvent
 	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.GeneralStateHook[
+	return psm.GeneralLogicHook[
+		*EnvironmentKeys,      // implements psm.IKeyset
+		*EnvironmentState,     // implements psm.IState
+		EnvironmentStatus,     // implements psm.IStatusEnum
+		*EnvironmentStateData, // implements psm.IStateData
+		*EnvironmentEvent,     // implements psm.IEvent
+		EnvironmentPSMEvent,   // implements psm.IInnerEvent
+	](cb)
+}
+func EnvironmentPSMGeneralStateDataHook(cb func(context.Context, sqrlx.Transaction, *EnvironmentState) error) psm.GeneralStateDataHook[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralStateDataHook[
+		*EnvironmentKeys,      // implements psm.IKeyset
+		*EnvironmentState,     // implements psm.IState
+		EnvironmentStatus,     // implements psm.IStatusEnum
+		*EnvironmentStateData, // implements psm.IStateData
+		*EnvironmentEvent,     // implements psm.IEvent
+		EnvironmentPSMEvent,   // implements psm.IInnerEvent
+	](cb)
+}
+func EnvironmentPSMGeneralEventDataHook(cb func(context.Context, sqrlx.Transaction, *EnvironmentState, *EnvironmentEvent) error) psm.GeneralEventDataHook[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralEventDataHook[
 		*EnvironmentKeys,      // implements psm.IKeyset
 		*EnvironmentState,     // implements psm.IState
 		EnvironmentStatus,     // implements psm.IStatusEnum

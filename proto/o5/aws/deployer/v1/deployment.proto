@@ -41,11 +41,6 @@ message DeploymentState {
 message DeploymentStateData {
   DeploymentSpec spec = 4;
 
-  string stack_name = 5 [(psm.list.v1.field).string.open_text.searching = {
-    searchable: true,
-    field_identifier: "tsv_stack_name"
-  }];
-
   repeated DeploymentStep steps = 10;
 }
 
@@ -54,27 +49,36 @@ message DeploymentSpec {
     searchable: true,
     field_identifier: "tsv_app_name"
   }];
+
   string version = 2 [(psm.list.v1.field).string.open_text.searching = {
     searchable: true,
     field_identifier: "tsv_version"
   }];
+
   string environment_name = 3 [(psm.list.v1.field).string.open_text.searching = {
     searchable: true,
     field_identifier: "tsv_environment_name"
   }];
-  string environment_id = 9 [(buf.validate.field).string.uuid = true];
-  S3Template template = 4;
 
-  string ecs_cluster = 10 [(psm.list.v1.field).string.open_text.searching = {
+  string environment_id = 4 [(buf.validate.field).string.uuid = true];
+
+  S3Template template = 5;
+
+  string ecs_cluster = 6 [(psm.list.v1.field).string.open_text.searching = {
     searchable: true,
     field_identifier: "tsv_ecs_cluster"
   }];
 
+  string cf_stack_name = 7 [(psm.list.v1.field).string.open_text.searching = {
+    searchable: true,
+    field_identifier: "tsv_stack_name"
+  }];
+
   DeploymentFlags flags = 8;
 
-  repeated PostgresSpec databases = 5;
-  repeated CloudFormationStackParameter parameters = 6;
-  repeated string sns_topics = 7;
+  repeated PostgresSpec databases = 9;
+  repeated CloudFormationStackParameter parameters = 10;
+  repeated string sns_topics = 11;
 }
 
 message DeploymentFlags {
