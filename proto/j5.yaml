@@ -11,4 +11,4 @@ options:
 
 packages:
   - label: AWS Deployer
-    name: o5.awsdeployer.v1
+    name: o5.aws.deployer.v1
