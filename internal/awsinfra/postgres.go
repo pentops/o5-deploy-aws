@@ -93,10 +93,12 @@ func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *awsdeployer_
 		"dbName":   dbName,
 	}).Debug("Connecting to RDS for db as root user")
 
-	rootConn, err := sql.Open("postgres", rootSecret.buildURLForDB(dbName))
+	rootConn, err := openDB(ctx, rootSecret.buildURLForDB(dbName))
 	if err != nil {
 		return err
 	}
+
+	defer rootConn.Close()
 
 	_, err = rootConn.ExecContext(ctx, fmt.Sprintf(`GRANT USAGE, CREATE ON SCHEMA public TO %s`, ownerName))
 	if err != nil {
@@ -188,6 +190,26 @@ func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *awsdeployer_
 	return nil
 }
 
+func openDB(ctx context.Context, url string) (*sql.DB, error) {
+	conn, err := sql.Open("postgres", url)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := conn.PingContext(ctx); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	conn.SetMaxOpenConns(1)
+	if _, err := conn.ExecContext(ctx, "SET application_name TO o5-deployer"); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	return conn, nil
+}
+
 func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *awsdeployer_pb.PostgresCreationSpec) error {
 
 	// spec *awsdeployer_pb.PostgresDatabase, secretARN string, rotateExisting bool) error {
@@ -203,15 +225,10 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *awsdeploye
 		"hostname": rootSecret.Hostname,
 	}).Debug("Connecting to RDS server as root user")
 
-	rootConn, err := sql.Open("postgres", rootSecret.URL)
+	rootConn, err := openDB(ctx, rootSecret.URL)
 	if err != nil {
 		return err
 	}
-
-	if err := rootConn.PingContext(ctx); err != nil {
-		return err
-	}
-
 	defer rootConn.Close()
 
 	db, err := sqrlx.NewWithCommander(rootConn, sq.Dollar)
@@ -262,8 +279,10 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *awsdeploye
 			"count": len(msg.DbExtensions),
 		}).Debug("Adding Extensions")
 		if err := func() error {
+			// Note this connects to the database name, not the wider 'postgres'
+			// namespace, so is different to the outer rootConn
 			superuserURL := rootSecret.buildURLForDB(dbName)
-			superuserConn, err := sql.Open("postgres", superuserURL)
+			superuserConn, err := openDB(ctx, superuserURL)
 			if err != nil {
 				return err
 			}
