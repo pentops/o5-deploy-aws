@@ -202,7 +202,7 @@ func openDB(ctx context.Context, url string) (*sql.DB, error) {
 	}
 
 	conn.SetMaxOpenConns(1)
-	if _, err := conn.ExecContext(ctx, "SET application_name TO o5-deployer"); err != nil {
+	if _, err := conn.ExecContext(ctx, "SET application_name TO 'o5-deployer'"); err != nil {
 		conn.Close()
 		return nil, err
 	}
