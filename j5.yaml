@@ -1,3 +1,4 @@
 ---
 bundles:
-  - dir: proto
+  - name: proto
+    dir: proto
