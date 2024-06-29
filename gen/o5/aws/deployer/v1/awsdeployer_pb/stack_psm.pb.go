@@ -334,7 +334,7 @@ func StackPSMDataHook[SE StackPSMEvent](cb func(context.Context, sqrlx.Transacti
 }
 func StackPSMLinkHook[SE StackPSMEvent, DK psm.IKeyset, DIE psm.IInnerEvent](
 	linkDestination psm.LinkDestination[DK, DIE],
-	cb func(context.Context, *StackState, SE) (DK, DIE, error),
+	cb func(context.Context, *StackState, SE, func(DK, DIE)) error,
 ) psm.LinkHook[
 	*StackKeys,      // implements psm.IKeyset
 	*StackState,     // implements psm.IState

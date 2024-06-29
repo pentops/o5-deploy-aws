@@ -268,7 +268,7 @@ func ClusterPSMDataHook[SE ClusterPSMEvent](cb func(context.Context, sqrlx.Trans
 }
 func ClusterPSMLinkHook[SE ClusterPSMEvent, DK psm.IKeyset, DIE psm.IInnerEvent](
 	linkDestination psm.LinkDestination[DK, DIE],
-	cb func(context.Context, *ClusterState, SE) (DK, DIE, error),
+	cb func(context.Context, *ClusterState, SE, func(DK, DIE)) error,
 ) psm.LinkHook[
 	*ClusterKeys,      // implements psm.IKeyset
 	*ClusterState,     // implements psm.IState
