@@ -431,7 +431,7 @@ func DeploymentPSMDataHook[SE DeploymentPSMEvent](cb func(context.Context, sqrlx
 }
 func DeploymentPSMLinkHook[SE DeploymentPSMEvent, DK psm.IKeyset, DIE psm.IInnerEvent](
 	linkDestination psm.LinkDestination[DK, DIE],
-	cb func(context.Context, *DeploymentState, SE) (DK, DIE, error),
+	cb func(context.Context, *DeploymentState, SE, func(DK, DIE)) error,
 ) psm.LinkHook[
 	*DeploymentKeys,      // implements psm.IKeyset
 	*DeploymentState,     // implements psm.IState

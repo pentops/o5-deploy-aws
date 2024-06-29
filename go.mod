@@ -26,16 +26,16 @@ require (
 	github.com/iancoleman/strcase v0.3.0
 	github.com/lib/pq v1.10.9
 	github.com/pentops/envconf.go v0.0.0-20240607014745-65480a3da726
-	github.com/pentops/flowtest v0.0.0-20240607020132-7dda31076e79
+	github.com/pentops/flowtest v0.0.0-20240623020118-02bf89f30b87
 	github.com/pentops/go-grpc-helpers v0.0.0-20230815045451-2524ee695ebb
-	github.com/pentops/j5 v0.0.0-20240614161723-64c6aebaabe0
-	github.com/pentops/log.go v0.0.0-20240612184720-79634792a21e
-	github.com/pentops/o5-auth v0.0.0-20240614170101-5d54f4c422a8
+	github.com/pentops/j5 v0.0.0-20240629011725-90838d66a693
+	github.com/pentops/log.go v0.0.0-20240618224413-ed85018bafd9
+	github.com/pentops/o5-auth v0.0.0-20240614180342-3765ffa80762
 	github.com/pentops/o5-messaging v0.0.0-20240614163039-d8f7b29ba565
 	github.com/pentops/pgtest.go v0.0.0-20240604005819-2035f4562734
-	github.com/pentops/protostate v0.0.0-20240614171324-55fcf0652c6e
+	github.com/pentops/protostate v0.0.0-20240618224345-07873fade6ae
 	github.com/pentops/runner v0.0.0-20240525192419-d655233635e9
-	github.com/pentops/sqrlx.go v0.0.0-20240523172712-b615a994d8c0
+	github.com/pentops/sqrlx.go v0.0.0-20240618224315-b9b023d5f689
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/stretchr/testify v1.9.0
 	github.com/tidwall/sjson v1.2.5

@@ -269,7 +269,7 @@ func EnvironmentPSMDataHook[SE EnvironmentPSMEvent](cb func(context.Context, sqr
 }
 func EnvironmentPSMLinkHook[SE EnvironmentPSMEvent, DK psm.IKeyset, DIE psm.IInnerEvent](
 	linkDestination psm.LinkDestination[DK, DIE],
-	cb func(context.Context, *EnvironmentState, SE) (DK, DIE, error),
+	cb func(context.Context, *EnvironmentState, SE, func(DK, DIE)) error,
 ) psm.LinkHook[
 	*EnvironmentKeys,      // implements psm.IKeyset
 	*EnvironmentState,     // implements psm.IState
