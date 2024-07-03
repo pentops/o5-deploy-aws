@@ -11,12 +11,13 @@ import (
 type ParameterSourceTypeKey string
 
 const (
-	ParameterSource_Static       ParameterSourceTypeKey = "static"
-	ParameterSource_WellKnown    ParameterSourceTypeKey = "wellKnown"
-	ParameterSource_RulePriority ParameterSourceTypeKey = "rulePriority"
-	ParameterSource_DesiredCount ParameterSourceTypeKey = "desiredCount"
-	ParameterSource_CrossEnvAttr ParameterSourceTypeKey = "crossEnvAttr"
-	ParameterSource_EnvVar       ParameterSourceTypeKey = "envVar"
+	ParameterSource_Static         ParameterSourceTypeKey = "static"
+	ParameterSource_WellKnown      ParameterSourceTypeKey = "wellKnown"
+	ParameterSource_RulePriority   ParameterSourceTypeKey = "rulePriority"
+	ParameterSource_DesiredCount   ParameterSourceTypeKey = "desiredCount"
+	ParameterSource_CrossEnvAttr   ParameterSourceTypeKey = "crossEnvAttr"
+	ParameterSource_EnvVar         ParameterSourceTypeKey = "envVar"
+	ParameterSource_NamedIamPolicy ParameterSourceTypeKey = "namedIamPolicy"
 )
 
 func (x *ParameterSourceType) TypeKey() (ParameterSourceTypeKey, bool) {
@@ -33,6 +34,8 @@ func (x *ParameterSourceType) TypeKey() (ParameterSourceTypeKey, bool) {
 		return ParameterSource_CrossEnvAttr, true
 	case *ParameterSourceType_EnvVar_:
 		return ParameterSource_EnvVar, true
+	case *ParameterSourceType_NamedIamPolicy:
+		return ParameterSource_NamedIamPolicy, true
 	default:
 		return "", false
 	}
@@ -56,6 +59,8 @@ func (x *ParameterSourceType) Set(val IsParameterSourceTypeWrappedType) {
 		x.Type = &ParameterSourceType_CrossEnvAttr_{CrossEnvAttr: v}
 	case *ParameterSourceType_EnvVar:
 		x.Type = &ParameterSourceType_EnvVar_{EnvVar: v}
+	case *ParameterSourceType_NamedIAMPolicy:
+		x.Type = &ParameterSourceType_NamedIamPolicy{NamedIamPolicy: v}
 	}
 }
 func (x *ParameterSourceType) Get() IsParameterSourceTypeWrappedType {
@@ -72,6 +77,8 @@ func (x *ParameterSourceType) Get() IsParameterSourceTypeWrappedType {
 		return v.CrossEnvAttr
 	case *ParameterSourceType_EnvVar_:
 		return v.EnvVar
+	case *ParameterSourceType_NamedIamPolicy:
+		return v.NamedIamPolicy
 	default:
 		return nil
 	}
@@ -93,6 +100,9 @@ func (x *ParameterSourceType_CrossEnvAttr) TypeKey() ParameterSourceTypeKey {
 }
 func (x *ParameterSourceType_EnvVar) TypeKey() ParameterSourceTypeKey {
 	return ParameterSource_EnvVar
+}
+func (x *ParameterSourceType_NamedIAMPolicy) TypeKey() ParameterSourceTypeKey {
+	return ParameterSource_NamedIamPolicy
 }
 
 type IsParameterSourceType_Type = isParameterSourceType_Type

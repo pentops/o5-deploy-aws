@@ -159,10 +159,6 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		}
 	}
 
-	if runtime.GrantMetaDeployPermissions {
-		policy.AddMetaDeployPermissions()
-	}
-
 	outboxDatabases := []DatabaseReference{}
 	for _, db := range globals.databases {
 		postgres := db.Definition.GetPostgres()
@@ -427,6 +423,23 @@ func (rs *RuntimeService) Apply(template *Application) error {
 			"assume-role",
 		}),
 	})
+
+	for _, policy := range rs.spec.NamedEnvPolicies {
+		policyARN := cf.CleanParameterName("Named IAM Policy", rs.Name, policy)
+		role.AddParameter(&awsdeployer_pb.Parameter{
+			Name:        policyARN,
+			Type:        "String",
+			Description: fmt.Sprintf("ARN of the env-named IAM policy %s", policy),
+			Source: &awsdeployer_pb.ParameterSourceType{
+				Type: &awsdeployer_pb.ParameterSourceType_NamedIamPolicy{
+					NamedIamPolicy: &awsdeployer_pb.ParameterSourceType_NamedIAMPolicy{
+						Name: policy,
+					},
+				},
+			},
+		})
+		role.Resource.ManagedPolicyArns = append(role.Resource.ManagedPolicyArns, cloudformation.Ref(policyARN))
+	}
 
 	rs.TaskDefinition.Resource.TaskRoleArn = cf.String(role.GetAtt("Arn"))
 

@@ -45,6 +45,7 @@ func main() {
 	cmdGroup.Add("serve", commander.NewCommand(runServe))
 	cmdGroup.Add("migrate", commander.NewCommand(runMigrate))
 	cmdGroup.Add("local-deploy", commander.NewCommand(runLocalDeploy))
+	cmdGroup.Add("template", commander.NewCommand(runTemplate))
 
 	cmdGroup.RunMain("o5-deploy-aws", Version)
 }
@@ -210,12 +211,87 @@ func runServe(ctx context.Context, cfg struct {
 	return grpcServer.Serve(lis)
 }
 
+func runTemplate(ctx context.Context, cfg struct {
+	AppFilename string `flag:"app" description:"application file"`
+	Version     string `flag:"version" default:"VERSION" description:"version tag"`
+}) error {
+
+	if cfg.AppFilename == "" {
+		return fmt.Errorf("missing application file (-app)")
+	}
+
+	awsConfig, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	s3Client := s3.NewFromConfig(awsConfig)
+
+	appConfig := &application_pb.Application{}
+	if err := protoread.PullAndParse(ctx, s3Client, cfg.AppFilename, appConfig); err != nil {
+		return err
+	}
+
+	built, err := app.BuildApplication(appConfig, cfg.Version)
+	if err != nil {
+		return err
+	}
+
+	tpl := built.Template
+	yaml, err := tpl.YAML()
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(yaml))
+
+	fmt.Println("-----")
+
+	for _, target := range built.SnsTopics {
+		fmt.Printf("SNS Topic: %s\n", target)
+	}
+
+	return nil
+}
+
+func getCluster(ctx context.Context, s3Client *s3.Client, clusterFilename string, envName string) (*environment_pb.Cluster, *environment_pb.Environment, error) {
+	clusterFile := &environment_pb.CombinedConfig{}
+	if err := protoread.PullAndParse(ctx, s3Client, clusterFilename, clusterFile); err != nil {
+		return nil, nil, err
+	}
+
+	cluster := &environment_pb.Cluster{
+		Name: clusterFile.Name,
+	}
+	switch et := clusterFile.Provider.(type) {
+	case *environment_pb.CombinedConfig_EcsCluster:
+		cluster.Provider = &environment_pb.Cluster_EcsCluster{
+			EcsCluster: et.EcsCluster,
+		}
+	default:
+		return nil, nil, fmt.Errorf("unsupported provider %T", clusterFile.Provider)
+	}
+
+	var env *environment_pb.Environment
+
+	for _, e := range clusterFile.Environments {
+		if e.FullName == envName {
+			env = e
+			break
+		}
+	}
+
+	if env == nil {
+		return nil, nil, fmt.Errorf("environment %s not found in cluster", envName)
+	}
+
+	return cluster, env, nil
+}
+
 func runLocalDeploy(ctx context.Context, cfg struct {
 	ClusterFilename string `flag:"cluster" description:"cluster file"`
 	EnvName         string `flag:"envname" description:"environment name"`
 	AppFilename     string `flag:"app" description:"application file"`
 	Version         string `flag:"version" description:"version tag"`
-	DryRun          bool   `flag:"dry" description:"dry run - print template and exit"`
 	RotateSecrets   bool   `flag:"rotate-secrets" description:"rotate secrets - rotate any existing secrets (e.g. db creds)"`
 	CancelUpdate    bool   `flag:"cancel-update" description:"cancel update - cancel any ongoing update prior to deployment"`
 	ScratchBucket   string `flag:"scratch-bucket" env:"O5_DEPLOYER_SCRATCH_BUCKET" description:"An S3 bucket name to upload templates"`
@@ -233,21 +309,6 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 	if cfg.ScratchBucket == "" {
 		return fmt.Errorf("missing scratch bucket (-scratch-bucket)")
 	}
-
-	if !cfg.DryRun {
-		if cfg.ClusterFilename == "" {
-			return fmt.Errorf("missing environment file (-env)")
-		}
-
-		if cfg.EnvName == "" {
-			return fmt.Errorf("missing environment name (-env)")
-		}
-
-		if cfg.Version == "" {
-			return fmt.Errorf("missing version (-version)")
-		}
-	}
-
 	awsConfig, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
@@ -264,54 +325,9 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		appConfig.DeploymentConfig = &application_pb.DeploymentConfig{}
 	}
 
-	if cfg.DryRun {
-		built, err := app.BuildApplication(appConfig, cfg.Version)
-		if err != nil {
-			return err
-		}
-		tpl := built.Template
-		yaml, err := tpl.YAML()
-		if err != nil {
-			return err
-		}
-		fmt.Println(string(yaml))
-
-		fmt.Println("-----")
-
-		for _, target := range built.SnsTopics {
-			fmt.Printf("SNS Topic: %s\n", target)
-		}
-		return nil
-	}
-
-	clusterFile := &environment_pb.CombinedConfig{}
-	if err := protoread.PullAndParse(ctx, s3Client, cfg.ClusterFilename, clusterFile); err != nil {
+	cluster, env, err := getCluster(ctx, s3Client, cfg.ClusterFilename, cfg.EnvName)
+	if err != nil {
 		return err
-	}
-
-	cluster := &environment_pb.Cluster{
-		Name: clusterFile.Name,
-	}
-	switch et := clusterFile.Provider.(type) {
-	case *environment_pb.CombinedConfig_EcsCluster:
-		cluster.Provider = &environment_pb.Cluster_EcsCluster{
-			EcsCluster: et.EcsCluster,
-		}
-	default:
-		return fmt.Errorf("unsupported provider %T", clusterFile.Provider)
-	}
-
-	var env *environment_pb.Environment
-
-	for _, e := range clusterFile.Environments {
-		if e.FullName == cfg.EnvName {
-			env = e
-			break
-		}
-	}
-
-	if env == nil {
-		return fmt.Errorf("environment %s not found in cluster", cfg.EnvName)
 	}
 
 	awsTarget := env.GetAws()

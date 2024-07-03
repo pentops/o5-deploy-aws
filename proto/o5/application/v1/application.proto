@@ -21,7 +21,7 @@ message Application {
   // Only valid when deployed onto AWS, this should be used only for
   // infrastructure adapters, e.g. a service which sends emails using SES, the
   // o5 deployer itself, dante etc.
-  AWSConfig aws_config = 12;
+  //AWSConfig aws_config = 12;
 }
 
 message DeploymentConfig {
@@ -106,11 +106,12 @@ message Runtime {
 
   repeated Subscription subscriptions = 5;
 
-  // when true, marks this application as a deployer app, meaning it should have
-  // permissions to deploy itself and other permissions
-  bool grant_meta_deploy_permissions = 6;
-
   WorkerConfig worker_config = 13;
+
+  // Attaches predefined policies to the runtime role which are defined by the
+  // platform-specific environment config (e.g. o5.environment.v1.NamedIAMPolicy
+  // for AWS)
+  repeated string named_env_policies = 7;
 }
 
 message WorkerConfig {
@@ -275,20 +276,6 @@ message SecretEnvVar {
 
 message Secret {
   string name = 1;
-}
-
-message AWSConfig {
-  SES ses = 1;
-
-  message SES {
-    bool send_email = 1;
-  }
-
-  SQSPublishAnywhere sqs_publish_anywhere = 2;
-
-  message SQSPublishAnywhere {
-    bool send_anywhere = 1;
-  }
 }
 
 enum O5Var {

@@ -40,6 +40,7 @@ message ParameterSourceType {
     DesiredCount desired_count = 4;
     CrossEnvAttr cross_env_attr = 5;
     EnvVar env_var = 6;
+    NamedIAMPolicy named_iam_policy = 7;
   }
 
   message Static {
@@ -62,6 +63,10 @@ message ParameterSourceType {
   }
 
   message EnvVar {
+    string name = 1;
+  }
+
+  message NamedIAMPolicy {
     string name = 1;
   }
 }

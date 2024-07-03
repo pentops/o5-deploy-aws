@@ -2,7 +2,6 @@ package deployer
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -51,55 +50,9 @@ func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster
 		sidecarImageVersion = *ecsCluster.SidecarImageVersion
 	}
 
-	sesIdentityCondition := ""
-	if awsEnv.SesIdentity != nil {
-		// awsEnv.SesConditionsJSON,
-		stringLikeCondition := map[string]interface{}{}
-		nullCondition := map[string]interface{}{}
-
-		if len(awsEnv.SesIdentity.Recipients) != 1 || awsEnv.SesIdentity.Recipients[0] != "*" {
-			stringLikeCondition["ses:Recipients"] = awsEnv.SesIdentity.Recipients
-			nullCondition["ses:Recipients"] = false
-		}
-
-		if len(awsEnv.SesIdentity.Senders) != 1 || awsEnv.SesIdentity.Senders[0] != "*" {
-			stringLikeCondition["ses:FromAddress"] = awsEnv.SesIdentity.Senders
-			nullCondition["ses:FromAddress"] = false
-		}
-
-		if len(stringLikeCondition) != 0 {
-			policyDocument := map[string]interface{}{
-				"Version": "2012-10-17",
-				"Statement": []interface{}{
-					map[string]interface{}{
-						"Effect":   "Allow",
-						"Resource": []interface{}{"*"}, // constrained by conditions
-						"Action": []interface{}{
-							"ses:SendEmail",
-						},
-						"Condition": map[string]interface{}{
-							"ForAllValues:StringLike": stringLikeCondition,
-							"Null":                    nullCondition,
-							// https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_condition-single-vs-multi-valued-context-keys.html#reference_policies_condition-multi-valued-context-keys#reference_policies_condition-multi-valued-context-keys
-							// "Use caution if you use ForAllValues with an Allow effect
-							// because it can be overly permissive if the presence of
-							// missing context keys or context keys with empty values in the
-							// request context is unexpected. You can include the Null
-							// condition operator in your policy with a false value to check
-							// if the context key exists and its value is not null. For an
-							// example, see Controlling access based on tag keys."
-							//
-							// I have no idea if this actually applies to SES - DW
-						},
-					},
-				},
-			}
-			sesIdentityConditionBytes, err := json.Marshal(policyDocument)
-			if err != nil {
-				return nil, fmt.Errorf("failed to marshal SES conditions: %w", err)
-			}
-			sesIdentityCondition = string(sesIdentityConditionBytes)
-		}
+	namedPolicies := map[string]string{}
+	for _, policy := range awsEnv.IamPolicies {
+		namedPolicies[policy.Name] = policy.PolicyArn
 	}
 
 	dr := &deployerResolver{
@@ -117,14 +70,21 @@ func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster
 			app.SNSPrefixParameter:            fmt.Sprintf("arn:aws:sns:%s:%s:%s", ecsCluster.AwsRegion, ecsCluster.AwsAccount, environment.FullName),
 			app.S3BucketNamespaceParameter:    ecsCluster.GlobalNamespace,
 			app.O5SidecarImageParameter:       fmt.Sprintf("%s:%s", sidecarImageName, sidecarImageVersion),
-			app.SESConditionsParameter:        sesIdentityCondition,
 			app.CORSOriginParameter:           strings.Join(environment.CorsOrigins, ","),
 			app.EventBusARNParameter:          ecsCluster.EventBusArn,
 		},
-		custom:    environment.Vars,
-		crossEnvs: crossEnvs,
+		custom:        environment.Vars,
+		crossEnvs:     crossEnvs,
+		namedPolicies: namedPolicies,
 	}
 	return dr, nil
+}
+
+type deployerResolver struct {
+	wellKnown     map[string]string
+	namedPolicies map[string]string
+	custom        []*environment_pb.CustomVariable
+	crossEnvs     map[string]*environment_pb.AWSLink
 }
 
 func (rr *deployerResolver) ResolveParameter(param *awsdeployer_pb.Parameter) (*awsdeployer_pb.CloudFormationStackParameter, error) {
@@ -186,6 +146,14 @@ func (rr *deployerResolver) ResolveParameter(param *awsdeployer_pb.Parameter) (*
 		}
 		value = val
 
+	case *awsdeployer_pb.ParameterSourceType_NamedIamPolicy:
+		name := ps.NamedIamPolicy.Name
+		arn, ok := rr.namedPolicies[name]
+		if !ok {
+			return nil, fmt.Errorf("unknown named policy: %s", name)
+		}
+		value = arn
+
 	default:
 		return nil, fmt.Errorf("unknown parameter source (%v) %s", param.Source, param.Name)
 	}
@@ -197,12 +165,6 @@ func (rr *deployerResolver) ResolveParameter(param *awsdeployer_pb.Parameter) (*
 		},
 	}, nil
 
-}
-
-type deployerResolver struct {
-	wellKnown map[string]string
-	custom    []*environment_pb.CustomVariable
-	crossEnvs map[string]*environment_pb.AWSLink
 }
 
 func (dr *deployerResolver) CustomEnvVar(name string) (string, bool) {

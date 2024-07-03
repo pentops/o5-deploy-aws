@@ -85,9 +85,6 @@ func buildSubscriptionPlan(spec *application_pb.Runtime) (*subscriptionPlan, err
 
 		if strings.HasPrefix(sub.Name, "o5-infra/") {
 			topicName := sub.Name[len("o5-infra/"):]
-			if !spec.GrantMetaDeployPermissions {
-				return nil, fmt.Errorf("o5-infra subscription requires meta deploy permissions")
-			}
 			snsTopicARN := cloudformation.Join("", []string{
 				"arn:aws:sns:",
 				cloudformation.Ref("AWS::Region"),
