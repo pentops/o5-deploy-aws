@@ -32,11 +32,13 @@ targets:
 
 runtimes:
   - name: main
-    grantMetaDeployPermissions: true
     routes:
       - prefix: "/deployer/v1/"
         protocol: ROUTE_PROTOCOL_HTTP
         port: 8080
+
+    namedEnvPolicies:
+      - "assume-o5-deployer"
 
     subscriptions:
       - name: "/o5.aws.deployer.v1.topic.DeploymentRequestTopic"

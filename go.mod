@@ -34,7 +34,7 @@ require (
 	github.com/pentops/o5-messaging v0.0.0-20240614163039-d8f7b29ba565
 	github.com/pentops/pgtest.go v0.0.0-20240604005819-2035f4562734
 	github.com/pentops/protostate v0.0.0-20240618224345-07873fade6ae
-	github.com/pentops/runner v0.0.0-20240701061704-4b18fb54d886
+	github.com/pentops/runner v0.0.0-20240703154152-d1783f1a017c
 	github.com/pentops/sqrlx.go v0.0.0-20240618224315-b9b023d5f689
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/stretchr/testify v1.9.0

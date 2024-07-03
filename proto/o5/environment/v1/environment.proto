@@ -11,8 +11,8 @@ message Environment {
   string full_name = 1 [
     (buf.validate.field).string.pattern = "^[a-z][a-z0-9-]+$",
     (psm.list.v1.field).string.open_text.searching = {
-      searchable: true,
-      field_identifier: "tsv_full_name",
+      searchable: true
+      field_identifier: "tsv_full_name"
     }
   ];
 
@@ -54,25 +54,20 @@ message AWSEnvironment {
 
   repeated AWSLink environment_links = 8;
 
-  repeated AWSGrantPrincipal grant_principals = 13;
+  //  repeated AWSGrantPrincipal grant_principals = 13;
 
-  SESIdentity ses_identity = 18;
+  repeated NamedIAMPolicy iam_policies = 14;
 }
 
-message SESIdentity {
-  // use [*] for any, or [*.example.com] to restrict a domain.
-  // Empty array means no permissions
-  repeated string senders = 18;
-
-  // use [*] for any, or [*.example.com] to restrict a domain.
-  // Empty array means no permissions
-  repeated string recipients = 19;
+message NamedIAMPolicy {
+  string name = 1; // lookup val used in o5.application.v1.Runtime.named_env_policies
+  string policy_arn = 2;
 }
 
-message AWSGrantPrincipal {
-  string name = 1; // maps to application.v1.Grant.principal
-  string role_arn = 2;
-}
+//message AWSGrantPrincipal {
+//  string name = 1; // maps to application.v1.Grant.principal
+//  string role_arn = 2;
+//}
 
 message AWSLink {
   string lookup_name = 1; // used to match in application configs

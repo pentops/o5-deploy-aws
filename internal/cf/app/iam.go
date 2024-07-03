@@ -3,7 +3,6 @@ package app
 import (
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/iam"
-	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 )
 
 type PolicyBuilder struct {
@@ -16,10 +15,7 @@ type PolicyBuilder struct {
 	sqsPublish         []string
 	snsPublish         []string
 	eventBridgePublish []string
-	ses                *application_pb.AWSConfig_SES
 	ecrPull            bool
-
-	metaDeployPermissions bool
 }
 
 func NewPolicyBuilder() *PolicyBuilder {
@@ -56,14 +52,6 @@ func (pb *PolicyBuilder) AddSNSPublish(arn string) {
 
 func (pb *PolicyBuilder) AddEventBridgePublish(topicName string) {
 	pb.eventBridgePublish = append(pb.eventBridgePublish, topicName)
-}
-
-func (pb *PolicyBuilder) AddSES(policy *application_pb.AWSConfig_SES) {
-	pb.ses = policy
-}
-
-func (pb *PolicyBuilder) AddMetaDeployPermissions() {
-	pb.metaDeployPermissions = true
 }
 
 func (pb *PolicyBuilder) AddECRPull() {
@@ -146,38 +134,6 @@ func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Po
 				},
 			},
 		})
-	}
-
-	if pb.ses != nil {
-		if pb.ses.SendEmail {
-			rolePolicies = append(rolePolicies, iam.Role_Policy{
-				PolicyName:     uniqueName("ses"),
-				PolicyDocument: cloudformation.Ref(SESConditionsParameter),
-				/* TODO: Partially build the policy document here with a ref to
-				* the conditions. Unclear why the below did not work, the error
-				* given is "Resource handler returned message: "Syntax errors in policy.
-				* providing no use at all...
-
-				* When fixing, also make sure the parameter is only the
-				* condition subet, currently the parameter is set to the whole
-				* policy which is not ideal
-
-					map[string]interface{}{
-						"Version": "2012-10-17",
-						"Statement": []interface{}{
-							map[string]interface{}{
-								"Effect":   "Allow",
-								"Resource": []interface{}{"*"}, // constrained by conditions
-								"Action": []interface{}{
-									"ses:SendEmail",
-								},
-								"Condition": cloudformation.Ref(SESConditionsParameter),
-							},
-						},
-					},
-				*/
-			})
-		}
 	}
 
 	if len(pb.eventBridgePublish) > 0 {
@@ -367,27 +323,6 @@ func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Po
 		}
 
 		rolePolicies = append(rolePolicies, policy)
-	}
-
-	if pb.metaDeployPermissions {
-		policy := iam.Role_Policy{
-			PolicyName: uniqueName("meta-deploy-permissions"),
-			PolicyDocument: map[string]interface{}{
-				"Version": "2012-10-17",
-				"Statement": []interface{}{
-					map[string]interface{}{
-						"Effect": "Allow",
-						"Action": []interface{}{
-							"sts:AssumeRole",
-						},
-						"Resource": cloudformation.Split(",", cloudformation.Ref(MetaDeployAssumeRoleParameter)),
-					},
-				},
-			},
-		}
-
-		rolePolicies = append(rolePolicies, policy)
-
 	}
 
 	return rolePolicies

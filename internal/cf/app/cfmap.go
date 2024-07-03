@@ -33,7 +33,6 @@ const (
 	SNSPrefixParameter            = "SNSPrefix"
 	S3BucketNamespaceParameter    = "S3BucketNamespace"
 	O5SidecarImageParameter       = "O5SidecarImage"
-	SESConditionsParameter        = "SESConditions"
 	SourceTagParameter            = "SourceTag"
 	EventBusARNParameter          = "EventBusARN"
 
@@ -112,7 +111,6 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 		SNSPrefixParameter,
 		S3BucketNamespaceParameter,
 		O5SidecarImageParameter,
-		SESConditionsParameter,
 		EventBusARNParameter,
 		SourceTagParameter,
 	} {
@@ -271,22 +269,6 @@ func BuildApplication(app *application_pb.Application, versionTag string) (*Buil
 		for _, target := range app.Targets {
 			runtimeStack.Policy.AddEventBridgePublish(target.Name)
 
-		}
-
-		if app.AwsConfig != nil {
-			if app.AwsConfig.Ses != nil {
-				runtimeStack.Policy.AddSES(app.AwsConfig.Ses)
-			}
-			if app.AwsConfig.SqsPublishAnywhere != nil && app.AwsConfig.SqsPublishAnywhere.SendAnywhere {
-				runtimeStack.Policy.AddSQSPublish(cloudformation.Join("", []string{
-					"arn:aws:sqs:",
-					"*",
-					":",
-					cloudformation.Ref(AWSAccountIDParameter),
-					":",
-					"*",
-				}))
-			}
 		}
 
 		if err := runtimeStack.Apply(stackTemplate); err != nil {
