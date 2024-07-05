@@ -45,34 +45,22 @@ message DeploymentStateData {
 }
 
 message DeploymentSpec {
-  string app_name = 1 [(psm.list.v1.field).string.open_text.searching = {
-    searchable: true,
-    field_identifier: "tsv_app_name"
-  }];
+  string app_name = 1 [(psm.list.v1.field).string.foreign_key.unique_string.filtering.filterable = true];
 
-  string version = 2 [(psm.list.v1.field).string.open_text.searching = {
-    searchable: true,
-    field_identifier: "tsv_version"
-  }];
+  string version = 2 [(psm.list.v1.field).string.foreign_key.unique_string.filtering.filterable = true];
 
-  string environment_name = 3 [(psm.list.v1.field).string.open_text.searching = {
-    searchable: true,
-    field_identifier: "tsv_environment_name"
-  }];
+  string environment_name = 3 [(psm.list.v1.field).string.foreign_key.unique_string.filtering.filterable = true];
 
-  string environment_id = 4 [(buf.validate.field).string.uuid = true];
+  string environment_id = 4 [
+    (buf.validate.field).string.uuid = true,
+    (psm.list.v1.field).string.foreign_key.uuid.filtering.filterable = true
+  ];
 
   S3Template template = 5;
 
-  string ecs_cluster = 6 [(psm.list.v1.field).string.open_text.searching = {
-    searchable: true,
-    field_identifier: "tsv_ecs_cluster"
-  }];
+  string ecs_cluster = 6 [(psm.list.v1.field).string.foreign_key.unique_string.filtering.filterable = true];
 
-  string cf_stack_name = 7 [(psm.list.v1.field).string.open_text.searching = {
-    searchable: true,
-    field_identifier: "tsv_stack_name"
-  }];
+  string cf_stack_name = 7 [(psm.list.v1.field).string.foreign_key.unique_string.filtering.filterable = true];
 
   DeploymentFlags flags = 8;
 
