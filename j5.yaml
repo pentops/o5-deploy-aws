@@ -23,27 +23,30 @@ plugins:
     type: PLUGIN_PROTO
     opts:
       module: gopkg.interchangefi.com/go-api
-    docker:
-      image: ghcr.io/pentops/protoc-gen-go:v1.32.0
+    command:
+      docker:
+        image: ghcr.io/pentops/protoc-gen-go:v1.32.0
 
   - base: go
     name: go-grpc
-    docker:
-      image: ghcr.io/pentops/protoc-gen-go-grpc:v1.3.0
+    command:
+      docker:
+        image: ghcr.io/pentops/protoc-gen-go-grpc:v1.3.0
 
   - base: go
     name: go-sugar
-    docker:
-      image: ghcr.io/pentops/protoc-gen-go-sugar:19495b5f5ac3fd3964a03031396d83f1bc1341ca
+    command:
+      docker:
+        image: ghcr.io/pentops/protoc-gen-go-sugar:19495b5f5ac3fd3964a03031396d83f1bc1341ca
 
   - base: go
     name: go-o5-messaging
-    docker:
-      image: ghcr.io/pentops/protoc-gen-go-o5-messaging:d8f7b29ba56513be908c4d5d2c6adee57f1ee174
-      env:
-        - PROTOC_GEN_GO_MESSAGING_EXTRA_HEADERS=api-version:$GIT_HASH
+    command:
+      docker:
+        image: ghcr.io/pentops/protoc-gen-go-o5-messaging:caef57f4978baf2d288c5396efe2dd79b334db1c
 
   - base: go
     name: go-psm
-    docker:
-      image: ghcr.io/pentops/protoc-gen-go-protostate:07873fade6ae6e078124d38250498fcec068b6cd
+    command:
+      docker:
+        image: ghcr.io/pentops/protoc-gen-go-protostate:07873fade6ae6e078124d38250498fcec068b6cd
