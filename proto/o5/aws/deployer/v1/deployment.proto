@@ -6,6 +6,7 @@ import "buf/validate/validate.proto";
 import "j5/ext/v1/annotations.proto";
 import "o5/aws/deployer/v1/pgmigrate.proto";
 import "o5/aws/deployer/v1/steps.proto";
+import "o5/messaging/v1/reqres.proto";
 import "psm/list/v1/annotations.proto";
 import "psm/state/v1/annotations.proto";
 import "psm/state/v1/metadata.proto";
@@ -39,9 +40,11 @@ message DeploymentState {
 }
 
 message DeploymentStateData {
-  DeploymentSpec spec = 4;
+  // when set, publishes deployment events back to the requester
+  o5.messaging.v1.RequestMetadata request = 1;
 
-  repeated DeploymentStep steps = 10;
+  DeploymentSpec spec = 2;
+  repeated DeploymentStep steps = 3;
 }
 
 message DeploymentSpec {
@@ -125,7 +128,8 @@ message DeploymentEventType {
   }
 
   message Created {
-    DeploymentSpec spec = 1;
+    o5.messaging.v1.RequestMetadata request = 1;
+    DeploymentSpec spec = 2;
   }
 
   message Triggered {}

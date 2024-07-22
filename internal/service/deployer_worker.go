@@ -84,7 +84,8 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *awsdeploye
 		EventID:   msg.DeploymentId,
 		Timestamp: time.Now(),
 		Event: &awsdeployer_pb.DeploymentEventType_Created{
-			Spec: spec,
+			Request: msg.Request,
+			Spec:    spec,
 		},
 		Cause: &psm_pb.Cause{
 			Type: &psm_pb.Cause_ExternalEvent{
