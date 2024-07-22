@@ -41,6 +41,7 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 			event *awsdeployer_pb.DeploymentEventType_Created,
 		) error {
 			deployment.Spec = event.Spec
+			deployment.Request = event.Request
 
 			// No follow on, the stack state will trigger
 
