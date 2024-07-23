@@ -120,8 +120,10 @@ func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *awsdeployer_
 		AND pg_catalog.pg_table_is_visible(c.oid)
 		`)
 	if err != nil {
-		return err
+		return fmt.Errorf("error getting relation info for fixing object ownership: %w", err)
 	}
+
+	defer rows.Close()
 
 	type object struct {
 		name  string
@@ -132,15 +134,13 @@ func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *awsdeployer_
 	for rows.Next() {
 		o := object{}
 		if err := rows.Scan(&o.name, &o.kind, &o.owner); err != nil {
-			return err
+			return fmt.Errorf("error scanning row in relation info: %w", err)
 		}
 		if o.owner == ownerName {
 			continue
 		}
 		objects[o.kind] = append(objects[o.kind], o)
 	}
-
-	defer rows.Close()
 
 	if err := rows.Err(); err != nil {
 		return err
