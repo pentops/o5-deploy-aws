@@ -4,19 +4,18 @@ package o5.aws.deployer.v1;
 
 import "buf/validate/validate.proto";
 import "j5/ext/v1/annotations.proto";
+import "j5/list/v1/annotations.proto";
 import "o5/environment/v1/cluster.proto";
-import "psm/list/v1/annotations.proto";
-import "psm/state/v1/annotations.proto";
 import "psm/state/v1/metadata.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb";
 
 message ClusterKeys {
-  option (psm.state.v1.psm).name = "cluster";
+  option (j5.ext.v1.psm).entity_name = "cluster";
 
   string cluster_id = 1 [
     (buf.validate.field).string.uuid = true,
-    (psm.state.v1.field).primary_key = true
+    (j5.ext.v1.key).primary_key = true
   ];
 }
 
@@ -28,9 +27,9 @@ message ClusterState {
     (buf.validate.field).required = true
   ];
 
-  ClusterStatus status = 3 [(psm.list.v1.field).enum.filtering = {
-    filterable: true,
-    default_filters: ["CLUSTER_STATUS_ACTIVE"],
+  ClusterStatus status = 3 [(j5.list.v1.field).enum.filtering = {
+    filterable: true
+    default_filters: ["CLUSTER_STATUS_ACTIVE"]
   }];
 
   ClusterStateData data = 4;
@@ -56,7 +55,7 @@ message ClusterEvent {
 
 message ClusterEventType {
   oneof type {
-    option (psm.list.v1.oneof).filtering.filterable = true;
+    option (j5.list.v1.oneof).filtering.filterable = true;
 
     Configured configured = 1;
   }

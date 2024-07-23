@@ -3,7 +3,7 @@ syntax = "proto3";
 package o5.application.v1;
 
 import "buf/validate/validate.proto";
-import "psm/list/v1/annotations.proto";
+import "j5/list/v1/annotations.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb";
 
@@ -70,7 +70,7 @@ message Database {
   string name = 1;
 
   oneof engine {
-    option (psm.list.v1.oneof).filtering.filterable = true;
+    option (j5.list.v1.oneof).filtering.filterable = true;
 
     Postgres postgres = 10;
   }
@@ -88,7 +88,7 @@ message Database {
 
     Container migrate_container = 4;
 
-    bool run_outbox = 5 [(psm.list.v1.field).bool.filtering.filterable = true];
+    bool run_outbox = 5 [(j5.list.v1.field).bool.filtering.filterable = true];
   }
 }
 
@@ -199,7 +199,7 @@ message Container {
   string name = 1;
 
   oneof source {
-    option (psm.list.v1.oneof).filtering.filterable = true;
+    option (j5.list.v1.oneof).filtering.filterable = true;
 
     string image_url = 2;
     Image image = 3;
@@ -219,7 +219,7 @@ message Container {
   }
 
   // The amount of Memory and CPU to allocate to the container
-  Demand demand = 5 [(psm.list.v1.field).enum.filtering = {filterable: true}];
+  Demand demand = 5 [(j5.list.v1.field).enum.filtering = {filterable: true}];
 
   repeated EnvironmentVariable env_vars = 6;
 
@@ -231,7 +231,7 @@ message EnvironmentVariable {
   string name = 1;
 
   oneof spec {
-    option (psm.list.v1.oneof).filtering.filterable = true;
+    option (j5.list.v1.oneof).filtering.filterable = true;
 
     string value = 9;
     DatabaseEnvVar database = 10;
@@ -255,11 +255,11 @@ message BlobstoreEnvVar {
   optional string sub_path = 2;
 
   oneof format {
-    option (psm.list.v1.oneof).filtering.filterable = true;
+    option (j5.list.v1.oneof).filtering.filterable = true;
 
     // Sets the variable as s3://<bucket>/<?sub_path>
     // TODO: Deprecate this and build a wrapper through the sidecar
-    bool s3_direct = 10 [(psm.list.v1.field).bool.filtering.filterable = true];
+    bool s3_direct = 10 [(j5.list.v1.field).bool.filtering.filterable = true];
   }
 }
 

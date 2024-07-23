@@ -1,12 +1,12 @@
 ---
 bundles:
-  - name: proto
+  - name: deployer
     dir: proto
 
 generate:
   - name: go
     inputs:
-      - local: proto
+      - local: deployer
     output: .
     opts:
       paths: import
@@ -21,32 +21,25 @@ generate:
 plugins:
   - name: go
     type: PLUGIN_PROTO
-    opts:
-      module: gopkg.interchangefi.com/go-api
-    command:
-      docker:
-        image: ghcr.io/pentops/protoc-gen-go:v1.32.0
+    docker:
+      image: ghcr.io/pentops/protoc-gen-go:v1.32.0
 
   - base: go
     name: go-grpc
-    command:
-      docker:
-        image: ghcr.io/pentops/protoc-gen-go-grpc:v1.3.0
+    docker:
+      image: ghcr.io/pentops/protoc-gen-go-grpc:v1.3.0
 
   - base: go
     name: go-sugar
-    command:
-      docker:
-        image: ghcr.io/pentops/protoc-gen-go-sugar:19495b5f5ac3fd3964a03031396d83f1bc1341ca
+    docker:
+      image: ghcr.io/pentops/protoc-gen-go-sugar:19495b5f5ac3fd3964a03031396d83f1bc1341ca
 
   - base: go
     name: go-o5-messaging
-    command:
-      docker:
-        image: ghcr.io/pentops/protoc-gen-go-o5-messaging:caef57f4978baf2d288c5396efe2dd79b334db1c
+    docker:
+      image: ghcr.io/pentops/protoc-gen-go-o5-messaging:caef57f4978baf2d288c5396efe2dd79b334db1c
 
   - base: go
     name: go-psm
-    command:
-      docker:
-        image: ghcr.io/pentops/protoc-gen-go-protostate:07873fade6ae6e078124d38250498fcec068b6cd
+    docker:
+      image: ghcr.io/pentops/protoc-gen-go-protostate:ae6136939c65383334732b028a96d5f8802016fa

@@ -4,18 +4,17 @@ package o5.aws.deployer.v1;
 
 import "buf/validate/validate.proto";
 import "j5/ext/v1/annotations.proto";
-import "psm/list/v1/annotations.proto";
-import "psm/state/v1/annotations.proto";
+import "j5/list/v1/annotations.proto";
 import "psm/state/v1/metadata.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb";
 
 message StackKeys {
-  option (psm.state.v1.psm).name = "stack";
+  option (j5.ext.v1.psm).entity_name = "stack";
 
   string stack_id = 1 [
     (buf.validate.field).string.uuid = true,
-    (psm.state.v1.field).primary_key = true
+    (j5.ext.v1.key).primary_key = true
   ];
 
   string environment_id = 2 [(buf.validate.field).string.uuid = true];
@@ -30,7 +29,7 @@ message StackState {
     (buf.validate.field).required = true
   ];
 
-  StackStatus status = 3 [(psm.list.v1.field).enum.filtering.filterable = true];
+  StackStatus status = 3 [(j5.list.v1.field).enum.filtering.filterable = true];
 
   StackStateData data = 4;
 }
@@ -40,22 +39,22 @@ message StackStateData {
 
   string stack_name = 5 [
     (buf.validate.field).string.pattern = "^[a-z][a-z0-9]+-[a-z][a-z0-9]+$",
-    (psm.list.v1.field).string.open_text.searching = {
-      searchable: true,
+    (j5.list.v1.field).string.open_text.searching = {
+      searchable: true
       field_identifier: "tsv_stack_name"
     }
   ];
   string application_name = 6 [
     (buf.validate.field).string.pattern = "^[a-z][a-z0-9]+$",
-    (psm.list.v1.field).string.open_text.searching = {
-      searchable: true,
+    (j5.list.v1.field).string.open_text.searching = {
+      searchable: true
       field_identifier: "tsv_app_name"
     }
   ];
   string environment_name = 7 [
     (buf.validate.field).string.pattern = "^[a-z][a-z0-9]+$",
-    (psm.list.v1.field).string.open_text.searching = {
-      searchable: true,
+    (j5.list.v1.field).string.open_text.searching = {
+      searchable: true
       field_identifier: "tsv_environment_name"
     }
   ];
@@ -88,7 +87,7 @@ message StackEvent {
 
 message StackEventType {
   oneof type {
-    option (psm.list.v1.oneof).filtering.filterable = true;
+    option (j5.list.v1.oneof).filtering.filterable = true;
 
     Configured configured = 2;
     DeploymentRequested deployment_requested = 3;

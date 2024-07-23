@@ -180,7 +180,8 @@ func runServe(ctx context.Context, cfg struct {
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(middleware...)),
 	)
 
-	awsdeployer_spb.RegisterDeploymentQueryServiceServer(grpcServer, queryService)
+	queryService.RegisterGRPC(grpcServer)
+
 	awsdeployer_spb.RegisterDeploymentCommandServiceServer(grpcServer, commandService)
 
 	awsdeployer_tpb.RegisterDeploymentRequestTopicServer(grpcServer, deploymentWorker)
