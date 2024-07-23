@@ -3,25 +3,24 @@ syntax = "proto3";
 package o5.aws.deployer.v1.service;
 
 import "google/api/annotations.proto";
+import "j5/ext/v1/annotations.proto";
+import "j5/list/v1/annotations.proto";
+import "j5/list/v1/page.proto";
+import "j5/list/v1/query.proto";
 import "o5/auth/v1/annotations.proto";
 import "o5/aws/deployer/v1/deployment.proto";
 import "o5/aws/deployer/v1/environment.proto";
 import "o5/aws/deployer/v1/stack.proto";
-import "psm/list/v1/annotations.proto";
-import "psm/list/v1/page.proto";
-import "psm/list/v1/query.proto";
-import "psm/state/v1/annotations.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb";
 
 service DeploymentQueryService {
   option (o5.auth.v1.default_auth).none = {};
+  option (j5.ext.v1.service).state_query.entity = "deployment";
+
   rpc GetDeployment(GetDeploymentRequest) returns (GetDeploymentResponse) {
     option (google.api.http) = {get: "/deployer/v1/q/deployment/{deployment_id}"};
-    option (psm.state.v1.state_query_method) = {
-      name: "deployment"
-      get: true
-    };
+    option (j5.ext.v1.method).state_query.get = true;
   }
 
   rpc ListDeploymentEvents(ListDeploymentEventsRequest) returns (ListDeploymentEventsResponse) {
@@ -29,10 +28,7 @@ service DeploymentQueryService {
       post: "/deployer/v1/q/deployment/{deployment_id}/events"
       body: "*"
     };
-    option (psm.state.v1.state_query_method) = {
-      name: "deployment"
-      list_events: true
-    };
+    option (j5.ext.v1.method).state_query.list_events = true;
   }
 
   rpc ListDeployments(ListDeploymentsRequest) returns (ListDeploymentsResponse) {
@@ -40,18 +36,16 @@ service DeploymentQueryService {
       post: "/deployer/v1/q/deployments"
       body: "*"
     };
-    option (psm.state.v1.state_query_method) = {
-      name: "deployment"
-      list: true
-    };
+    option (j5.ext.v1.method).state_query.list = true;
   }
+}
 
+service StackQueryService {
+  option (o5.auth.v1.default_auth).none = {};
+  option (j5.ext.v1.service).state_query.entity = "stack";
   rpc GetStack(GetStackRequest) returns (GetStackResponse) {
     option (google.api.http) = {get: "/deployer/v1/q/stack/{stack_id}"};
-    option (psm.state.v1.state_query_method) = {
-      name: "stack"
-      get: true
-    };
+    option (j5.ext.v1.method).state_query.get = true;
   }
 
   rpc ListStacks(ListStacksRequest) returns (ListStacksResponse) {
@@ -59,10 +53,7 @@ service DeploymentQueryService {
       post: "/deployer/v1/q/stacks"
       body: "*"
     };
-    option (psm.state.v1.state_query_method) = {
-      name: "stack"
-      list: true
-    };
+    option (j5.ext.v1.method).state_query.list = true;
   }
 
   rpc ListStackEvents(ListStackEventsRequest) returns (ListStackEventsResponse) {
@@ -70,29 +61,24 @@ service DeploymentQueryService {
       post: "/deployer/v1/q/stack/{stack_id}/events"
       body: "*"
     };
-    option (psm.state.v1.state_query_method) = {
-      name: "stack"
-      list_events: true
-    };
+    option (j5.ext.v1.method).state_query.list_events = true;
   }
+}
 
+service EnvironmentQueryService {
+  option (o5.auth.v1.default_auth).none = {};
+  option (j5.ext.v1.service).state_query.entity = "environment";
   rpc ListEnvironments(ListEnvironmentsRequest) returns (ListEnvironmentsResponse) {
     option (google.api.http) = {
       post: "/deployer/v1/q/environments"
       body: "*"
     };
-    option (psm.state.v1.state_query_method) = {
-      name: "environment"
-      list: true
-    };
+    option (j5.ext.v1.method).state_query.list = true;
   }
 
   rpc GetEnvironment(GetEnvironmentRequest) returns (GetEnvironmentResponse) {
     option (google.api.http) = {get: "/deployer/v1/q/environment/{environment_id}"};
-    option (psm.state.v1.state_query_method) = {
-      name: "environment"
-      get: true
-    };
+    option (j5.ext.v1.method).state_query.get = true;
   }
 
   rpc ListEnvironmentEvents(ListEnvironmentEventsRequest) returns (ListEnvironmentEventsResponse) {
@@ -100,10 +86,7 @@ service DeploymentQueryService {
       post: "/deployer/v1/q/environment/{environment_id}/events"
       body: "*"
     };
-    option (psm.state.v1.state_query_method) = {
-      name: "environment"
-      list_events: true
-    };
+    option (j5.ext.v1.method).state_query.list_events = true;
   }
 }
 
@@ -119,20 +102,20 @@ message GetDeploymentResponse {
 message ListDeploymentEventsRequest {
   string deployment_id = 1;
 
-  psm.list.v1.PageRequest page = 100;
-  psm.list.v1.QueryRequest query = 101;
+  j5.list.v1.PageRequest page = 100;
+  j5.list.v1.QueryRequest query = 101;
 }
 
 message ListDeploymentEventsResponse {
   repeated o5.aws.deployer.v1.DeploymentEvent events = 1;
 
-  psm.list.v1.PageResponse page = 100;
+  j5.list.v1.PageResponse page = 100;
 }
 
 message ListDeploymentsRequest {
-  psm.list.v1.PageRequest page = 100;
-  psm.list.v1.QueryRequest query = 101;
-  option (psm.list.v1.list_request) = {
+  j5.list.v1.PageRequest page = 100;
+  j5.list.v1.QueryRequest query = 101;
+  option (j5.list.v1.list_request) = {
     sort_tiebreaker: ["keys.deployment_id"]
   };
 }
@@ -140,7 +123,7 @@ message ListDeploymentsRequest {
 message ListDeploymentsResponse {
   repeated o5.aws.deployer.v1.DeploymentState deployments = 1;
 
-  psm.list.v1.PageResponse page = 100;
+  j5.list.v1.PageResponse page = 100;
 }
 
 message GetStackRequest {
@@ -153,9 +136,9 @@ message GetStackResponse {
 }
 
 message ListStacksRequest {
-  psm.list.v1.PageRequest page = 100;
-  psm.list.v1.QueryRequest query = 101;
-  option (psm.list.v1.list_request) = {
+  j5.list.v1.PageRequest page = 100;
+  j5.list.v1.QueryRequest query = 101;
+  option (j5.list.v1.list_request) = {
     sort_tiebreaker: ["keys.stack_id"]
   };
 }
@@ -163,31 +146,31 @@ message ListStacksRequest {
 message ListStacksResponse {
   repeated o5.aws.deployer.v1.StackState stacks = 1;
 
-  psm.list.v1.PageResponse page = 100;
+  j5.list.v1.PageResponse page = 100;
 }
 
 message ListStackEventsRequest {
   string stack_id = 1;
 
-  psm.list.v1.PageRequest page = 100;
-  psm.list.v1.QueryRequest query = 101;
+  j5.list.v1.PageRequest page = 100;
+  j5.list.v1.QueryRequest query = 101;
 }
 
 message ListStackEventsResponse {
   repeated o5.aws.deployer.v1.StackEvent events = 1;
 
-  psm.list.v1.PageResponse page = 100;
+  j5.list.v1.PageResponse page = 100;
 }
 
 message ListEnvironmentsRequest {
-  psm.list.v1.PageRequest page = 100;
-  psm.list.v1.QueryRequest query = 101;
+  j5.list.v1.PageRequest page = 100;
+  j5.list.v1.QueryRequest query = 101;
 }
 
 message ListEnvironmentsResponse {
   repeated o5.aws.deployer.v1.EnvironmentState environments = 1;
 
-  psm.list.v1.PageResponse page = 100;
+  j5.list.v1.PageResponse page = 100;
 }
 
 message GetEnvironmentRequest {
@@ -202,12 +185,12 @@ message GetEnvironmentResponse {
 message ListEnvironmentEventsRequest {
   string environment_id = 1;
 
-  psm.list.v1.PageRequest page = 100;
-  psm.list.v1.QueryRequest query = 101;
+  j5.list.v1.PageRequest page = 100;
+  j5.list.v1.QueryRequest query = 101;
 }
 
 message ListEnvironmentEventsResponse {
   repeated o5.aws.deployer.v1.EnvironmentEvent events = 1;
 
-  psm.list.v1.PageResponse page = 100;
+  j5.list.v1.PageResponse page = 100;
 }

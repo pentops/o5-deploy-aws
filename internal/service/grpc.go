@@ -19,13 +19,19 @@ func GRPCMiddleware() []grpc.UnaryServerInterceptor {
 	}
 }
 
+var anonymousSubjectId = "0CBBD346-55C6-47AB-87D0-97E5C16F9DC8"
+
 func actorExtractor(ctx context.Context) *auth_pb.Actor {
 	return &auth_pb.Actor{
-		Type: &auth_pb.Actor_Named{
-			Named: &auth_pb.Actor_NamedActor{
-				Name: "Unauthenticated Client",
+		AuthenticationMethod: &auth_pb.AuthenticationMethod{
+			Type: &auth_pb.AuthenticationMethod_External_{
+				External: &auth_pb.AuthenticationMethod_External{
+					SystemName: "none",
+				},
 			},
 		},
+		SubjectId: anonymousSubjectId,
+		Claim:     &auth_pb.Claim{},
 	}
 }
 
@@ -62,9 +68,9 @@ func CommandCause(ctx context.Context) *psm_pb.Cause {
 
 	return &psm_pb.Cause{
 		Type: &psm_pb.Cause_Command{
-			Command: &psm_pb.CommandCause{
-				MethodName: cause.Method,
-				Actor:      cause.Actor,
+			Command: &auth_pb.Action{
+				Method: cause.Method,
+				Actor:  cause.Actor,
 			},
 		},
 	}

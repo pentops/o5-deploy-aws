@@ -7,7 +7,6 @@ deps:
   - buf.build/googleapis/googleapis
   - buf.build/bufbuild/protovalidate
   - buf.build/pentops/auth
-  - buf.build/pentops/listify
   - buf.build/pentops/protostate
   - buf.build/pentops/j5
   - buf.build/pentops/messaging

@@ -6,9 +6,10 @@ registry:
   name: o5-deploy
 
 options:
-  trimSubPackages:
-    - service
-    - topic
+  subPackages:
+    - name: service
+    - name: topic
+    - name: events
 
 packages:
   - label: AWS Deployer

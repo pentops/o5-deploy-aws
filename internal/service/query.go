@@ -9,15 +9,20 @@ import (
 	"github.com/pentops/o5-deploy-aws/internal/states"
 	"github.com/pentops/protostate/psm"
 	"github.com/pentops/sqrlx.go/sqrlx"
+	"google.golang.org/grpc"
 )
 
 type QueryService struct {
-	deploymentQuery  *awsdeployer_spb.DeploymentPSMQuerySet
-	stackQuery       *awsdeployer_spb.StackPSMQuerySet
+	deploymentQuery *awsdeployer_spb.DeploymentPSMQuerySet
+	*awsdeployer_spb.UnimplementedDeploymentQueryServiceServer
+
+	stackQuery *awsdeployer_spb.StackPSMQuerySet
+	*awsdeployer_spb.UnimplementedStackQueryServiceServer
+
 	environmentQuery *awsdeployer_spb.EnvironmentPSMQuerySet
+	*awsdeployer_spb.UnimplementedEnvironmentQueryServiceServer
 
 	db *sqrlx.Wrapper
-	*awsdeployer_spb.UnimplementedDeploymentQueryServiceServer
 }
 
 func NewQueryService(conn sqrlx.Connection, stateMachines *states.StateMachines) (*QueryService, error) {
@@ -58,6 +63,12 @@ func NewQueryService(conn sqrlx.Connection, stateMachines *states.StateMachines)
 		stackQuery:       stackQuery,
 		environmentQuery: environmentQuery,
 	}, nil
+}
+
+func (ds *QueryService) RegisterGRPC(s *grpc.Server) {
+	awsdeployer_spb.RegisterDeploymentQueryServiceServer(s, ds)
+	awsdeployer_spb.RegisterStackQueryServiceServer(s, ds)
+	awsdeployer_spb.RegisterEnvironmentQueryServiceServer(s, ds)
 }
 
 func (ds *QueryService) GetDeployment(ctx context.Context, req *awsdeployer_spb.GetDeploymentRequest) (*awsdeployer_spb.GetDeploymentResponse, error) {

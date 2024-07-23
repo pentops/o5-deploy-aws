@@ -100,8 +100,10 @@ type Universe struct {
 	DeployerTopic awsdeployer_tpb.DeploymentRequestTopicClient
 	CFReplyTopic  awsinfra_tpb.CloudFormationReplyTopicClient
 
-	DeployerQuery   awsdeployer_spb.DeploymentQueryServiceClient
-	DeployerCommand awsdeployer_spb.DeploymentCommandServiceClient
+	DeployerCommand  awsdeployer_spb.DeploymentCommandServiceClient
+	DeploymentQuery  awsdeployer_spb.DeploymentQueryServiceClient
+	StackQuery       awsdeployer_spb.StackQueryServiceClient
+	EnvironmentQuery awsdeployer_spb.EnvironmentQueryServiceClient
 
 	SpecBuilder *deployer.SpecBuilder
 
@@ -252,18 +254,17 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	topicPair := flowtest.NewGRPCPair(t, service.GRPCMiddleware()...)
 	servicePair := flowtest.NewGRPCPair(t, service.GRPCMiddleware()...)
 
 	deploymentWorker, err := service.NewDeployerWorker(conn, trigger, stateMachines)
 	if err != nil {
 		t.Fatal(err)
 	}
-	awsdeployer_tpb.RegisterDeploymentRequestTopicServer(topicPair.Server, deploymentWorker)
-	uu.DeployerTopic = awsdeployer_tpb.NewDeploymentRequestTopicClient(topicPair.Client)
+	awsdeployer_tpb.RegisterDeploymentRequestTopicServer(servicePair.Server, deploymentWorker)
+	uu.DeployerTopic = awsdeployer_tpb.NewDeploymentRequestTopicClient(servicePair.Client)
 
-	awsinfra_tpb.RegisterCloudFormationReplyTopicServer(topicPair.Server, deploymentWorker)
-	uu.CFReplyTopic = awsinfra_tpb.NewCloudFormationReplyTopicClient(topicPair.Client)
+	awsinfra_tpb.RegisterCloudFormationReplyTopicServer(servicePair.Server, deploymentWorker)
+	uu.CFReplyTopic = awsinfra_tpb.NewCloudFormationReplyTopicClient(servicePair.Client)
 
 	deployerService, err := service.NewCommandService(conn, uu.Github, stateMachines)
 	if err != nil {
@@ -276,10 +277,12 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	awsdeployer_spb.RegisterDeploymentQueryServiceServer(servicePair.Server, queryService)
-	uu.DeployerQuery = awsdeployer_spb.NewDeploymentQueryServiceClient(servicePair.Client)
+	queryService.RegisterGRPC(servicePair.Server)
 
-	topicPair.ServeUntilDone(t, ctx)
+	uu.DeploymentQuery = awsdeployer_spb.NewDeploymentQueryServiceClient(servicePair.Client)
+	uu.StackQuery = awsdeployer_spb.NewStackQueryServiceClient(servicePair.Client)
+	uu.EnvironmentQuery = awsdeployer_spb.NewEnvironmentQueryServiceClient(servicePair.Client)
+
 	servicePair.ServeUntilDone(t, ctx)
 
 	ss.stepper.RunSteps(t)
@@ -289,7 +292,7 @@ func (uu *Universe) AssertDeploymentStatus(t flowtest.Asserter, deploymentID str
 	t.Helper()
 	ctx := context.Background()
 
-	deployment, err := uu.DeployerQuery.GetDeployment(ctx, &awsdeployer_spb.GetDeploymentRequest{
+	deployment, err := uu.DeploymentQuery.GetDeployment(ctx, &awsdeployer_spb.GetDeploymentRequest{
 		DeploymentId: deploymentID,
 	})
 	if err != nil {
@@ -309,7 +312,7 @@ func (uu *Universe) AssertStackStatus(t flowtest.Asserter, stackID string, statu
 	t.Helper()
 	ctx := context.Background()
 
-	stack, err := uu.DeployerQuery.GetStack(ctx, &awsdeployer_spb.GetStackRequest{
+	stack, err := uu.StackQuery.GetStack(ctx, &awsdeployer_spb.GetStackRequest{
 		StackId: stackID,
 	})
 	if err != nil {
