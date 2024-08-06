@@ -21,7 +21,6 @@ linters:
     - wsl
     - prealloc
     - gochecknoglobals
-    - unparam
   disable-all: false
   presets:
     - bugs
