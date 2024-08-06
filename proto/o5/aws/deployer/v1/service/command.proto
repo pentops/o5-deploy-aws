@@ -6,7 +6,6 @@ import "buf/validate/validate.proto";
 import "google/api/annotations.proto";
 import "j5/ext/v1/annotations.proto";
 import "o5/application/v1/application.proto";
-import "o5/auth/v1/annotations.proto";
 import "o5/aws/deployer/v1/cluster.proto";
 import "o5/aws/deployer/v1/deployment.proto";
 import "o5/aws/deployer/v1/environment.proto";
@@ -17,7 +16,6 @@ import "o5/environment/v1/environment.proto";
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb";
 
 service DeploymentCommandService {
-  option (o5.auth.v1.default_auth).none = {};
   rpc TriggerDeployment(TriggerDeploymentRequest) returns (TriggerDeploymentResponse) {
     option (google.api.http) = {
       post: "/deployer/v1/c/deployments/{deployment_id}"
