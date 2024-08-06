@@ -7,7 +7,6 @@ import "j5/ext/v1/annotations.proto";
 import "j5/list/v1/annotations.proto";
 import "j5/list/v1/page.proto";
 import "j5/list/v1/query.proto";
-import "o5/auth/v1/annotations.proto";
 import "o5/aws/deployer/v1/deployment.proto";
 import "o5/aws/deployer/v1/environment.proto";
 import "o5/aws/deployer/v1/stack.proto";
@@ -15,7 +14,6 @@ import "o5/aws/deployer/v1/stack.proto";
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb";
 
 service DeploymentQueryService {
-  option (o5.auth.v1.default_auth).none = {};
   option (j5.ext.v1.service).state_query.entity = "deployment";
 
   rpc GetDeployment(GetDeploymentRequest) returns (GetDeploymentResponse) {
@@ -41,7 +39,6 @@ service DeploymentQueryService {
 }
 
 service StackQueryService {
-  option (o5.auth.v1.default_auth).none = {};
   option (j5.ext.v1.service).state_query.entity = "stack";
   rpc GetStack(GetStackRequest) returns (GetStackResponse) {
     option (google.api.http) = {get: "/deployer/v1/q/stack/{stack_id}"};
@@ -66,7 +63,6 @@ service StackQueryService {
 }
 
 service EnvironmentQueryService {
-  option (o5.auth.v1.default_auth).none = {};
   option (j5.ext.v1.service).state_query.entity = "environment";
   rpc ListEnvironments(ListEnvironmentsRequest) returns (ListEnvironmentsResponse) {
     option (google.api.http) = {

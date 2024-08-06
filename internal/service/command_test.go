@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/pentops/o5-auth/authtest"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
@@ -52,10 +53,7 @@ func TestConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := WithPSMAction(context.Background(), PSMAction{
-		Method: "test",
-		Actor:  actorExtractor(context.Background()),
-	})
+	ctx := authtest.ActionContext(context.Background())
 
 	{ // Attempt to upsert stack before the environment exists.
 		_, err := ds.UpsertStack(ctx, &awsdeployer_spb.UpsertStackRequest{
@@ -137,10 +135,7 @@ func TestTriggerDeployment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := WithPSMAction(context.Background(), PSMAction{
-		Method: "test",
-		Actor:  actorExtractor(context.Background()),
-	})
+	ctx := authtest.ActionContext(context.Background())
 
 	_, err = ds.UpsertCluster(ctx, &awsdeployer_spb.UpsertClusterRequest{
 		ClusterId: "cluster",

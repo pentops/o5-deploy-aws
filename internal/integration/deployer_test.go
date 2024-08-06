@@ -6,6 +6,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/google/uuid"
+	"github.com/pentops/o5-auth/authtest"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
@@ -32,6 +33,7 @@ func TestDeploymentFlow(t *testing.T) {
 
 	var environmentID string
 	ss.Step("Configure Stack", func(ctx context.Context, t UniverseAsserter) {
+		ctx = authtest.JWTContext(ctx)
 
 		_, err := t.DeployerCommand.UpsertCluster(ctx, &awsdeployer_spb.UpsertClusterRequest{
 			ClusterId: "cluster",
@@ -213,6 +215,7 @@ func TestStackLock(t *testing.T) {
 	secondDeploymentID := uuid.NewString()
 
 	ss.Step("setup", func(ctx context.Context, t UniverseAsserter) {
+		ctx = authtest.JWTContext(ctx)
 		_, err := t.DeployerCommand.UpsertCluster(ctx, &awsdeployer_spb.UpsertClusterRequest{
 			ClusterId: "cluster",
 			Src: &awsdeployer_spb.UpsertClusterRequest_Config{
@@ -374,6 +377,7 @@ func TestStackLock(t *testing.T) {
 
 	ss.Step("Terminate the second deployment", func(ctx context.Context, t UniverseAsserter) {
 		// Deployment: UPSERTING --> TERMIATED
+		ctx = authtest.JWTContext(ctx)
 		_, err := t.DeployerCommand.TerminateDeployment(ctx, &awsdeployer_spb.TerminateDeploymentRequest{
 			DeploymentId: secondDeploymentID,
 		})

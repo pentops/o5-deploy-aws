@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pentops/envconf.go/envconf"
 	"github.com/pentops/log.go/log"
+	"github.com/pentops/o5-auth/o5auth"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
@@ -163,6 +164,11 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *awsdeploye
 
 func (ds *CommandService) TerminateDeployment(ctx context.Context, req *awsdeployer_spb.TerminateDeploymentRequest) (*awsdeployer_spb.TerminateDeploymentResponse, error) {
 
+	action, err := o5auth.GetAuthenticatedAction(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	event := &awsdeployer_pb.DeploymentPSMEventSpec{
 		Keys: &awsdeployer_pb.DeploymentKeys{
 			DeploymentId: req.DeploymentId,
@@ -170,10 +176,10 @@ func (ds *CommandService) TerminateDeployment(ctx context.Context, req *awsdeplo
 		EventID:   uuid.NewString(),
 		Timestamp: time.Now(),
 		Event:     &awsdeployer_pb.DeploymentEventType_Terminated{},
-		Cause:     CommandCause(ctx),
+		Action:    action,
 	}
 
-	_, err := ds.deploymentStateMachine.Transition(ctx, ds.db, event)
+	_, err = ds.deploymentStateMachine.Transition(ctx, ds.db, event)
 	if err != nil {
 		return nil, err
 	}
@@ -182,6 +188,11 @@ func (ds *CommandService) TerminateDeployment(ctx context.Context, req *awsdeplo
 }
 
 func (ds *CommandService) UpsertEnvironment(ctx context.Context, req *awsdeployer_spb.UpsertEnvironmentRequest) (*awsdeployer_spb.UpsertEnvironmentResponse, error) {
+
+	action, err := o5auth.GetAuthenticatedAction(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	var config *environment_pb.Environment
 	switch src := req.Src.(type) {
@@ -218,11 +229,6 @@ func (ds *CommandService) UpsertEnvironment(ctx context.Context, req *awsdeploye
 		"envName":       identifiers.fullName,
 	}).Debug("environment identifiers")
 
-	cause := CommandCause(ctx)
-	if cause == nil {
-		return nil, status.Error(codes.Internal, "no actor")
-	}
-
 	event := &awsdeployer_pb.EnvironmentPSMEventSpec{
 		Keys: &awsdeployer_pb.EnvironmentKeys{
 			EnvironmentId: identifiers.environmentID,
@@ -230,7 +236,7 @@ func (ds *CommandService) UpsertEnvironment(ctx context.Context, req *awsdeploye
 		},
 		EventID:   uuid.NewString(),
 		Timestamp: time.Now(),
-		Cause:     cause,
+		Action:    action,
 		Event: &awsdeployer_pb.EnvironmentEventType_Configured{
 			Config: config,
 		},
@@ -253,6 +259,11 @@ func (ds *CommandService) UpsertStack(ctx context.Context, req *awsdeployer_spb.
 		return nil, err
 	}
 
+	action, err := o5auth.GetAuthenticatedAction(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	event := &awsdeployer_pb.StackPSMEventSpec{
 		Keys: &awsdeployer_pb.StackKeys{
 			StackId:       identifiers.stackID,
@@ -261,7 +272,8 @@ func (ds *CommandService) UpsertStack(ctx context.Context, req *awsdeployer_spb.
 		},
 		EventID:   uuid.NewString(),
 		Timestamp: time.Now(),
-		Cause:     CommandCause(ctx),
+		Action:    action,
+
 		Event: &awsdeployer_pb.StackEventType_Configured{
 			EnvironmentId:   identifiers.environment.environmentID,
 			ApplicationName: identifiers.appName,
@@ -280,6 +292,11 @@ func (ds *CommandService) UpsertStack(ctx context.Context, req *awsdeployer_spb.
 }
 
 func (ds *CommandService) UpsertCluster(ctx context.Context, req *awsdeployer_spb.UpsertClusterRequest) (*awsdeployer_spb.UpsertClusterResponse, error) {
+
+	action, err := o5auth.GetAuthenticatedAction(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	var config *environment_pb.CombinedConfig
 	switch src := req.Src.(type) {
@@ -310,10 +327,6 @@ func (ds *CommandService) UpsertCluster(ctx context.Context, req *awsdeployer_sp
 	if err != nil {
 		return nil, err
 	}
-	cause := CommandCause(ctx)
-	if cause == nil {
-		return nil, status.Error(codes.Internal, "no actor")
-	}
 
 	cluster := &environment_pb.Cluster{
 		Name: config.Name,
@@ -333,7 +346,7 @@ func (ds *CommandService) UpsertCluster(ctx context.Context, req *awsdeployer_sp
 		},
 		EventID:   uuid.NewString(),
 		Timestamp: time.Now(),
-		Cause:     cause,
+		Action:    action,
 		Event: &awsdeployer_pb.ClusterEventType_Configured{
 			Config: cluster,
 		},
@@ -349,7 +362,8 @@ func (ds *CommandService) UpsertCluster(ctx context.Context, req *awsdeployer_sp
 			},
 			EventID:   uuid.NewString(),
 			Timestamp: time.Now(),
-			Cause:     cause,
+			Action:    action,
+
 			Event: &awsdeployer_pb.EnvironmentEventType_Configured{
 				Config: envConfig,
 			},
