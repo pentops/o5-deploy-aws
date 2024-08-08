@@ -27,12 +27,12 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/pentops/envconf.go v0.0.0-20240806040806-dcab509e8c71
 	github.com/pentops/flowtest v0.0.0-20240806162256-23b05c4df309
-	github.com/pentops/j5 v0.0.0-20240806183429-9233df10dbc0
+	github.com/pentops/j5 v0.0.0-20240808021058-4fb1627e2bf7
 	github.com/pentops/log.go v0.0.0-20240806161938-2742d05b4c24
-	github.com/pentops/o5-auth v0.0.0-20240806173111-c0cdf17bc8ef
+	github.com/pentops/o5-auth v0.0.0-20240808024502-963fc9bfc541
 	github.com/pentops/o5-messaging v0.0.0-20240806162328-c77f99413b9e
 	github.com/pentops/pgtest.go v0.0.0-20240806042712-cca5bdfe6542
-	github.com/pentops/protostate v0.0.0-20240806163947-0acc79ac33ca
+	github.com/pentops/protostate v0.0.0-20240808025142-171af25bf528
 	github.com/pentops/runner v0.0.0-20240806162317-0eb1ced9ab3d
 	github.com/pentops/sqrlx.go v0.0.0-20240806064322-33adc0ac5bd4
 	github.com/pressly/goose v2.7.0+incompatible
