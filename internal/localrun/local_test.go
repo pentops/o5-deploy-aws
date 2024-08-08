@@ -9,12 +9,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/google/uuid"
 	"github.com/pentops/flowtest"
+	"github.com/pentops/j5/gen/psm/state/v1/psm_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
-	"github.com/pentops/protostate/gen/state/v1/psm_pb"
 	"google.golang.org/protobuf/proto"
 )
 
