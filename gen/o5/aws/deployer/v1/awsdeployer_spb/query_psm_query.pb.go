@@ -6,6 +6,70 @@ import (
 	psm "github.com/pentops/protostate/psm"
 )
 
+// State Query Service for %sStack
+// QuerySet is the query set for the Stack service.
+
+type StackPSMQuerySet = psm.StateQuerySet[
+	*GetStackRequest,
+	*GetStackResponse,
+	*ListStacksRequest,
+	*ListStacksResponse,
+	*ListStackEventsRequest,
+	*ListStackEventsResponse,
+]
+
+func NewStackPSMQuerySet(
+	smSpec psm.QuerySpec[
+		*GetStackRequest,
+		*GetStackResponse,
+		*ListStacksRequest,
+		*ListStacksResponse,
+		*ListStackEventsRequest,
+		*ListStackEventsResponse,
+	],
+	options psm.StateQueryOptions,
+) (*StackPSMQuerySet, error) {
+	return psm.BuildStateQuerySet[
+		*GetStackRequest,
+		*GetStackResponse,
+		*ListStacksRequest,
+		*ListStacksResponse,
+		*ListStackEventsRequest,
+		*ListStackEventsResponse,
+	](smSpec, options)
+}
+
+type StackPSMQuerySpec = psm.QuerySpec[
+	*GetStackRequest,
+	*GetStackResponse,
+	*ListStacksRequest,
+	*ListStacksResponse,
+	*ListStackEventsRequest,
+	*ListStackEventsResponse,
+]
+
+func DefaultStackPSMQuerySpec(tableSpec psm.QueryTableSpec) StackPSMQuerySpec {
+	return psm.QuerySpec[
+		*GetStackRequest,
+		*GetStackResponse,
+		*ListStacksRequest,
+		*ListStacksResponse,
+		*ListStackEventsRequest,
+		*ListStackEventsResponse,
+	]{
+		QueryTableSpec: tableSpec,
+		ListRequestFilter: func(req *ListStacksRequest) (map[string]interface{}, error) {
+			filter := map[string]interface{}{}
+			return filter, nil
+		},
+		ListEventsRequestFilter: func(req *ListStackEventsRequest) (map[string]interface{}, error) {
+			filter := map[string]interface{}{}
+			filter["stack_id"] = req.StackId
+			return filter, nil
+		},
+	}
+}
+
 // State Query Service for %sEnvironment
 // QuerySet is the query set for the Environment service.
 
@@ -129,70 +193,6 @@ func DefaultDeploymentPSMQuerySpec(tableSpec psm.QueryTableSpec) DeploymentPSMQu
 		ListEventsRequestFilter: func(req *ListDeploymentEventsRequest) (map[string]interface{}, error) {
 			filter := map[string]interface{}{}
 			filter["deployment_id"] = req.DeploymentId
-			return filter, nil
-		},
-	}
-}
-
-// State Query Service for %sStack
-// QuerySet is the query set for the Stack service.
-
-type StackPSMQuerySet = psm.StateQuerySet[
-	*GetStackRequest,
-	*GetStackResponse,
-	*ListStacksRequest,
-	*ListStacksResponse,
-	*ListStackEventsRequest,
-	*ListStackEventsResponse,
-]
-
-func NewStackPSMQuerySet(
-	smSpec psm.QuerySpec[
-		*GetStackRequest,
-		*GetStackResponse,
-		*ListStacksRequest,
-		*ListStacksResponse,
-		*ListStackEventsRequest,
-		*ListStackEventsResponse,
-	],
-	options psm.StateQueryOptions,
-) (*StackPSMQuerySet, error) {
-	return psm.BuildStateQuerySet[
-		*GetStackRequest,
-		*GetStackResponse,
-		*ListStacksRequest,
-		*ListStacksResponse,
-		*ListStackEventsRequest,
-		*ListStackEventsResponse,
-	](smSpec, options)
-}
-
-type StackPSMQuerySpec = psm.QuerySpec[
-	*GetStackRequest,
-	*GetStackResponse,
-	*ListStacksRequest,
-	*ListStacksResponse,
-	*ListStackEventsRequest,
-	*ListStackEventsResponse,
-]
-
-func DefaultStackPSMQuerySpec(tableSpec psm.QueryTableSpec) StackPSMQuerySpec {
-	return psm.QuerySpec[
-		*GetStackRequest,
-		*GetStackResponse,
-		*ListStacksRequest,
-		*ListStacksResponse,
-		*ListStackEventsRequest,
-		*ListStackEventsResponse,
-	]{
-		QueryTableSpec: tableSpec,
-		ListRequestFilter: func(req *ListStacksRequest) (map[string]interface{}, error) {
-			filter := map[string]interface{}{}
-			return filter, nil
-		},
-		ListEventsRequestFilter: func(req *ListStackEventsRequest) (map[string]interface{}, error) {
-			filter := map[string]interface{}{}
-			filter["stack_id"] = req.StackId
 			return filter, nil
 		},
 	}
