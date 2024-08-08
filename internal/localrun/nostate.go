@@ -7,12 +7,12 @@ import (
 	"os"
 	"strings"
 
+	"github.com/pentops/j5/gen/psm/state/v1/psm_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
 	"github.com/pentops/o5-deploy-aws/internal/states/plan"
 	"github.com/pentops/o5-messaging/o5msg"
-	"github.com/pentops/protostate/gen/state/v1/psm_pb"
 	"google.golang.org/protobuf/proto"
 )
 
