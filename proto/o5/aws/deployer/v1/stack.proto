@@ -5,7 +5,7 @@ package o5.aws.deployer.v1;
 import "buf/validate/validate.proto";
 import "j5/ext/v1/annotations.proto";
 import "j5/list/v1/annotations.proto";
-import "psm/state/v1/metadata.proto";
+import "j5/state/v1/metadata.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb";
 
@@ -22,7 +22,7 @@ message StackKeys {
 }
 
 message StackState {
-  psm.state.v1.StateMetadata metadata = 1 [(buf.validate.field).required = true];
+  j5.state.v1.StateMetadata metadata = 1 [(buf.validate.field).required = true];
 
   StackKeys keys = 2 [
     (j5.ext.v1.field).message.flatten = true,
@@ -75,7 +75,7 @@ message StackDeployment {
 }
 
 message StackEvent {
-  psm.state.v1.EventMetadata metadata = 1 [(buf.validate.field).required = true];
+  j5.state.v1.EventMetadata metadata = 1 [(buf.validate.field).required = true];
 
   StackKeys keys = 2 [
     (j5.ext.v1.field).message.flatten = true,

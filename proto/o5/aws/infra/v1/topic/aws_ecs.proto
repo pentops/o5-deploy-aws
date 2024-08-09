@@ -4,30 +4,30 @@ package o5.aws.infra.v1.topic;
 
 import "buf/validate/validate.proto";
 import "google/protobuf/empty.proto";
-import "o5/messaging/v1/annotations.proto";
-import "o5/messaging/v1/reqres.proto";
+import "j5/messaging/v1/annotations.proto";
+import "j5/messaging/v1/reqres.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb";
 
 service ECSRequestTopic {
-  option (o5.messaging.v1.config).request.name = "o5-aws-command";
+  option (j5.messaging.v1.config).request.name = "o5-aws-command";
   rpc RunECSTask(RunECSTaskMessage) returns (google.protobuf.Empty) {}
 }
 
 service ECSReplyTopic {
-  option (o5.messaging.v1.config).reply.name = "o5-aws-command";
+  option (j5.messaging.v1.config).reply.name = "o5-aws-command";
   rpc ECSTaskStatus(ECSTaskStatusMessage) returns (google.protobuf.Empty) {}
 }
 
 message RunECSTaskMessage {
-  o5.messaging.v1.RequestMetadata request = 1;
+  j5.messaging.v1.RequestMetadata request = 1;
   string task_definition = 2;
   int32 count = 3;
   string cluster = 4;
 }
 
 message ECSTaskStatusMessage {
-  o5.messaging.v1.RequestMetadata request = 1;
+  j5.messaging.v1.RequestMetadata request = 1;
   string event_id = 2 [(buf.validate.field).string.uuid = true];
   ECSTaskEventType event = 3;
   string task_arn = 4;

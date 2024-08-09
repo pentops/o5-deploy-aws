@@ -7,7 +7,7 @@ import (
 
 	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
-	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
+	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/o5-messaging/o5msg"
 	"github.com/pentops/o5-messaging/outbox"
 	"github.com/pentops/sqrlx.go/sqrlx"
@@ -38,7 +38,7 @@ func (s *Storage) PublishEvent(ctx context.Context, msg o5msg.Message) error {
 	})
 }
 
-func (s *Storage) RequestToClientToken(ctx context.Context, req *messaging_pb.RequestMetadata) (string, error) {
+func (s *Storage) RequestToClientToken(ctx context.Context, req *messaging_j5pb.RequestMetadata) (string, error) {
 	token := uuid.NewString()
 
 	return token, s.db.Transact(ctx, &sqrlx.TxOptions{
@@ -75,8 +75,8 @@ func (s *Storage) RequestToClientToken(ctx context.Context, req *messaging_pb.Re
 	})
 }
 
-func (s *Storage) ClientTokenToRequest(ctx context.Context, token string) (*messaging_pb.RequestMetadata, error) {
-	response := &messaging_pb.RequestMetadata{}
+func (s *Storage) ClientTokenToRequest(ctx context.Context, token string) (*messaging_j5pb.RequestMetadata, error) {
+	response := &messaging_j5pb.RequestMetadata{}
 
 	err := s.db.Transact(ctx, &sqrlx.TxOptions{
 		Isolation: sql.LevelReadCommitted,

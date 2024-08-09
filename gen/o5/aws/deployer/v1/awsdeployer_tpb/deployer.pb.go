@@ -7,15 +7,16 @@
 package awsdeployer_tpb
 
 import (
+	reflect "reflect"
+	sync "sync"
+
 	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
+	messaging_j5pb "github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	application_pb "github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	awsdeployer_pb "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	messaging_pb "github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
-	reflect "reflect"
-	sync "sync"
 )
 
 const (
@@ -85,7 +86,7 @@ type RequestDeploymentMessage struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Request       *messaging_pb.RequestMetadata   `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
+	Request       *messaging_j5pb.RequestMetadata `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
 	DeploymentId  string                          `protobuf:"bytes,2,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
 	EnvironmentId string                          `protobuf:"bytes,3,opt,name=environment_id,json=environmentId,proto3" json:"environment_id,omitempty"`
 	Application   *application_pb.Application     `protobuf:"bytes,4,opt,name=application,proto3" json:"application,omitempty"`
@@ -125,7 +126,7 @@ func (*RequestDeploymentMessage) Descriptor() ([]byte, []int) {
 	return file_o5_aws_deployer_v1_topic_deployer_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *RequestDeploymentMessage) GetRequest() *messaging_pb.RequestMetadata {
+func (x *RequestDeploymentMessage) GetRequest() *messaging_j5pb.RequestMetadata {
 	if x != nil {
 		return x.Request
 	}
@@ -172,10 +173,10 @@ type DeploymentStatusMessage struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Request      *messaging_pb.RequestMetadata `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
-	DeploymentId string                        `protobuf:"bytes,2,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
-	Status       DeploymentStatus              `protobuf:"varint,3,opt,name=status,proto3,enum=o5.aws.deployer.v1.topic.DeploymentStatus" json:"status,omitempty"`
-	Message      string                        `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	Request      *messaging_j5pb.RequestMetadata `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
+	DeploymentId string                          `protobuf:"bytes,2,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
+	Status       DeploymentStatus                `protobuf:"varint,3,opt,name=status,proto3,enum=o5.aws.deployer.v1.topic.DeploymentStatus" json:"status,omitempty"`
+	Message      string                          `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
 }
 
 func (x *DeploymentStatusMessage) Reset() {
@@ -210,7 +211,7 @@ func (*DeploymentStatusMessage) Descriptor() ([]byte, []int) {
 	return file_o5_aws_deployer_v1_topic_deployer_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *DeploymentStatusMessage) GetRequest() *messaging_pb.RequestMetadata {
+func (x *DeploymentStatusMessage) GetRequest() *messaging_j5pb.RequestMetadata {
 	if x != nil {
 		return x.Request
 	}
@@ -253,14 +254,14 @@ var file_o5_aws_deployer_v1_topic_deployer_proto_rawDesc = []byte{
 	0x2f, 0x61, 0x70, 0x70, 0x6c, 0x69, 0x63, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x70, 0x72, 0x6f,
 	0x74, 0x6f, 0x1a, 0x23, 0x6f, 0x35, 0x2f, 0x61, 0x77, 0x73, 0x2f, 0x64, 0x65, 0x70, 0x6c, 0x6f,
 	0x79, 0x65, 0x72, 0x2f, 0x76, 0x31, 0x2f, 0x64, 0x65, 0x70, 0x6c, 0x6f, 0x79, 0x6d, 0x65, 0x6e,
-	0x74, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x21, 0x6f, 0x35, 0x2f, 0x6d, 0x65, 0x73, 0x73,
+	0x74, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x21, 0x6a, 0x35, 0x2f, 0x6d, 0x65, 0x73, 0x73,
 	0x61, 0x67, 0x69, 0x6e, 0x67, 0x2f, 0x76, 0x31, 0x2f, 0x61, 0x6e, 0x6e, 0x6f, 0x74, 0x61, 0x74,
-	0x69, 0x6f, 0x6e, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x1c, 0x6f, 0x35, 0x2f, 0x6d,
+	0x69, 0x6f, 0x6e, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x1c, 0x6a, 0x35, 0x2f, 0x6d,
 	0x65, 0x73, 0x73, 0x61, 0x67, 0x69, 0x6e, 0x67, 0x2f, 0x76, 0x31, 0x2f, 0x72, 0x65, 0x71, 0x72,
 	0x65, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0xcd, 0x02, 0x0a, 0x18, 0x52, 0x65, 0x71,
 	0x75, 0x65, 0x73, 0x74, 0x44, 0x65, 0x70, 0x6c, 0x6f, 0x79, 0x6d, 0x65, 0x6e, 0x74, 0x4d, 0x65,
 	0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x3a, 0x0a, 0x07, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
-	0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x6f, 0x35, 0x2e, 0x6d, 0x65, 0x73, 0x73,
+	0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x6a, 0x35, 0x2e, 0x6d, 0x65, 0x73, 0x73,
 	0x61, 0x67, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
 	0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0x52, 0x07, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73,
 	0x74, 0x12, 0x2d, 0x0a, 0x0d, 0x64, 0x65, 0x70, 0x6c, 0x6f, 0x79, 0x6d, 0x65, 0x6e, 0x74, 0x5f,
@@ -281,7 +282,7 @@ var file_o5_aws_deployer_v1_topic_deployer_proto_rawDesc = []byte{
 	0x73, 0x52, 0x05, 0x66, 0x6c, 0x61, 0x67, 0x73, 0x22, 0xe2, 0x01, 0x0a, 0x17, 0x44, 0x65, 0x70,
 	0x6c, 0x6f, 0x79, 0x6d, 0x65, 0x6e, 0x74, 0x53, 0x74, 0x61, 0x74, 0x75, 0x73, 0x4d, 0x65, 0x73,
 	0x73, 0x61, 0x67, 0x65, 0x12, 0x3a, 0x0a, 0x07, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x18,
-	0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x6f, 0x35, 0x2e, 0x6d, 0x65, 0x73, 0x73, 0x61,
+	0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x6a, 0x35, 0x2e, 0x6d, 0x65, 0x73, 0x73, 0x61,
 	0x67, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x4d,
 	0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0x52, 0x07, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
 	0x12, 0x2d, 0x0a, 0x0d, 0x64, 0x65, 0x70, 0x6c, 0x6f, 0x79, 0x6d, 0x65, 0x6e, 0x74, 0x5f, 0x69,
@@ -349,16 +350,16 @@ var file_o5_aws_deployer_v1_topic_deployer_proto_goTypes = []interface{}{
 	(DeploymentStatus)(0),                  // 0: o5.aws.deployer.v1.topic.DeploymentStatus
 	(*RequestDeploymentMessage)(nil),       // 1: o5.aws.deployer.v1.topic.RequestDeploymentMessage
 	(*DeploymentStatusMessage)(nil),        // 2: o5.aws.deployer.v1.topic.DeploymentStatusMessage
-	(*messaging_pb.RequestMetadata)(nil),   // 3: o5.messaging.v1.RequestMetadata
+	(*messaging_j5pb.RequestMetadata)(nil), // 3: j5.messaging.v1.RequestMetadata
 	(*application_pb.Application)(nil),     // 4: o5.application.v1.Application
 	(*awsdeployer_pb.DeploymentFlags)(nil), // 5: o5.aws.deployer.v1.DeploymentFlags
 	(*emptypb.Empty)(nil),                  // 6: google.protobuf.Empty
 }
 var file_o5_aws_deployer_v1_topic_deployer_proto_depIdxs = []int32{
-	3, // 0: o5.aws.deployer.v1.topic.RequestDeploymentMessage.request:type_name -> o5.messaging.v1.RequestMetadata
+	3, // 0: o5.aws.deployer.v1.topic.RequestDeploymentMessage.request:type_name -> j5.messaging.v1.RequestMetadata
 	4, // 1: o5.aws.deployer.v1.topic.RequestDeploymentMessage.application:type_name -> o5.application.v1.Application
 	5, // 2: o5.aws.deployer.v1.topic.RequestDeploymentMessage.flags:type_name -> o5.aws.deployer.v1.DeploymentFlags
-	3, // 3: o5.aws.deployer.v1.topic.DeploymentStatusMessage.request:type_name -> o5.messaging.v1.RequestMetadata
+	3, // 3: o5.aws.deployer.v1.topic.DeploymentStatusMessage.request:type_name -> j5.messaging.v1.RequestMetadata
 	0, // 4: o5.aws.deployer.v1.topic.DeploymentStatusMessage.status:type_name -> o5.aws.deployer.v1.topic.DeploymentStatus
 	1, // 5: o5.aws.deployer.v1.topic.DeploymentRequestTopic.RequestDeployment:input_type -> o5.aws.deployer.v1.topic.RequestDeploymentMessage
 	2, // 6: o5.aws.deployer.v1.topic.DeploymentReplyTopic.DeploymentStatus:input_type -> o5.aws.deployer.v1.topic.DeploymentStatusMessage

@@ -6,7 +6,7 @@ import "buf/validate/validate.proto";
 import "j5/ext/v1/annotations.proto";
 import "j5/list/v1/annotations.proto";
 import "o5/environment/v1/cluster.proto";
-import "psm/state/v1/metadata.proto";
+import "j5/state/v1/metadata.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb";
 
@@ -20,7 +20,7 @@ message ClusterKeys {
 }
 
 message ClusterState {
-  psm.state.v1.StateMetadata metadata = 1 [(buf.validate.field).required = true];
+  j5.state.v1.StateMetadata metadata = 1 [(buf.validate.field).required = true];
 
   ClusterKeys keys = 2 [
     (j5.ext.v1.field).message.flatten = true,
@@ -45,7 +45,7 @@ enum ClusterStatus {
 }
 
 message ClusterEvent {
-  psm.state.v1.EventMetadata metadata = 1 [(buf.validate.field).required = true];
+  j5.state.v1.EventMetadata metadata = 1 [(buf.validate.field).required = true];
   ClusterKeys keys = 2 [
     (buf.validate.field).required = true,
     (j5.ext.v1.field).message.flatten = true

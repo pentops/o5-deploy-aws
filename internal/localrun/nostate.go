@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/pentops/j5/gen/psm/state/v1/psm_pb"
+	"github.com/pentops/j5/gen/j5/state/v1/psm_j5pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
@@ -35,10 +35,10 @@ func (td *TransitionData) SideEffect(msg o5msg.Message) {
 	td.SideEffects = append(td.SideEffects, msg)
 }
 
-func (td *TransitionData) AsCause() *psm_pb.Cause {
-	return &psm_pb.Cause{
-		Type: &psm_pb.Cause_PsmEvent{
-			PsmEvent: &psm_pb.PSMEventCause{
+func (td *TransitionData) AsCause() *psm_j5pb.Cause {
+	return &psm_j5pb.Cause{
+		Type: &psm_j5pb.Cause_PsmEvent{
+			PsmEvent: &psm_j5pb.PSMEventCause{
 				EventId:      td.CausedBy.Metadata.EventId,
 				StateMachine: td.CausedBy.Keys.PSMFullName(),
 			},

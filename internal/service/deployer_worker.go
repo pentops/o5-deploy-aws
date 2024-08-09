@@ -7,7 +7,7 @@ import (
 
 	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
-	"github.com/pentops/j5/gen/psm/state/v1/psm_pb"
+	"github.com/pentops/j5/gen/j5/state/v1/psm_j5pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
@@ -87,9 +87,9 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *awsdeploye
 			Request: msg.Request,
 			Spec:    spec,
 		},
-		Cause: &psm_pb.Cause{
-			Type: &psm_pb.Cause_ExternalEvent{
-				ExternalEvent: &psm_pb.ExternalEventCause{
+		Cause: &psm_j5pb.Cause{
+			Type: &psm_j5pb.Cause_ExternalEvent{
+				ExternalEvent: &psm_j5pb.ExternalEventCause{
 					SystemName: "deployer",
 					EventName:  "RequestDeployment",
 				},
@@ -119,9 +119,9 @@ func StackStatusToEvent(msg *awsinfra_tpb.StackStatusChangedMessage) (*awsdeploy
 		},
 		EventID:   uuid.NewSHA1(cfEventNamespace, []byte(msg.EventId)).String(),
 		Timestamp: time.Now(),
-		Cause: &psm_pb.Cause{
-			Type: &psm_pb.Cause_ExternalEvent{
-				ExternalEvent: &psm_pb.ExternalEventCause{
+		Cause: &psm_j5pb.Cause{
+			Type: &psm_j5pb.Cause_ExternalEvent{
+				ExternalEvent: &psm_j5pb.ExternalEventCause{
 					SystemName: "deployer-cf",
 					EventName:  "StackStatusChanged",
 					ExternalId: &msg.EventId,
@@ -209,9 +209,9 @@ func ChangeSetStatusToEvent(msg *awsinfra_tpb.ChangeSetStatusChangedMessage) (*a
 		},
 		EventID:   msg.EventId,
 		Timestamp: time.Now(),
-		Cause: &psm_pb.Cause{
-			Type: &psm_pb.Cause_ExternalEvent{
-				ExternalEvent: &psm_pb.ExternalEventCause{
+		Cause: &psm_j5pb.Cause{
+			Type: &psm_j5pb.Cause_ExternalEvent{
+				ExternalEvent: &psm_j5pb.ExternalEventCause{
 					SystemName: "deployer",
 					EventName:  "PlanStatusChanged",
 					ExternalId: &msg.EventId,
@@ -295,9 +295,9 @@ func PostgresMigrationToEvent(msg *awsinfra_tpb.PostgresDatabaseStatusMessage) (
 		},
 		EventID:   msg.EventId,
 		Timestamp: time.Now(),
-		Cause: &psm_pb.Cause{
-			Type: &psm_pb.Cause_ExternalEvent{
-				ExternalEvent: &psm_pb.ExternalEventCause{
+		Cause: &psm_j5pb.Cause{
+			Type: &psm_j5pb.Cause_ExternalEvent{
+				ExternalEvent: &psm_j5pb.ExternalEventCause{
 					SystemName: "deployer-postgres",
 					EventName:  "PostgresDatabaseStatus",
 					ExternalId: &msg.EventId,

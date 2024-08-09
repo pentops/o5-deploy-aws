@@ -9,6 +9,7 @@ import (
 
 	"github.com/iancoleman/strcase"
 	"github.com/pentops/flowtest"
+	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_epb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
@@ -116,7 +117,7 @@ type Universe struct {
 }
 
 type cfMock struct {
-	lastRequest *messaging_pb.RequestMetadata
+	lastRequest *messaging_j5pb.RequestMetadata
 	lastStack   string
 	uu          *Universe
 }
@@ -124,7 +125,7 @@ type cfMock struct {
 func (cf *cfMock) ExpectStabalizeStack(t flowtest.TB) {
 	t.Helper()
 	stabalizeRequest := &awsinfra_tpb.StabalizeStackMessage{
-		Request: &messaging_pb.RequestMetadata{},
+		Request: &messaging_j5pb.RequestMetadata{},
 	}
 	cf.uu.Outbox.PopMessage(t, stabalizeRequest)
 	cf.lastRequest = stabalizeRequest.Request
@@ -134,7 +135,7 @@ func (cf *cfMock) ExpectStabalizeStack(t flowtest.TB) {
 func (cf *cfMock) ExpectCreateStack(t flowtest.TB) *awsinfra_tpb.CreateNewStackMessage {
 	t.Helper()
 	createRequest := &awsinfra_tpb.CreateNewStackMessage{
-		Request: &messaging_pb.RequestMetadata{},
+		Request: &messaging_j5pb.RequestMetadata{},
 	}
 	cf.uu.Outbox.PopMessage(t, createRequest)
 	cf.lastRequest = createRequest.Request

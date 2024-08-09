@@ -6,25 +6,25 @@ import "buf/validate/validate.proto";
 import "google/protobuf/empty.proto";
 import "o5/application/v1/application.proto";
 import "o5/aws/deployer/v1/deployment.proto";
-import "o5/messaging/v1/annotations.proto";
-import "o5/messaging/v1/reqres.proto";
+import "j5/messaging/v1/annotations.proto";
+import "j5/messaging/v1/reqres.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb";
 
 service DeploymentRequestTopic {
-  option (o5.messaging.v1.config).request.name = "o5-deployer-input";
+  option (j5.messaging.v1.config).request.name = "o5-deployer-input";
 
   rpc RequestDeployment(RequestDeploymentMessage) returns (google.protobuf.Empty) {}
 }
 
 service DeploymentReplyTopic {
-  option (o5.messaging.v1.config).reply.name = "o5-deployer-output";
+  option (j5.messaging.v1.config).reply.name = "o5-deployer-output";
 
   rpc DeploymentStatus(DeploymentStatusMessage) returns (google.protobuf.Empty) {}
 }
 
 message RequestDeploymentMessage {
-  o5.messaging.v1.RequestMetadata request = 1;
+  j5.messaging.v1.RequestMetadata request = 1;
 
   string deployment_id = 2 [(buf.validate.field).string.uuid = true];
   string environment_id = 3 [(buf.validate.field).string.uuid = true];
@@ -34,7 +34,7 @@ message RequestDeploymentMessage {
 }
 
 message DeploymentStatusMessage {
-  o5.messaging.v1.RequestMetadata request = 1;
+  j5.messaging.v1.RequestMetadata request = 1;
   string deployment_id = 2 [(buf.validate.field).string.uuid = true];
   DeploymentStatus status = 3;
   string message = 4;
