@@ -9,12 +9,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/google/uuid"
 	"github.com/pentops/flowtest"
-	"github.com/pentops/j5/gen/psm/state/v1/psm_pb"
+	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
+	"github.com/pentops/j5/gen/j5/state/v1/psm_j5pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
-	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -53,13 +53,13 @@ func (m *MockInfra) HandleMessage(ctx context.Context, msg proto.Message) (*awsd
 		return &awsdeployer_pb.DeploymentPSMEventSpec{
 			Keys:    &awsdeployer_pb.DeploymentKeys{},
 			EventID: uuid.NewString(),
-			Cause:   &psm_pb.Cause{},
+			Cause:   &psm_j5pb.Cause{},
 			Event:   msg,
 		}, nil
 	}
 }
 
-func (m *MockInfra) CFResult(md *messaging_pb.RequestMetadata, status awsdeployer_pb.StepStatus, result *awsdeployer_pb.CFStackOutput) {
+func (m *MockInfra) CFResult(md *messaging_j5pb.RequestMetadata, status awsdeployer_pb.StepStatus, result *awsdeployer_pb.CFStackOutput) {
 	m.StepResult(md, &awsdeployer_pb.DeploymentEventType_StepResult{
 		Status: status,
 		Output: &awsdeployer_pb.StepOutputType{
@@ -72,7 +72,7 @@ func (m *MockInfra) CFResult(md *messaging_pb.RequestMetadata, status awsdeploye
 	})
 }
 
-func (m *MockInfra) StepResult(md *messaging_pb.RequestMetadata, result *awsdeployer_pb.DeploymentEventType_StepResult) {
+func (m *MockInfra) StepResult(md *messaging_j5pb.RequestMetadata, result *awsdeployer_pb.DeploymentEventType_StepResult) {
 	stepContext := &awsdeployer_pb.StepContext{}
 	if err := proto.Unmarshal(md.Context, stepContext); err != nil {
 		panic(err)

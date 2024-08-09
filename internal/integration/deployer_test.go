@@ -6,12 +6,12 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/google/uuid"
+	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/o5-auth/authtest"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/states"
-	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
 
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
@@ -79,7 +79,7 @@ func TestDeploymentFlow(t *testing.T) {
 		request.EnvironmentId = environmentID
 	})
 
-	var stackRequest *messaging_pb.RequestMetadata
+	var stackRequest *messaging_j5pb.RequestMetadata
 	var stackName string
 	ss.Step("Deployment Queued To Triggered", func(ctx context.Context, t UniverseAsserter) {
 		_, err := t.DeployerTopic.RequestDeployment(ctx, request)
@@ -91,7 +91,7 @@ func TestDeploymentFlow(t *testing.T) {
 		t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEventTriggered, awsdeployer_pb.DeploymentStatus_TRIGGERED)
 
 		stabalizeRequest := &awsinfra_tpb.StabalizeStackMessage{
-			Request: &messaging_pb.RequestMetadata{},
+			Request: &messaging_j5pb.RequestMetadata{},
 		}
 		t.Outbox.PopMessage(t, stabalizeRequest)
 		stackRequest = stabalizeRequest.Request
@@ -115,7 +115,7 @@ func TestDeploymentFlow(t *testing.T) {
 		}
 
 		createRequest := &awsinfra_tpb.CreateNewStackMessage{
-			Request: &messaging_pb.RequestMetadata{},
+			Request: &messaging_j5pb.RequestMetadata{},
 		}
 		t.Outbox.PopMessage(t, createRequest)
 		stackRequest = createRequest.Request
@@ -161,7 +161,7 @@ func TestDeploymentFlow(t *testing.T) {
 		// No DB to migrate
 
 		scaleUpRequest := &awsinfra_tpb.ScaleStackMessage{
-			Request: &messaging_pb.RequestMetadata{},
+			Request: &messaging_j5pb.RequestMetadata{},
 		}
 		t.Outbox.PopMessage(t, scaleUpRequest)
 		stackRequest = scaleUpRequest.Request

@@ -6,18 +6,18 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
+	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
-	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
 	"github.com/pentops/o5-messaging/o5msg"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type DBLite interface {
 	PublishEvent(context.Context, o5msg.Message) error
-	RequestToClientToken(context.Context, *messaging_pb.RequestMetadata) (string, error)
-	ClientTokenToRequest(context.Context, string) (*messaging_pb.RequestMetadata, error)
+	RequestToClientToken(context.Context, *messaging_j5pb.RequestMetadata) (string, error)
+	ClientTokenToRequest(context.Context, string) (*messaging_j5pb.RequestMetadata, error)
 }
 
 var RequestTokenNotFound = errors.New("request token not found")
@@ -317,7 +317,7 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *awsinfra_tpb.Sta
 
 // sends a fake status update message back to the deployer so that it thinks
 // something has happened and continues the event chain
-func (cf *InfraWorker) noUpdatesToBePerformed(ctx context.Context, stackName string, request *messaging_pb.RequestMetadata, eventID string) error {
+func (cf *InfraWorker) noUpdatesToBePerformed(ctx context.Context, stackName string, request *messaging_j5pb.RequestMetadata, eventID string) error {
 
 	remoteStack, err := cf.getOneStack(ctx, stackName)
 	if err != nil {

@@ -3,21 +3,21 @@ package states
 import (
 	"context"
 
+	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/states/plan"
-	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
 	"github.com/pentops/protostate/psm"
 	"google.golang.org/protobuf/proto"
 )
 
-func buildRequestMetadata(contextMessage proto.Message) (*messaging_pb.RequestMetadata, error) {
+func buildRequestMetadata(contextMessage proto.Message) (*messaging_j5pb.RequestMetadata, error) {
 	contextBytes, err := proto.Marshal(contextMessage)
 	if err != nil {
 		return nil, err
 	}
 
-	req := &messaging_pb.RequestMetadata{
+	req := &messaging_j5pb.RequestMetadata{
 		ReplyTo: "o5-deployer",
 		Context: contextBytes,
 	}

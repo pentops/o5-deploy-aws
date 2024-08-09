@@ -5,10 +5,10 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
-	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
 	"github.com/pentops/o5-messaging/o5msg"
 	"google.golang.org/protobuf/proto"
 )
@@ -443,7 +443,7 @@ func StepNext(ctx context.Context, tb Chainer, steps []*awsdeployer_pb.Deploymen
 	return nil
 }
 
-func buildRequestMetadata(deploymentID string, stepID string) (*messaging_pb.RequestMetadata, error) {
+func buildRequestMetadata(deploymentID string, stepID string) (*messaging_j5pb.RequestMetadata, error) {
 	contextMessage := &awsdeployer_pb.StepContext{
 		StepId:       &stepID,
 		Phase:        awsdeployer_pb.StepPhase_STEPS,
@@ -455,7 +455,7 @@ func buildRequestMetadata(deploymentID string, stepID string) (*messaging_pb.Req
 		return nil, err
 	}
 
-	req := &messaging_pb.RequestMetadata{
+	req := &messaging_j5pb.RequestMetadata{
 		ReplyTo: "o5-deployer",
 		Context: contextBytes,
 	}

@@ -7,8 +7,8 @@ import "j5/ext/v1/annotations.proto";
 import "j5/list/v1/annotations.proto";
 import "o5/aws/deployer/v1/pgmigrate.proto";
 import "o5/aws/deployer/v1/steps.proto";
-import "o5/messaging/v1/reqres.proto";
-import "psm/state/v1/metadata.proto";
+import "j5/messaging/v1/reqres.proto";
+import "j5/state/v1/metadata.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb";
 
@@ -26,7 +26,7 @@ message DeploymentKeys {
 }
 
 message DeploymentState {
-  psm.state.v1.StateMetadata metadata = 1 [(buf.validate.field).required = true];
+  j5.state.v1.StateMetadata metadata = 1 [(buf.validate.field).required = true];
 
   DeploymentKeys keys = 2 [
     (j5.ext.v1.field).message.flatten = true,
@@ -40,7 +40,7 @@ message DeploymentState {
 
 message DeploymentStateData {
   // when set, publishes deployment events back to the requester
-  o5.messaging.v1.RequestMetadata request = 1;
+  j5.messaging.v1.RequestMetadata request = 1;
 
   DeploymentSpec spec = 2;
   repeated DeploymentStep steps = 3;
@@ -99,7 +99,7 @@ enum DeploymentStatus {
 }
 
 message DeploymentEvent {
-  psm.state.v1.EventMetadata metadata = 1 [(buf.validate.field).required = true];
+  j5.state.v1.EventMetadata metadata = 1 [(buf.validate.field).required = true];
 
   DeploymentKeys keys = 2 [(buf.validate.field).required = true];
 
@@ -127,7 +127,7 @@ message DeploymentEventType {
   }
 
   message Created {
-    o5.messaging.v1.RequestMetadata request = 1;
+    j5.messaging.v1.RequestMetadata request = 1;
     DeploymentSpec spec = 2;
   }
 

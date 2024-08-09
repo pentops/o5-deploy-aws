@@ -7,13 +7,14 @@
 package awsinfra_tpb
 
 import (
+	reflect "reflect"
+	sync "sync"
+
 	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
-	messaging_pb "github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
+	messaging_j5pb "github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
-	reflect "reflect"
-	sync "sync"
 )
 
 const (
@@ -28,10 +29,10 @@ type RunECSTaskMessage struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Request        *messaging_pb.RequestMetadata `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
-	TaskDefinition string                        `protobuf:"bytes,2,opt,name=task_definition,json=taskDefinition,proto3" json:"task_definition,omitempty"`
-	Count          int32                         `protobuf:"varint,3,opt,name=count,proto3" json:"count,omitempty"`
-	Cluster        string                        `protobuf:"bytes,4,opt,name=cluster,proto3" json:"cluster,omitempty"`
+	Request        *messaging_j5pb.RequestMetadata `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
+	TaskDefinition string                          `protobuf:"bytes,2,opt,name=task_definition,json=taskDefinition,proto3" json:"task_definition,omitempty"`
+	Count          int32                           `protobuf:"varint,3,opt,name=count,proto3" json:"count,omitempty"`
+	Cluster        string                          `protobuf:"bytes,4,opt,name=cluster,proto3" json:"cluster,omitempty"`
 }
 
 func (x *RunECSTaskMessage) Reset() {
@@ -66,7 +67,7 @@ func (*RunECSTaskMessage) Descriptor() ([]byte, []int) {
 	return file_o5_aws_infra_v1_topic_aws_ecs_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *RunECSTaskMessage) GetRequest() *messaging_pb.RequestMetadata {
+func (x *RunECSTaskMessage) GetRequest() *messaging_j5pb.RequestMetadata {
 	if x != nil {
 		return x.Request
 	}
@@ -99,10 +100,10 @@ type ECSTaskStatusMessage struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Request *messaging_pb.RequestMetadata `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
-	EventId string                        `protobuf:"bytes,2,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
-	Event   *ECSTaskEventType             `protobuf:"bytes,3,opt,name=event,proto3" json:"event,omitempty"`
-	TaskArn string                        `protobuf:"bytes,4,opt,name=task_arn,json=taskArn,proto3" json:"task_arn,omitempty"`
+	Request *messaging_j5pb.RequestMetadata `protobuf:"bytes,1,opt,name=request,proto3" json:"request,omitempty"`
+	EventId string                          `protobuf:"bytes,2,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	Event   *ECSTaskEventType               `protobuf:"bytes,3,opt,name=event,proto3" json:"event,omitempty"`
+	TaskArn string                          `protobuf:"bytes,4,opt,name=task_arn,json=taskArn,proto3" json:"task_arn,omitempty"`
 }
 
 func (x *ECSTaskStatusMessage) Reset() {
@@ -137,7 +138,7 @@ func (*ECSTaskStatusMessage) Descriptor() ([]byte, []int) {
 	return file_o5_aws_infra_v1_topic_aws_ecs_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *ECSTaskStatusMessage) GetRequest() *messaging_pb.RequestMetadata {
+func (x *ECSTaskStatusMessage) GetRequest() *messaging_j5pb.RequestMetadata {
 	if x != nil {
 		return x.Request
 	}
@@ -539,14 +540,14 @@ var file_o5_aws_infra_v1_topic_aws_ecs_proto_rawDesc = []byte{
 	0x66, 0x2f, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x61, 0x74, 0x65, 0x2f, 0x76, 0x61, 0x6c, 0x69, 0x64,
 	0x61, 0x74, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x1b, 0x67, 0x6f, 0x6f, 0x67, 0x6c,
 	0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2f, 0x65, 0x6d, 0x70, 0x74, 0x79,
-	0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x21, 0x6f, 0x35, 0x2f, 0x6d, 0x65, 0x73, 0x73, 0x61,
+	0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x21, 0x6a, 0x35, 0x2f, 0x6d, 0x65, 0x73, 0x73, 0x61,
 	0x67, 0x69, 0x6e, 0x67, 0x2f, 0x76, 0x31, 0x2f, 0x61, 0x6e, 0x6e, 0x6f, 0x74, 0x61, 0x74, 0x69,
-	0x6f, 0x6e, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x1c, 0x6f, 0x35, 0x2f, 0x6d, 0x65,
+	0x6f, 0x6e, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x1a, 0x1c, 0x6a, 0x35, 0x2f, 0x6d, 0x65,
 	0x73, 0x73, 0x61, 0x67, 0x69, 0x6e, 0x67, 0x2f, 0x76, 0x31, 0x2f, 0x72, 0x65, 0x71, 0x72, 0x65,
 	0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0xa8, 0x01, 0x0a, 0x11, 0x52, 0x75, 0x6e, 0x45,
 	0x43, 0x53, 0x54, 0x61, 0x73, 0x6b, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x3a, 0x0a,
 	0x07, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x20,
-	0x2e, 0x6f, 0x35, 0x2e, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31,
+	0x2e, 0x6a, 0x35, 0x2e, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31,
 	0x2e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61,
 	0x52, 0x07, 0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x27, 0x0a, 0x0f, 0x74, 0x61, 0x73,
 	0x6b, 0x5f, 0x64, 0x65, 0x66, 0x69, 0x6e, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x02, 0x20, 0x01,
@@ -556,7 +557,7 @@ var file_o5_aws_infra_v1_topic_aws_ecs_proto_rawDesc = []byte{
 	0x74, 0x65, 0x72, 0x18, 0x04, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x63, 0x6c, 0x75, 0x73, 0x74,
 	0x65, 0x72, 0x22, 0xd1, 0x01, 0x0a, 0x14, 0x45, 0x43, 0x53, 0x54, 0x61, 0x73, 0x6b, 0x53, 0x74,
 	0x61, 0x74, 0x75, 0x73, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x12, 0x3a, 0x0a, 0x07, 0x72,
-	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x6f,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x6a,
 	0x35, 0x2e, 0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x2e, 0x52,
 	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x4d, 0x65, 0x74, 0x61, 0x64, 0x61, 0x74, 0x61, 0x52, 0x07,
 	0x72, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x23, 0x0a, 0x08, 0x65, 0x76, 0x65, 0x6e, 0x74,
@@ -645,20 +646,20 @@ func file_o5_aws_infra_v1_topic_aws_ecs_proto_rawDescGZIP() []byte {
 
 var file_o5_aws_infra_v1_topic_aws_ecs_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_o5_aws_infra_v1_topic_aws_ecs_proto_goTypes = []interface{}{
-	(*RunECSTaskMessage)(nil),            // 0: o5.aws.infra.v1.topic.RunECSTaskMessage
-	(*ECSTaskStatusMessage)(nil),         // 1: o5.aws.infra.v1.topic.ECSTaskStatusMessage
-	(*ECSTaskEventType)(nil),             // 2: o5.aws.infra.v1.topic.ECSTaskEventType
-	(*ECSTaskEventType_Pending)(nil),     // 3: o5.aws.infra.v1.topic.ECSTaskEventType.Pending
-	(*ECSTaskEventType_Running)(nil),     // 4: o5.aws.infra.v1.topic.ECSTaskEventType.Running
-	(*ECSTaskEventType_Failed)(nil),      // 5: o5.aws.infra.v1.topic.ECSTaskEventType.Failed
-	(*ECSTaskEventType_Exited)(nil),      // 6: o5.aws.infra.v1.topic.ECSTaskEventType.Exited
-	(*ECSTaskEventType_Stopped)(nil),     // 7: o5.aws.infra.v1.topic.ECSTaskEventType.Stopped
-	(*messaging_pb.RequestMetadata)(nil), // 8: o5.messaging.v1.RequestMetadata
-	(*emptypb.Empty)(nil),                // 9: google.protobuf.Empty
+	(*RunECSTaskMessage)(nil),              // 0: o5.aws.infra.v1.topic.RunECSTaskMessage
+	(*ECSTaskStatusMessage)(nil),           // 1: o5.aws.infra.v1.topic.ECSTaskStatusMessage
+	(*ECSTaskEventType)(nil),               // 2: o5.aws.infra.v1.topic.ECSTaskEventType
+	(*ECSTaskEventType_Pending)(nil),       // 3: o5.aws.infra.v1.topic.ECSTaskEventType.Pending
+	(*ECSTaskEventType_Running)(nil),       // 4: o5.aws.infra.v1.topic.ECSTaskEventType.Running
+	(*ECSTaskEventType_Failed)(nil),        // 5: o5.aws.infra.v1.topic.ECSTaskEventType.Failed
+	(*ECSTaskEventType_Exited)(nil),        // 6: o5.aws.infra.v1.topic.ECSTaskEventType.Exited
+	(*ECSTaskEventType_Stopped)(nil),       // 7: o5.aws.infra.v1.topic.ECSTaskEventType.Stopped
+	(*messaging_j5pb.RequestMetadata)(nil), // 8: j5.messaging.v1.RequestMetadata
+	(*emptypb.Empty)(nil),                  // 9: google.protobuf.Empty
 }
 var file_o5_aws_infra_v1_topic_aws_ecs_proto_depIdxs = []int32{
-	8,  // 0: o5.aws.infra.v1.topic.RunECSTaskMessage.request:type_name -> o5.messaging.v1.RequestMetadata
-	8,  // 1: o5.aws.infra.v1.topic.ECSTaskStatusMessage.request:type_name -> o5.messaging.v1.RequestMetadata
+	8,  // 0: o5.aws.infra.v1.topic.RunECSTaskMessage.request:type_name -> j5.messaging.v1.RequestMetadata
+	8,  // 1: o5.aws.infra.v1.topic.ECSTaskStatusMessage.request:type_name -> j5.messaging.v1.RequestMetadata
 	2,  // 2: o5.aws.infra.v1.topic.ECSTaskStatusMessage.event:type_name -> o5.aws.infra.v1.topic.ECSTaskEventType
 	3,  // 3: o5.aws.infra.v1.topic.ECSTaskEventType.pending:type_name -> o5.aws.infra.v1.topic.ECSTaskEventType.Pending
 	4,  // 4: o5.aws.infra.v1.topic.ECSTaskEventType.running:type_name -> o5.aws.infra.v1.topic.ECSTaskEventType.Running

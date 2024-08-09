@@ -10,12 +10,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/google/uuid"
+	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/awsinfra"
 	"github.com/pentops/o5-deploy-aws/internal/service"
-	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -298,7 +298,7 @@ func (cf *InfraAdapter) CreateChangeSet(ctx context.Context, msg *awsinfra_tpb.C
 }
 
 type pgRequest interface {
-	GetRequest() *messaging_pb.RequestMetadata
+	GetRequest() *messaging_j5pb.RequestMetadata
 	GetMigrationId() string
 }
 
@@ -343,7 +343,7 @@ func (cf *InfraAdapter) CleanupPostgresDatabase(ctx context.Context, msg *awsinf
 	})
 }
 
-func (cf *InfraAdapter) noUpdatesToBePerformed(ctx context.Context, stackName string, request *messaging_pb.RequestMetadata) (*awsinfra_tpb.StackStatusChangedMessage, error) {
+func (cf *InfraAdapter) noUpdatesToBePerformed(ctx context.Context, stackName string, request *messaging_j5pb.RequestMetadata) (*awsinfra_tpb.StackStatusChangedMessage, error) {
 
 	remoteStack, err := cf.cfClient.GetOneStack(ctx, stackName)
 	if err != nil {
@@ -370,7 +370,7 @@ func (cf *InfraAdapter) pollStack(
 	ctx context.Context,
 	stackName string,
 	reqToken string,
-	request *messaging_pb.RequestMetadata,
+	request *messaging_j5pb.RequestMetadata,
 ) (*awsinfra_tpb.StackStatusChangedMessage, error) {
 
 	beginTime := time.Now()
@@ -420,7 +420,7 @@ func (cf *InfraAdapter) pollChangeSet(
 	ctx context.Context,
 	stackName string,
 	reqToken string,
-	request *messaging_pb.RequestMetadata,
+	request *messaging_j5pb.RequestMetadata,
 ) (*awsinfra_tpb.ChangeSetStatusChangedMessage, error) {
 
 	changeSetID := fmt.Sprintf("%s-%s", stackName, reqToken)

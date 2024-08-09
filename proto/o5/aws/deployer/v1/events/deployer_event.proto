@@ -6,12 +6,12 @@ import "google/protobuf/empty.proto";
 import "o5/aws/deployer/v1/deployment.proto";
 import "o5/aws/deployer/v1/environment.proto";
 import "o5/aws/deployer/v1/stack.proto";
-import "o5/messaging/v1/annotations.proto";
+import "j5/messaging/v1/annotations.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_epb";
 
 service DeployerEvents {
-  option (o5.messaging.v1.config).unicast.name = "o5-deployer-events";
+  option (j5.messaging.v1.config).unicast.name = "o5-deployer-events";
   rpc Deployment(DeploymentEvent) returns (google.protobuf.Empty) {}
   rpc Stack(StackEvent) returns (google.protobuf.Empty) {}
   rpc Environment(EnvironmentEvent) returns (google.protobuf.Empty) {}
