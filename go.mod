@@ -32,7 +32,7 @@ require (
 	github.com/pentops/o5-auth v0.0.0-20240808190100-7480916943de
 	github.com/pentops/o5-messaging v0.0.0-20240806162328-c77f99413b9e
 	github.com/pentops/pgtest.go v0.0.0-20240806042712-cca5bdfe6542
-	github.com/pentops/protostate v0.0.0-20240808190417-c00e90487893
+	github.com/pentops/protostate v0.0.0-20240809151611-675c0f2d9d32
 	github.com/pentops/runner v0.0.0-20240806162317-0eb1ced9ab3d
 	github.com/pentops/sqrlx.go v0.0.0-20240806064322-33adc0ac5bd4
 	github.com/pressly/goose v2.7.0+incompatible
