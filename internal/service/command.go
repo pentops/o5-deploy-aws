@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/pentops/envconf.go/envconf"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-auth/o5auth"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
@@ -19,6 +18,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/internal/protoread"
 	"github.com/pentops/o5-deploy-aws/internal/states"
 	"github.com/pentops/o5-messaging/outbox"
+	"github.com/pentops/realms/j5auth"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -164,7 +164,7 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *awsdeploye
 
 func (ds *CommandService) TerminateDeployment(ctx context.Context, req *awsdeployer_spb.TerminateDeploymentRequest) (*awsdeployer_spb.TerminateDeploymentResponse, error) {
 
-	action, err := o5auth.GetAuthenticatedAction(ctx)
+	action, err := j5auth.GetAuthenticatedAction(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +189,7 @@ func (ds *CommandService) TerminateDeployment(ctx context.Context, req *awsdeplo
 
 func (ds *CommandService) UpsertEnvironment(ctx context.Context, req *awsdeployer_spb.UpsertEnvironmentRequest) (*awsdeployer_spb.UpsertEnvironmentResponse, error) {
 
-	action, err := o5auth.GetAuthenticatedAction(ctx)
+	action, err := j5auth.GetAuthenticatedAction(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -259,7 +259,7 @@ func (ds *CommandService) UpsertStack(ctx context.Context, req *awsdeployer_spb.
 		return nil, err
 	}
 
-	action, err := o5auth.GetAuthenticatedAction(ctx)
+	action, err := j5auth.GetAuthenticatedAction(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +293,7 @@ func (ds *CommandService) UpsertStack(ctx context.Context, req *awsdeployer_spb.
 
 func (ds *CommandService) UpsertCluster(ctx context.Context, req *awsdeployer_spb.UpsertClusterRequest) (*awsdeployer_spb.UpsertClusterResponse, error) {
 
-	action, err := o5auth.GetAuthenticatedAction(ctx)
+	action, err := j5auth.GetAuthenticatedAction(ctx)
 	if err != nil {
 		return nil, err
 	}
