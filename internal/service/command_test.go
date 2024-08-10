@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/pentops/o5-auth/authtest"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
@@ -15,6 +14,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/internal/states"
 	"github.com/pentops/o5-messaging/outbox/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
+	"github.com/pentops/realms/authtest"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
