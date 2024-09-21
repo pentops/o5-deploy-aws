@@ -1,5 +1,5 @@
 inputs:
     - name: registry/pentops/j5
-      version: 12540c68f63922170d3c9344975dee9627070d4d
+      version: 37b5e03dca13d13e47a7dc9c3ffc92eddd81ab19
     - name: registry/pentops/messaging
       version: db56de35f3edb216b6e3a2b2559e4b4866fbdcaf

@@ -26,22 +26,22 @@ require (
 	github.com/iancoleman/strcase v0.3.0
 	github.com/lib/pq v1.10.9
 	github.com/pentops/envconf.go v0.0.0-20240806040806-dcab509e8c71
-	github.com/pentops/flowtest v0.0.0-20240806162256-23b05c4df309
-	github.com/pentops/j5 v0.0.0-20240810013210-12540c68f639
+	github.com/pentops/flowtest v0.0.0-20240909065422-e4f7f68d5fb0
+	github.com/pentops/j5 v0.0.0-20240909174102-37b5e03dca13
 	github.com/pentops/log.go v0.0.0-20240806161938-2742d05b4c24
 	github.com/pentops/o5-messaging v0.0.0-20240810013929-db56de35f3ed
 	github.com/pentops/pgtest.go v0.0.0-20240806042712-cca5bdfe6542
-	github.com/pentops/protostate v0.0.0-20240810014359-b8c03420cbfb
-	github.com/pentops/realms v0.0.0-20240810000025-29d00346a1f8
+	github.com/pentops/protostate v0.0.0-20240909062736-d8c64478c58d
+	github.com/pentops/realms v0.0.0-20240812224742-adcdac1a2705
 	github.com/pentops/runner v0.0.0-20240806162317-0eb1ced9ab3d
 	github.com/pentops/sqrlx.go v0.0.0-20240806064322-33adc0ac5bd4
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/stretchr/testify v1.9.0
 	github.com/tidwall/sjson v1.2.5
 	golang.org/x/oauth2 v0.22.0
-	golang.org/x/text v0.17.0
-	google.golang.org/genproto/googleapis/api v0.0.0-20240805194559-2c9e96a0b5d4
-	google.golang.org/grpc v1.65.0
+	golang.org/x/text v0.18.0
+	google.golang.org/genproto/googleapis/api v0.0.0-20240903143218-8af14fe29dc1
+	google.golang.org/grpc v1.66.0
 	google.golang.org/protobuf v1.34.2
 )
 
@@ -76,10 +76,10 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	golang.org/x/crypto v0.26.0 // indirect
-	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
+	golang.org/x/exp v0.0.0-20240904232852-e7e105dedf7e // indirect
 	golang.org/x/net v0.28.0 // indirect
-	golang.org/x/sys v0.23.0 // indirect
+	golang.org/x/sys v0.25.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240805194559-2c9e96a0b5d4 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
