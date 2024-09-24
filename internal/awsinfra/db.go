@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
@@ -38,10 +39,12 @@ func (s *Storage) PublishEvent(ctx context.Context, msg o5msg.Message) error {
 	})
 }
 
+const tokenPrefix = "o5-deploy-"
+
 func (s *Storage) RequestToClientToken(ctx context.Context, req *messaging_j5pb.RequestMetadata) (string, error) {
 	token := uuid.NewString()
-
-	return token, s.db.Transact(ctx, &sqrlx.TxOptions{
+	tokenStr := tokenPrefix + token
+	return tokenStr, s.db.Transact(ctx, &sqrlx.TxOptions{
 		Isolation: sql.LevelReadCommitted,
 		ReadOnly:  false,
 		Retryable: true,
@@ -77,6 +80,10 @@ func (s *Storage) RequestToClientToken(ctx context.Context, req *messaging_j5pb.
 
 func (s *Storage) ClientTokenToRequest(ctx context.Context, token string) (*messaging_j5pb.RequestMetadata, error) {
 	response := &messaging_j5pb.RequestMetadata{}
+	if !strings.HasPrefix(token, tokenPrefix) {
+		return nil, RequestTokenNotFound
+	}
+	token = strings.TrimPrefix(token, tokenPrefix)
 
 	err := s.db.Transact(ctx, &sqrlx.TxOptions{
 		Isolation: sql.LevelReadCommitted,

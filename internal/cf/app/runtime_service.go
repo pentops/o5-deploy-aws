@@ -130,6 +130,7 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 				Enable:   true,
 				Rollback: true,
 			},
+			MinimumHealthyPercent: cf.Int(0),
 		},
 		PropagateTags: cf.String("TASK_DEFINITION"),
 	})
