@@ -13,7 +13,6 @@ import (
 
 const (
 	DefaultO5SidecarImageName = "ghcr.io/pentops/o5-runtime-sidecar"
-	DefaultO5SidecarVersion   = "ec40b806d4329a7f7e2bd808db07e99c1b9dc27e"
 )
 
 type ParameterResolver interface {
@@ -45,10 +44,8 @@ func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster
 		sidecarImageName = *ecsCluster.SidecarImageRepo
 	}
 
-	sidecarImageVersion := DefaultO5SidecarVersion
-	if ecsCluster.SidecarImageVersion != nil {
-		sidecarImageVersion = *ecsCluster.SidecarImageVersion
-	}
+	sidecarImageVersion := ecsCluster.SidecarImageVersion
+	sidecarFullImage := fmt.Sprintf("%s:%s", sidecarImageName, sidecarImageVersion)
 
 	namedPolicies := map[string]string{}
 	for _, policy := range awsEnv.IamPolicies {
@@ -69,7 +66,7 @@ func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster
 			app.JWKSParameter:                 strings.Join(environment.TrustJwks, ","),
 			app.SNSPrefixParameter:            fmt.Sprintf("arn:aws:sns:%s:%s:%s", ecsCluster.AwsRegion, ecsCluster.AwsAccount, environment.FullName),
 			app.S3BucketNamespaceParameter:    ecsCluster.GlobalNamespace,
-			app.O5SidecarImageParameter:       fmt.Sprintf("%s:%s", sidecarImageName, sidecarImageVersion),
+			app.O5SidecarImageParameter:       sidecarFullImage,
 			app.CORSOriginParameter:           strings.Join(environment.CorsOrigins, ","),
 			app.EventBusARNParameter:          ecsCluster.EventBusArn,
 		},

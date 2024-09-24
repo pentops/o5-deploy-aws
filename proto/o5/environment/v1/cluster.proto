@@ -43,7 +43,7 @@ message ECSCluster {
 
   repeated RDSHost rds_hosts = 11;
 
-  optional string sidecar_image_version = 13; // defaults to latest
+  string sidecar_image_version = 13; // Must be set, no default.
   optional string sidecar_image_repo = 14; // defaults to ghcr.io/pentops/o5-runtime-sidecar
 
   // S3 buckets (and others?) must be globally unique for all AWS accounts and regions,
