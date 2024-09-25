@@ -7,11 +7,76 @@ package awsinfra_tpb
 
 import (
 	context "context"
+	messaging_j5pb "github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	messaging_pb "github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
 	o5msg "github.com/pentops/o5-messaging/o5msg"
 )
 
 // Service: CloudFormationRequestTopic
+// Expose Request Metadata
+func (msg *CreateNewStackMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *CreateNewStackMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
+// Expose Request Metadata
+func (msg *UpdateStackMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *UpdateStackMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
+// Expose Request Metadata
+func (msg *CreateChangeSetMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *CreateChangeSetMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
+// Expose Request Metadata
+func (msg *ApplyChangeSetMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *ApplyChangeSetMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
+// Expose Request Metadata
+func (msg *DeleteStackMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *DeleteStackMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
+// Expose Request Metadata
+func (msg *ScaleStackMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *ScaleStackMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
+// Expose Request Metadata
+func (msg *CancelStackUpdateMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *CancelStackUpdateMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
+// Expose Request Metadata
+func (msg *StabalizeStackMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *StabalizeStackMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
 type CloudFormationRequestTopicTxSender[C any] struct {
 	sender o5msg.TxSender[C]
 }
@@ -340,6 +405,22 @@ func (publish CloudFormationRequestTopicPublisher) StabalizeStack(ctx context.Co
 }
 
 // Service: CloudFormationReplyTopic
+// Expose Request Metadata
+func (msg *StackStatusChangedMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *StackStatusChangedMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
+// Expose Request Metadata
+func (msg *ChangeSetStatusChangedMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *ChangeSetStatusChangedMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
 type CloudFormationReplyTopicTxSender[C any] struct {
 	sender o5msg.TxSender[C]
 }

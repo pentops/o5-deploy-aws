@@ -7,11 +7,20 @@ package awsdeployer_tpb
 
 import (
 	context "context"
+	messaging_j5pb "github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	messaging_pb "github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
 	o5msg "github.com/pentops/o5-messaging/o5msg"
 )
 
 // Service: DeploymentRequestTopic
+// Expose Request Metadata
+func (msg *RequestDeploymentMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *RequestDeploymentMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
 type DeploymentRequestTopicTxSender[C any] struct {
 	sender o5msg.TxSender[C]
 }
@@ -88,6 +97,14 @@ func (publish DeploymentRequestTopicPublisher) RequestDeployment(ctx context.Con
 }
 
 // Service: DeploymentReplyTopic
+// Expose Request Metadata
+func (msg *DeploymentStatusMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *DeploymentStatusMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
 type DeploymentReplyTopicTxSender[C any] struct {
 	sender o5msg.TxSender[C]
 }

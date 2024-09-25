@@ -7,11 +7,20 @@ package awsinfra_tpb
 
 import (
 	context "context"
+	messaging_j5pb "github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	messaging_pb "github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
 	o5msg "github.com/pentops/o5-messaging/o5msg"
 )
 
 // Service: ECSRequestTopic
+// Expose Request Metadata
+func (msg *RunECSTaskMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *RunECSTaskMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
 type ECSRequestTopicTxSender[C any] struct {
 	sender o5msg.TxSender[C]
 }
@@ -88,6 +97,14 @@ func (publish ECSRequestTopicPublisher) RunECSTask(ctx context.Context, msg *Run
 }
 
 // Service: ECSReplyTopic
+// Expose Request Metadata
+func (msg *ECSTaskStatusMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *ECSTaskStatusMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
 type ECSReplyTopicTxSender[C any] struct {
 	sender o5msg.TxSender[C]
 }

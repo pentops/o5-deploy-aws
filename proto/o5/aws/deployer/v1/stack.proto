@@ -38,21 +38,21 @@ message StackStateData {
   optional StackDeployment current_deployment = 4;
 
   string stack_name = 5 [
-    (buf.validate.field).string.pattern = "^[a-z][a-z0-9]+-[a-z][a-z0-9]+$",
+    (buf.validate.field).string.pattern = "^[a-z][a-z0-9-]+-[a-z][a-z0-9]+$",
     (j5.list.v1.field).string.open_text.searching = {
       searchable: true
       field_identifier: "tsv_stack_name"
     }
   ];
   string application_name = 6 [
-    (buf.validate.field).string.pattern = "^[a-z][a-z0-9]+$",
+    (buf.validate.field).string.pattern = "^[a-z][a-z0-9-]+$",
     (j5.list.v1.field).string.open_text.searching = {
       searchable: true
       field_identifier: "tsv_app_name"
     }
   ];
   string environment_name = 7 [
-    (buf.validate.field).string.pattern = "^[a-z][a-z0-9]+$",
+    (buf.validate.field).string.pattern = "^[a-z][a-z0-9-]+$",
     (j5.list.v1.field).string.open_text.searching = {
       searchable: true
       field_identifier: "tsv_environment_name"

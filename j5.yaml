@@ -18,6 +18,9 @@ generate:
       - base: go-psm
       - base: go-o5-messaging
 
+managedPaths:
+  - gen
+
 plugins:
   - name: go
     type: PLUGIN_PROTO
@@ -37,7 +40,7 @@ plugins:
   - base: go
     name: go-o5-messaging
     docker:
-      image: ghcr.io/pentops/protoc-gen-go-o5-messaging:554bc6c7bc73930e18c9ceaafb112ae2ba9738d2
+      image: ghcr.io/pentops/protoc-gen-go-o5-messaging:81b197123419ac73734af5062d4a0d15d43ab92b
 
   - base: go
     name: go-psm

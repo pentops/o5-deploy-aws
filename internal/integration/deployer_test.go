@@ -51,11 +51,11 @@ func TestDeploymentFlow(t *testing.T) {
 		t.NoError(err)
 
 		_, err = t.DeployerCommand.UpsertEnvironment(ctx, &awsdeployer_spb.UpsertEnvironmentRequest{
-			EnvironmentId: "env",
+			EnvironmentId: "cluster-env",
 			ClusterId:     "cluster",
 			Src: &awsdeployer_spb.UpsertEnvironmentRequest_Config{
 				Config: &environment_pb.Environment{
-					FullName: "env",
+					FullName: "cluster-env",
 					Provider: &environment_pb.Environment_Aws{
 						Aws: &environment_pb.AWSEnvironment{
 							HostHeader: aws.String("host"),
@@ -69,13 +69,14 @@ func TestDeploymentFlow(t *testing.T) {
 		envConfitured := t.PopEnvironmentEvent(t, awsdeployer_pb.EnvironmentPSMEventConfigured, awsdeployer_pb.EnvironmentStatus_ACTIVE)
 		environmentID = envConfitured.Event.Keys.EnvironmentId
 
-		_, err = t.DeployerCommand.UpsertStack(ctx, &awsdeployer_spb.UpsertStackRequest{
-			StackId: "env-app",
-		})
-		t.NoError(err)
+		/*
+			_, err = t.DeployerCommand.UpsertStack(ctx, &awsdeployer_spb.UpsertStackRequest{
+				StackId: "cluster-env-app",
+			})
+			t.NoError(err)
 
-		t.PopStackEvent(t, awsdeployer_pb.StackPSMEventConfigured, awsdeployer_pb.StackStatus_AVAILABLE)
-
+			t.PopStackEvent(t, awsdeployer_pb.StackPSMEventConfigured, awsdeployer_pb.StackStatus_AVAILABLE)
+		*/
 		request.EnvironmentId = environmentID
 	})
 

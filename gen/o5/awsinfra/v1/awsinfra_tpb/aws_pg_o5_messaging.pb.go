@@ -7,11 +7,36 @@ package awsinfra_tpb
 
 import (
 	context "context"
+	messaging_j5pb "github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	messaging_pb "github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
 	o5msg "github.com/pentops/o5-messaging/o5msg"
 )
 
 // Service: PostgresRequestTopic
+// Expose Request Metadata
+func (msg *UpsertPostgresDatabaseMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *UpsertPostgresDatabaseMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
+// Expose Request Metadata
+func (msg *MigratePostgresDatabaseMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *MigratePostgresDatabaseMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
+// Expose Request Metadata
+func (msg *CleanupPostgresDatabaseMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *CleanupPostgresDatabaseMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
 type PostgresRequestTopicTxSender[C any] struct {
 	sender o5msg.TxSender[C]
 }
@@ -160,6 +185,14 @@ func (publish PostgresRequestTopicPublisher) CleanupPostgresDatabase(ctx context
 }
 
 // Service: PostgresReplyTopic
+// Expose Request Metadata
+func (msg *PostgresDatabaseStatusMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *PostgresDatabaseStatusMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
 type PostgresReplyTopicTxSender[C any] struct {
 	sender o5msg.TxSender[C]
 }
