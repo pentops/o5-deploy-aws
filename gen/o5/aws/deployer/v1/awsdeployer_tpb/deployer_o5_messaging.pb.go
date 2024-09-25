@@ -83,8 +83,8 @@ func (collect DeploymentRequestTopicCollector[C]) RequestDeployment(sendContext 
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish DeploymentRequestTopicPublisher) RequestDeployment(ctx context.Context, msg *RequestDeploymentMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish DeploymentRequestTopicPublisher) RequestDeployment(ctx context.Context, msg *RequestDeploymentMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Service: DeploymentReplyTopic
@@ -166,6 +166,6 @@ func (collect DeploymentReplyTopicCollector[C]) DeploymentStatus(sendContext C, 
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish DeploymentReplyTopicPublisher) DeploymentStatus(ctx context.Context, msg *DeploymentStatusMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish DeploymentReplyTopicPublisher) DeploymentStatus(ctx context.Context, msg *DeploymentStatusMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }

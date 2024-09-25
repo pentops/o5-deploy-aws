@@ -106,8 +106,8 @@ func (collect DeployerEventsCollector[C]) Deployment(sendContext C, msg *Deploym
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish DeployerEventsPublisher) Deployment(ctx context.Context, msg *DeploymentEvent) {
-	publish.publisher.Publish(ctx, msg)
+func (publish DeployerEventsPublisher) Deployment(ctx context.Context, msg *DeploymentEvent) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Method: Stack
@@ -130,8 +130,8 @@ func (collect DeployerEventsCollector[C]) Stack(sendContext C, msg *StackEvent) 
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish DeployerEventsPublisher) Stack(ctx context.Context, msg *StackEvent) {
-	publish.publisher.Publish(ctx, msg)
+func (publish DeployerEventsPublisher) Stack(ctx context.Context, msg *StackEvent) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Method: Environment
@@ -154,6 +154,6 @@ func (collect DeployerEventsCollector[C]) Environment(sendContext C, msg *Enviro
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish DeployerEventsPublisher) Environment(ctx context.Context, msg *EnvironmentEvent) {
-	publish.publisher.Publish(ctx, msg)
+func (publish DeployerEventsPublisher) Environment(ctx context.Context, msg *EnvironmentEvent) error {
+	return publish.publisher.Publish(ctx, msg)
 }

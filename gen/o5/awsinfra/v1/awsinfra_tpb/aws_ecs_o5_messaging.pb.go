@@ -83,8 +83,8 @@ func (collect ECSRequestTopicCollector[C]) RunECSTask(sendContext C, msg *RunECS
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish ECSRequestTopicPublisher) RunECSTask(ctx context.Context, msg *RunECSTaskMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish ECSRequestTopicPublisher) RunECSTask(ctx context.Context, msg *RunECSTaskMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Service: ECSReplyTopic
@@ -166,6 +166,6 @@ func (collect ECSReplyTopicCollector[C]) ECSTaskStatus(sendContext C, msg *ECSTa
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish ECSReplyTopicPublisher) ECSTaskStatus(ctx context.Context, msg *ECSTaskStatusMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish ECSReplyTopicPublisher) ECSTaskStatus(ctx context.Context, msg *ECSTaskStatusMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }

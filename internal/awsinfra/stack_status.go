@@ -28,11 +28,14 @@ var stackStatusCreateFailed = []types.StackStatus{
 	types.StackStatusRollbackComplete,
 }
 
+var stackStatusDeleted = []types.StackStatus{
+	types.StackStatusDeleteComplete,
+}
+
 var stackStatusComplete = []types.StackStatus{
 	types.StackStatusCreateComplete,
 	types.StackStatusImportComplete,
 	types.StackStatusUpdateComplete,
-	types.StackStatusDeleteComplete,
 }
 
 var stackStatusesTerminal = []types.StackStatus{
@@ -68,6 +71,12 @@ func stackLifecycle(remoteStatus types.StackStatus) (awsdeployer_pb.CFLifecycle,
 	for _, status := range stackStatusesTerminalRollback {
 		if remoteStatus == status {
 			return awsdeployer_pb.CFLifecycle_ROLLED_BACK, nil
+		}
+	}
+
+	for _, status := range stackStatusDeleted {
+		if remoteStatus == status {
+			return awsdeployer_pb.CFLifecycle_MISSING, nil
 		}
 	}
 

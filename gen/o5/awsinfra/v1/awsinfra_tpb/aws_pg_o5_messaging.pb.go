@@ -107,8 +107,8 @@ func (collect PostgresRequestTopicCollector[C]) UpsertPostgresDatabase(sendConte
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish PostgresRequestTopicPublisher) UpsertPostgresDatabase(ctx context.Context, msg *UpsertPostgresDatabaseMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish PostgresRequestTopicPublisher) UpsertPostgresDatabase(ctx context.Context, msg *UpsertPostgresDatabaseMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Method: MigratePostgresDatabase
@@ -131,8 +131,8 @@ func (collect PostgresRequestTopicCollector[C]) MigratePostgresDatabase(sendCont
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish PostgresRequestTopicPublisher) MigratePostgresDatabase(ctx context.Context, msg *MigratePostgresDatabaseMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish PostgresRequestTopicPublisher) MigratePostgresDatabase(ctx context.Context, msg *MigratePostgresDatabaseMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Method: CleanupPostgresDatabase
@@ -155,8 +155,8 @@ func (collect PostgresRequestTopicCollector[C]) CleanupPostgresDatabase(sendCont
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish PostgresRequestTopicPublisher) CleanupPostgresDatabase(ctx context.Context, msg *CleanupPostgresDatabaseMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish PostgresRequestTopicPublisher) CleanupPostgresDatabase(ctx context.Context, msg *CleanupPostgresDatabaseMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Service: PostgresReplyTopic
@@ -238,6 +238,6 @@ func (collect PostgresReplyTopicCollector[C]) PostgresDatabaseStatus(sendContext
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish PostgresReplyTopicPublisher) PostgresDatabaseStatus(ctx context.Context, msg *PostgresDatabaseStatusMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish PostgresReplyTopicPublisher) PostgresDatabaseStatus(ctx context.Context, msg *PostgresDatabaseStatusMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
