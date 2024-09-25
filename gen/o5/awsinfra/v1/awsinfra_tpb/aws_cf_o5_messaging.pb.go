@@ -167,8 +167,8 @@ func (collect CloudFormationRequestTopicCollector[C]) CreateNewStack(sendContext
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish CloudFormationRequestTopicPublisher) CreateNewStack(ctx context.Context, msg *CreateNewStackMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish CloudFormationRequestTopicPublisher) CreateNewStack(ctx context.Context, msg *CreateNewStackMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Method: UpdateStack
@@ -191,8 +191,8 @@ func (collect CloudFormationRequestTopicCollector[C]) UpdateStack(sendContext C,
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish CloudFormationRequestTopicPublisher) UpdateStack(ctx context.Context, msg *UpdateStackMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish CloudFormationRequestTopicPublisher) UpdateStack(ctx context.Context, msg *UpdateStackMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Method: CreateChangeSet
@@ -215,8 +215,8 @@ func (collect CloudFormationRequestTopicCollector[C]) CreateChangeSet(sendContex
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish CloudFormationRequestTopicPublisher) CreateChangeSet(ctx context.Context, msg *CreateChangeSetMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish CloudFormationRequestTopicPublisher) CreateChangeSet(ctx context.Context, msg *CreateChangeSetMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Method: ApplyChangeSet
@@ -239,8 +239,8 @@ func (collect CloudFormationRequestTopicCollector[C]) ApplyChangeSet(sendContext
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish CloudFormationRequestTopicPublisher) ApplyChangeSet(ctx context.Context, msg *ApplyChangeSetMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish CloudFormationRequestTopicPublisher) ApplyChangeSet(ctx context.Context, msg *ApplyChangeSetMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Method: DeleteStack
@@ -263,8 +263,8 @@ func (collect CloudFormationRequestTopicCollector[C]) DeleteStack(sendContext C,
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish CloudFormationRequestTopicPublisher) DeleteStack(ctx context.Context, msg *DeleteStackMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish CloudFormationRequestTopicPublisher) DeleteStack(ctx context.Context, msg *DeleteStackMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Method: ScaleStack
@@ -287,8 +287,8 @@ func (collect CloudFormationRequestTopicCollector[C]) ScaleStack(sendContext C, 
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish CloudFormationRequestTopicPublisher) ScaleStack(ctx context.Context, msg *ScaleStackMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish CloudFormationRequestTopicPublisher) ScaleStack(ctx context.Context, msg *ScaleStackMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Method: CancelStackUpdate
@@ -311,8 +311,8 @@ func (collect CloudFormationRequestTopicCollector[C]) CancelStackUpdate(sendCont
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish CloudFormationRequestTopicPublisher) CancelStackUpdate(ctx context.Context, msg *CancelStackUpdateMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish CloudFormationRequestTopicPublisher) CancelStackUpdate(ctx context.Context, msg *CancelStackUpdateMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Method: StabalizeStack
@@ -335,8 +335,8 @@ func (collect CloudFormationRequestTopicCollector[C]) StabalizeStack(sendContext
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish CloudFormationRequestTopicPublisher) StabalizeStack(ctx context.Context, msg *StabalizeStackMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish CloudFormationRequestTopicPublisher) StabalizeStack(ctx context.Context, msg *StabalizeStackMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Service: CloudFormationReplyTopic
@@ -430,8 +430,8 @@ func (collect CloudFormationReplyTopicCollector[C]) StackStatusChanged(sendConte
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish CloudFormationReplyTopicPublisher) StackStatusChanged(ctx context.Context, msg *StackStatusChangedMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish CloudFormationReplyTopicPublisher) StackStatusChanged(ctx context.Context, msg *StackStatusChangedMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
 
 // Method: ChangeSetStatusChanged
@@ -461,6 +461,6 @@ func (collect CloudFormationReplyTopicCollector[C]) ChangeSetStatusChanged(sendC
 	collect.collector.Collect(sendContext, msg)
 }
 
-func (publish CloudFormationReplyTopicPublisher) ChangeSetStatusChanged(ctx context.Context, msg *ChangeSetStatusChangedMessage) {
-	publish.publisher.Publish(ctx, msg)
+func (publish CloudFormationReplyTopicPublisher) ChangeSetStatusChanged(ctx context.Context, msg *ChangeSetStatusChangedMessage) error {
+	return publish.publisher.Publish(ctx, msg)
 }
