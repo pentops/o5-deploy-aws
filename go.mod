@@ -26,14 +26,14 @@ require (
 	github.com/iancoleman/strcase v0.3.0
 	github.com/lib/pq v1.10.9
 	github.com/pentops/envconf.go v0.0.0-20240806040806-dcab509e8c71
-	github.com/pentops/flowtest v0.0.0-20240909065422-e4f7f68d5fb0
-	github.com/pentops/j5 v0.0.0-20240909174102-37b5e03dca13
+	github.com/pentops/flowtest v0.0.0-20240917192406-c387da443c68
+	github.com/pentops/j5 v0.0.0-20240924235548-0c060245fca2
 	github.com/pentops/log.go v0.0.0-20240806161938-2742d05b4c24
-	github.com/pentops/o5-messaging v0.0.0-20240810013929-db56de35f3ed
+	github.com/pentops/o5-messaging v0.0.0-20240917175438-554bc6c7bc73
 	github.com/pentops/pgtest.go v0.0.0-20240806042712-cca5bdfe6542
-	github.com/pentops/protostate v0.0.0-20240909062736-d8c64478c58d
+	github.com/pentops/protostate v0.0.0-20240923204034-0cd7da8dfca4
 	github.com/pentops/realms v0.0.0-20240812224742-adcdac1a2705
-	github.com/pentops/runner v0.0.0-20240806162317-0eb1ced9ab3d
+	github.com/pentops/runner v0.0.0-20240920235254-d99051980854
 	github.com/pentops/sqrlx.go v0.0.0-20240806064322-33adc0ac5bd4
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/stretchr/testify v1.9.0
