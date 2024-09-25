@@ -240,12 +240,11 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *awsinfra_tpb.Sta
 		return &emptypb.Empty{}, nil
 	}
 
-	lifecycle, err := stackLifecycle(remoteStack.StackStatus)
-	if err != nil {
-		return nil, err
-	}
-
-	if remoteStack.StackStatus == types.StackStatusRollbackComplete {
+	// Special cases for Stabalize only
+	switch remoteStack.StackStatus {
+	case types.StackStatusUpdateRollbackComplete:
+		// When a previous attempt has failed, the stack is in an invalid status
+		// and needs to be deleted to progress.
 		err := cf.eventOut(ctx, &awsinfra_tpb.DeleteStackMessage{
 			Request:   msg.Request,
 			StackName: msg.StackName,
@@ -255,32 +254,16 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *awsinfra_tpb.Sta
 		}
 
 		return &emptypb.Empty{}, nil
-	}
 
-	needsCancel := msg.CancelUpdate && remoteStack.StackStatus == types.StackStatusUpdateInProgress
-	if needsCancel {
-		err := cf.eventOut(ctx, &awsinfra_tpb.CancelStackUpdateMessage{
-			Request:   msg.Request,
-			StackName: msg.StackName,
-		})
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Special cases for Stabalize only
-	switch remoteStack.StackStatus {
-	case types.StackStatusUpdateRollbackComplete:
-		// When a previous attempt has failed, the stack will be in this state
+	case types.StackStatusDeleteComplete:
 		// In the Stabalize handler ONLY, this counts as a success, as the stack
 		// is stable and ready for another attempt
-		lifecycle = awsdeployer_pb.CFLifecycle_COMPLETE
 		err = cf.eventOut(ctx, &awsinfra_tpb.StackStatusChangedMessage{
 			Request:   msg.Request,
 			EventId:   reqToken,
 			StackName: msg.StackName,
 			Status:    string(remoteStack.StackStatus),
-			Lifecycle: lifecycle,
+			Lifecycle: awsdeployer_pb.CFLifecycle_COMPLETE,
 			Outputs:   mapOutputs(remoteStack.Outputs),
 		})
 		if err != nil {
@@ -289,11 +272,27 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *awsinfra_tpb.Sta
 
 		return &emptypb.Empty{}, nil
 
+	case types.StackStatusUpdateInProgress:
+		if msg.CancelUpdate {
+			err := cf.eventOut(ctx, &awsinfra_tpb.CancelStackUpdateMessage{
+				Request:   msg.Request,
+				StackName: msg.StackName,
+			})
+			if err != nil {
+				return nil, err
+			}
+			// Roll on to generic update
+		}
+
 	case types.StackStatusRollbackInProgress:
 		// Short exit: Further events will be emitted during the rollback
 		return &emptypb.Empty{}, nil
 	}
 
+	lifecycle, err := stackLifecycle(remoteStack.StackStatus)
+	if err != nil {
+		return nil, err
+	}
 	log.WithFields(ctx, map[string]interface{}{
 		"stackName":   msg.StackName,
 		"lifecycle":   lifecycle.ShortString(),

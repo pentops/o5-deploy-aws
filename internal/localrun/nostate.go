@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/pentops/j5/gen/j5/state/v1/psm_j5pb"
+	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
@@ -101,7 +102,13 @@ func (rr *Runner) RunDeployment(ctx context.Context, deployment *awsdeployer_pb.
 
 	}
 
-	return rr.runSteps(ctx, steps)
+	err = rr.runSteps(ctx, steps)
+	if err != nil {
+		log.WithError(ctx, err).Error("runSteps Error")
+		return err
+	}
+	log.Info(ctx, "runSteps Completed with no error")
+	return nil
 }
 
 func (rr *Runner) runSteps(ctx context.Context, steps []*awsdeployer_pb.DeploymentStep) error {
