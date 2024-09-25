@@ -132,7 +132,8 @@ func NewStateMachines() (*StateMachines, error) {
 			return nil
 		}))
 
-	deploymentCompleted := func(state *awsdeployer_pb.DeploymentState, cb func(*awsdeployer_pb.StackKeys, awsdeployer_pb.StackPSMEvent)) error {
+	// Unblock the next deployment (regardless of outcome)
+	stackDeploymentCompleted := func(state *awsdeployer_pb.DeploymentState, cb func(*awsdeployer_pb.StackKeys, awsdeployer_pb.StackPSMEvent)) error {
 
 		keys := &awsdeployer_pb.StackKeys{
 			StackId:       StackID(state.Data.Spec.EnvironmentName, state.Data.Spec.AppName),
@@ -157,7 +158,7 @@ func NewStateMachines() (*StateMachines, error) {
 			event *awsdeployer_pb.DeploymentEventType_Error,
 			cb func(*awsdeployer_pb.StackKeys, awsdeployer_pb.StackPSMEvent),
 		) error {
-			return deploymentCompleted(state, cb)
+			return stackDeploymentCompleted(state, cb)
 		}))
 
 	deployment.From().
@@ -167,7 +168,7 @@ func NewStateMachines() (*StateMachines, error) {
 			event *awsdeployer_pb.DeploymentEventType_Terminated,
 			cb func(*awsdeployer_pb.StackKeys, awsdeployer_pb.StackPSMEvent),
 		) error {
-			return deploymentCompleted(state, cb)
+			return stackDeploymentCompleted(state, cb)
 		}))
 
 	deployment.From().
@@ -177,7 +178,7 @@ func NewStateMachines() (*StateMachines, error) {
 			event *awsdeployer_pb.DeploymentEventType_Done,
 			cb func(*awsdeployer_pb.StackKeys, awsdeployer_pb.StackPSMEvent),
 		) error {
-			return deploymentCompleted(state, cb)
+			return stackDeploymentCompleted(state, cb)
 		}))
 
 	return &StateMachines{

@@ -2,9 +2,12 @@ package states
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/states/plan"
 	"github.com/pentops/protostate/psm"
@@ -46,6 +49,21 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 			// No follow on, the stack state will trigger
 
 			return nil
+		})).
+		LogicHook(awsdeployer_pb.DeploymentPSMLogicHook(func(
+			ctx context.Context,
+			tb awsdeployer_pb.DeploymentPSMHookBaton,
+			deployment *awsdeployer_pb.DeploymentState,
+			event *awsdeployer_pb.DeploymentEventType_Created,
+		) error {
+			if deployment.Data.Request != nil {
+				tb.SideEffect(&awsdeployer_tpb.DeploymentStatusMessage{
+					Request:      deployment.Data.Request,
+					DeploymentId: deployment.Keys.DeploymentId,
+					Status:       awsdeployer_tpb.DeploymentStatus_PENDING,
+				})
+			}
+			return nil
 		}))
 
 	// QUEUED --> TRIGGERED : Trigger
@@ -61,6 +79,13 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 
 			tb.ChainEvent(&awsdeployer_pb.DeploymentEventType_StackWait{})
 
+			if deployment.Data.Request != nil {
+				tb.SideEffect(&awsdeployer_tpb.DeploymentStatusMessage{
+					Request:      deployment.Data.Request,
+					DeploymentId: deployment.Keys.DeploymentId,
+					Status:       awsdeployer_tpb.DeploymentStatus_IN_PROGRESS,
+				})
+			}
 			return nil
 		}))
 
@@ -141,6 +166,19 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 			deployment *awsdeployer_pb.DeploymentState,
 			event *awsdeployer_pb.DeploymentEventType_RunSteps,
 		) error {
+
+			if deployment.Data.Request != nil {
+				msg := make([]string, 0)
+				for _, step := range event.Steps {
+					msg = append(msg, step.Name)
+				}
+				tb.SideEffect(&awsdeployer_tpb.DeploymentStatusMessage{
+					Request:      deployment.Data.Request,
+					DeploymentId: deployment.Keys.DeploymentId,
+					Status:       awsdeployer_tpb.DeploymentStatus_IN_PROGRESS,
+					Message:      fmt.Sprintf("Running %d steps\n%s", len(event.Steps), strings.Join(msg, "\n")),
+				})
+			}
 			return plan.StepNext(ctx, tb, deployment.Data.Steps)
 		}))
 
@@ -189,15 +227,62 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 	// RUNNING --> DONE : Done
 	sm.From(awsdeployer_pb.DeploymentStatus_RUNNING).
 		OnEvent(awsdeployer_pb.DeploymentPSMEventDone).
-		SetStatus(awsdeployer_pb.DeploymentStatus_DONE)
+		SetStatus(awsdeployer_pb.DeploymentStatus_DONE).
+		LogicHook(awsdeployer_pb.DeploymentPSMLogicHook(func(
+			ctx context.Context,
+			tb awsdeployer_pb.DeploymentPSMHookBaton,
+			deployment *awsdeployer_pb.DeploymentState,
+			event *awsdeployer_pb.DeploymentEventType_Done,
+		) error {
+			if deployment.Data.Request != nil {
+				tb.SideEffect(&awsdeployer_tpb.DeploymentStatusMessage{
+					Request:      deployment.Data.Request,
+					DeploymentId: deployment.Keys.DeploymentId,
+					Status:       awsdeployer_tpb.DeploymentStatus_SUCCESS,
+				})
+			}
+			return nil
+		}))
 
 	// * --> FAILED : Error
 	sm.From().OnEvent(awsdeployer_pb.DeploymentPSMEventError).
-		SetStatus(awsdeployer_pb.DeploymentStatus_FAILED)
+		SetStatus(awsdeployer_pb.DeploymentStatus_FAILED).
+		LogicHook(awsdeployer_pb.DeploymentPSMLogicHook(func(
+			ctx context.Context,
+			tb awsdeployer_pb.DeploymentPSMHookBaton,
+			deployment *awsdeployer_pb.DeploymentState,
+			event *awsdeployer_pb.DeploymentEventType_Error,
+		) error {
+			if deployment.Data.Request != nil {
+				tb.SideEffect(&awsdeployer_tpb.DeploymentStatusMessage{
+					Request:      deployment.Data.Request,
+					DeploymentId: deployment.Keys.DeploymentId,
+					Status:       awsdeployer_tpb.DeploymentStatus_FAILED,
+					Message:      event.Error,
+				})
+			}
+			return nil
+		}))
 
 	// * --> TERMINATED : Terminated
 	sm.From().OnEvent(awsdeployer_pb.DeploymentPSMEventTerminated).
-		SetStatus(awsdeployer_pb.DeploymentStatus_TERMINATED)
+		SetStatus(awsdeployer_pb.DeploymentStatus_TERMINATED).
+		LogicHook(awsdeployer_pb.DeploymentPSMLogicHook(func(
+			ctx context.Context,
+			tb awsdeployer_pb.DeploymentPSMHookBaton,
+			deployment *awsdeployer_pb.DeploymentState,
+			event *awsdeployer_pb.DeploymentEventType_Terminated,
+		) error {
+			if deployment.Data.Request != nil {
+				tb.SideEffect(&awsdeployer_tpb.DeploymentStatusMessage{
+					Request:      deployment.Data.Request,
+					DeploymentId: deployment.Keys.DeploymentId,
+					Status:       awsdeployer_tpb.DeploymentStatus_FAILED,
+					Message:      "Deployment Terminated",
+				})
+			}
+			return nil
+		}))
 
 	// Discard Triggered
 	sm.From(
