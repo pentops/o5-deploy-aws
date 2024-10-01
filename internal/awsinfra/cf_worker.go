@@ -181,19 +181,6 @@ func (cf *InfraWorker) CancelStackUpdate(ctx context.Context, msg *awsinfra_tpb.
 	return &emptypb.Empty{}, nil
 }
 
-func (cf *InfraWorker) DeleteStack(ctx context.Context, msg *awsinfra_tpb.DeleteStackMessage) (*emptypb.Empty, error) {
-	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
-	if err != nil {
-		return nil, err
-	}
-	err = cf.CFClient.DeleteStack(ctx, reqToken, msg)
-	if err != nil {
-		return nil, err
-	}
-
-	return &emptypb.Empty{}, nil
-}
-
 func (cf *InfraWorker) ScaleStack(ctx context.Context, msg *awsinfra_tpb.ScaleStackMessage) (*emptypb.Empty, error) {
 	reqToken, err := cf.db.RequestToClientToken(ctx, msg.Request)
 	if err != nil {
@@ -242,13 +229,10 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *awsinfra_tpb.Sta
 
 	// Special cases for Stabalize only
 	switch remoteStack.StackStatus {
-	case types.StackStatusUpdateRollbackComplete:
+	case types.StackStatusRollbackComplete:
 		// When a previous attempt has failed, the stack is in an invalid status
 		// and needs to be deleted to progress.
-		err := cf.eventOut(ctx, &awsinfra_tpb.DeleteStackMessage{
-			Request:   msg.Request,
-			StackName: msg.StackName,
-		})
+		err := cf.CFClient.DeleteStack(ctx, reqToken, msg.StackName)
 		if err != nil {
 			return nil, err
 		}

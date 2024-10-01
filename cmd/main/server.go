@@ -293,6 +293,7 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 	EnvName         string `flag:"envname" description:"environment name"`
 	AppFilename     string `flag:"app" description:"application file"`
 	Version         string `flag:"version" description:"version tag"`
+
 	RotateSecrets   bool   `flag:"rotate-secrets" description:"rotate secrets - rotate any existing secrets (e.g. db creds)"`
 	CancelUpdate    bool   `flag:"cancel-update" description:"cancel update - cancel any ongoing update prior to deployment"`
 	ScratchBucket   string `flag:"scratch-bucket" env:"O5_DEPLOYER_SCRATCH_BUCKET" description:"An S3 bucket name to upload templates"`

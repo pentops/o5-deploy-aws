@@ -74,20 +74,23 @@ func (rr *Runner) RunDeployment(ctx context.Context, deployment *awsdeployer_pb.
 		Deployment: deployment.Spec,
 	}
 
-	switch stackStatus.Lifecycle {
-	case awsdeployer_pb.CFLifecycle_COMPLETE,
-		awsdeployer_pb.CFLifecycle_ROLLED_BACK:
+	if stackStatus != nil {
 
-		deploymentInput.StackStatus = &awsdeployer_pb.CFStackOutput{
-			Lifecycle: stackStatus.Lifecycle,
-			Outputs:   stackStatus.Outputs,
+		switch stackStatus.Lifecycle {
+		case awsdeployer_pb.CFLifecycle_COMPLETE,
+			awsdeployer_pb.CFLifecycle_ROLLED_BACK:
+
+			deploymentInput.StackStatus = &awsdeployer_pb.CFStackOutput{
+				Lifecycle: stackStatus.Lifecycle,
+				Outputs:   stackStatus.Outputs,
+			}
+
+		case awsdeployer_pb.CFLifecycle_MISSING:
+			// leave nil
+
+		default:
+			return fmt.Errorf("Stack Status: %s", stackStatus.Status)
 		}
-
-	case awsdeployer_pb.CFLifecycle_MISSING:
-		// leave nil
-
-	default:
-		return fmt.Errorf("Stack Status: %s", stackStatus.Status)
 	}
 
 	steps, err := plan.DeploymentSteps(ctx, deploymentInput)
@@ -122,7 +125,15 @@ func (rr *Runner) runSteps(ctx context.Context, steps []*awsdeployer_pb.Deployme
 			return err
 		}
 
+		if len(tb.ChainEvents) == 0 {
+			return fmt.Errorf("no chain events")
+		}
+
 		for _, chainEvent := range tb.ChainEvents {
+			log.WithFields(ctx, map[string]interface{}{
+				"event": chainEvent,
+			}).Info("ChainEvent")
+
 			switch evt := chainEvent.(type) {
 			case *awsdeployer_pb.DeploymentEventType_RunStep:
 				found := false

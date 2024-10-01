@@ -399,9 +399,9 @@ func (cf *CFClient) CancelStackUpdate(ctx context.Context, reqToken string, msg 
 	return err
 }
 
-func (cf *CFClient) DeleteStack(ctx context.Context, reqToken string, msg *awsinfra_tpb.DeleteStackMessage) error {
+func (cf *CFClient) DeleteStack(ctx context.Context, reqToken string, stackName string) error {
 	_, err := cf.cfClient.DeleteStack(ctx, &cloudformation.DeleteStackInput{
-		StackName:          aws.String(msg.StackName),
+		StackName:          aws.String(stackName),
 		ClientRequestToken: aws.String(reqToken),
 	})
 	return err

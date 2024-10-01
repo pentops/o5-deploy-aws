@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -43,7 +44,7 @@ func (ua *UniverseAsserter) afterEach(ctx context.Context) {
 
 		fullTopic := fmt.Sprintf("/%s/%s", msg.GrpcService, msg.GrpcMethod)
 		switch fullTopic {
-		case "/o5.awsdeployer.v1.events.DeployerEvents/Stack":
+		case "/o5.aws.deployer.v1.events.DeployerEvents/Stack":
 			event := &awsdeployer_epb.StackEvent{}
 			if err := protojson.Unmarshal(msg.Body.Value, event); err != nil {
 				ua.Fatalf("unmarshal error: %v", err)
@@ -51,7 +52,7 @@ func (ua *UniverseAsserter) afterEach(ctx context.Context) {
 			ua.Logf("Unexpected Stack Event: %s -> %s", event.Event.PSMEventKey(), event.Status.ShortString())
 			suggestions = append(suggestions, fmt.Sprintf("t.PopStackEvent(t, awsdeployer_pb.StackPSMEvent%s, awsdeployer_pb.StackStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.Status.ShortString()))
 
-		case "/o5.awsdeployer.v1.events.DeployerEvents/Deployment":
+		case "/o5.aws.deployer.v1.events.DeployerEvents/Deployment":
 			event := &awsdeployer_epb.DeploymentEvent{}
 			if err := protojson.Unmarshal(msg.Body.Value, event); err != nil {
 				ua.Fatalf("unmarshal error: %v", err)
@@ -59,7 +60,7 @@ func (ua *UniverseAsserter) afterEach(ctx context.Context) {
 			ua.Logf("Unexpected Deployment Event: %s -> %s", event.Event.PSMEventKey(), event.Status.ShortString())
 			suggestions = append(suggestions, fmt.Sprintf("t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEvent%s, awsdeployer_pb.DeploymentStatus_%s)", pascalKey(string(event.Event.PSMEventKey())), event.Status.ShortString()))
 		default:
-			ua.Fatalf("unexpected message %s %s", fullTopic)
+			ua.Fatalf("unexpected message %s", fullTopic)
 		}
 
 		hadMessages = true
@@ -143,6 +144,17 @@ func (cf *cfMock) ExpectCreateStack(t flowtest.TB) *awsinfra_tpb.CreateNewStackM
 	return createRequest
 }
 
+func (cf *cfMock) ExpectUpdateStack(t flowtest.TB) *awsinfra_tpb.UpdateStackMessage {
+	t.Helper()
+	updateRequest := &awsinfra_tpb.UpdateStackMessage{
+		Request: &messaging_j5pb.RequestMetadata{},
+	}
+	cf.uu.Outbox.PopMessage(t, updateRequest)
+	cf.lastRequest = updateRequest.Request
+	cf.lastStack = updateRequest.Spec.StackName
+	return updateRequest
+}
+
 func (cf *cfMock) StackStatusMissing(t flowtest.TB) {
 	t.Helper()
 	_, err := cf.uu.CFReplyTopic.StackStatusChanged(context.Background(), &awsinfra_tpb.StackStatusChangedMessage{
@@ -173,6 +185,27 @@ func (cf *cfMock) StackCreateCompleteMessage() *awsinfra_tpb.StackStatusChangedM
 
 func (cf *cfMock) StackCreateComplete(t flowtest.TB) {
 	_, err := cf.uu.CFReplyTopic.StackStatusChanged(context.Background(), cf.StackCreateCompleteMessage())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func (cf *cfMock) StackUpdateCompleteMessage() *awsinfra_tpb.StackStatusChangedMessage {
+	return &awsinfra_tpb.StackStatusChangedMessage{
+		EventId:   fmt.Sprintf("event-%d", time.Now().UnixNano()),
+		Request:   cf.lastRequest,
+		StackName: cf.lastStack,
+		Lifecycle: awsdeployer_pb.CFLifecycle_COMPLETE,
+		Status:    "UPDATE_COMPLETE",
+		Outputs: []*awsdeployer_pb.KeyValue{{
+			Name:  "foo",
+			Value: "bar",
+		}},
+	}
+}
+
+func (cf *cfMock) StackUpdateComplete(t flowtest.TB) {
+	_, err := cf.uu.CFReplyTopic.StackStatusChanged(context.Background(), cf.StackUpdateCompleteMessage())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -234,6 +267,7 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 	uu.Github = mocks.NewGithub()
 
 	log.DefaultLogger = log.NewCallbackLogger(ss.stepper.LevelLog)
+	//log.DefaultLogger.SetLevel(slog.LevelDebug)
 
 	uu.S3 = mocks.NewS3()
 
@@ -300,7 +334,6 @@ func (uu *Universe) AssertDeploymentStatus(t flowtest.Asserter, deploymentID str
 		t.Fatalf("GetDeployment: %v", err)
 	}
 	if deployment.State.Status != status {
-
 		for _, step := range deployment.State.Data.Steps {
 			t.Logf("step %s is %s", step.Name, step.Status.ShortString())
 		}
@@ -329,5 +362,36 @@ func (uu *Universe) AssertStackStatus(t flowtest.Asserter, stackID string, statu
 		if stack.State.Data.QueuedDeployments[i].DeploymentId != deploymentID {
 			t.Fatalf("unexpected pending deployments: %v, want %v", stack.State.Data.QueuedDeployments, pendingDeployments)
 		}
+	}
+}
+
+func assertStepStatus(t flowtest.Asserter, deploymentState *awsdeployer_pb.DeploymentState, wantSteps map[string]awsdeployer_pb.StepStatus) {
+	t.Helper()
+	allOK := true
+	wantSteps = maps.Clone(wantSteps)
+	gotSteps := deploymentState.Data.Steps
+	for _, step := range gotSteps {
+		t.Logf("step %s is %s", step.Name, step.Status.ShortString())
+		want, ok := wantSteps[step.Name]
+		if !ok {
+			t.Errorf("unexpected step %s", step.Name)
+			allOK = false
+			continue
+		}
+		if step.Status != want {
+			t.Errorf("unexpected status for step %s: %s, want %s", step.Name, step.Status, want)
+			allOK = false
+		}
+		delete(wantSteps, step.Name)
+	}
+
+	if len(wantSteps) > 0 {
+		for name, status := range wantSteps {
+			t.Errorf("missing step %s with status %s", name, status)
+		}
+		allOK = false
+	}
+	if !allOK {
+		t.FailNow()
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/states"
+	"github.com/pentops/o5-deploy-aws/internal/states/plan/planbuild"
 	"github.com/pentops/realms/authtest"
 
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
@@ -125,10 +126,16 @@ func TestDeploymentFlow(t *testing.T) {
 		t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEventRunSteps, awsdeployer_pb.DeploymentStatus_RUNNING)
 		t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEventRunStep, awsdeployer_pb.DeploymentStatus_RUNNING)
 
-		t.AssertDeploymentStatus(t, request.DeploymentId, awsdeployer_pb.DeploymentStatus_RUNNING)
+		deploymentState := t.AssertDeploymentStatus(t, request.DeploymentId, awsdeployer_pb.DeploymentStatus_RUNNING)
+
+		assertStepStatus(t, deploymentState, map[string]awsdeployer_pb.StepStatus{
+			planbuild.StepCFCreateEmpty: awsdeployer_pb.StepStatus_ACTIVE,
+			planbuild.StepCFUpdate:      awsdeployer_pb.StepStatus_BLOCKED,
+			planbuild.StepScaleUp:       awsdeployer_pb.StepStatus_BLOCKED,
+		})
 	})
 
-	ss.Step("StackStatus Progress", func(ctx context.Context, t UniverseAsserter) {
+	ss.Step("StackStatus Progress NOP", func(ctx context.Context, t UniverseAsserter) {
 		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &awsinfra_tpb.StackStatusChangedMessage{
 			EventId:   "evt1",
 			Request:   stackRequest,
@@ -143,7 +150,7 @@ func TestDeploymentFlow(t *testing.T) {
 		t.AssertDeploymentStatus(t, request.DeploymentId, awsdeployer_pb.DeploymentStatus_RUNNING)
 	})
 
-	ss.Step("StackStatus Stable", func(ctx context.Context, t UniverseAsserter) {
+	ss.Step("StackStatus Stable to Update", func(ctx context.Context, t UniverseAsserter) {
 		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &awsinfra_tpb.StackStatusChangedMessage{
 			EventId:   "evt2",
 			Request:   stackRequest,
@@ -159,7 +166,49 @@ func TestDeploymentFlow(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		// No DB to migrate
+		deploymentState := t.AssertDeploymentStatus(t, request.DeploymentId, awsdeployer_pb.DeploymentStatus_RUNNING)
+
+		assertStepStatus(t, deploymentState, map[string]awsdeployer_pb.StepStatus{
+			planbuild.StepCFCreateEmpty: awsdeployer_pb.StepStatus_DONE,
+			planbuild.StepCFUpdate:      awsdeployer_pb.StepStatus_ACTIVE,
+			planbuild.StepScaleUp:       awsdeployer_pb.StepStatus_BLOCKED,
+		})
+
+		migrateRequest := &awsinfra_tpb.UpdateStackMessage{
+			Request: &messaging_j5pb.RequestMetadata{},
+		}
+		t.Outbox.PopMessage(t, migrateRequest)
+		stackRequest = migrateRequest.Request
+
+		t.Equal(int(0), int(migrateRequest.Spec.DesiredCount))
+
+		t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEventStepResult, awsdeployer_pb.DeploymentStatus_RUNNING)
+		t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEventRunStep, awsdeployer_pb.DeploymentStatus_RUNNING)
+	})
+
+	ss.Step("StackStatus Stable to Scale Up", func(ctx context.Context, t UniverseAsserter) {
+		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &awsinfra_tpb.StackStatusChangedMessage{
+			EventId:   "evt3",
+			Request:   stackRequest,
+			StackName: stackName,
+			Lifecycle: awsdeployer_pb.CFLifecycle_COMPLETE,
+			Status:    "FOOBAR",
+			Outputs: []*awsdeployer_pb.KeyValue{{
+				Name:  "foo",
+				Value: "bar",
+			}},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		deploymentState := t.AssertDeploymentStatus(t, request.DeploymentId, awsdeployer_pb.DeploymentStatus_RUNNING)
+
+		assertStepStatus(t, deploymentState, map[string]awsdeployer_pb.StepStatus{
+			planbuild.StepCFCreateEmpty: awsdeployer_pb.StepStatus_DONE,
+			planbuild.StepCFUpdate:      awsdeployer_pb.StepStatus_DONE,
+			planbuild.StepScaleUp:       awsdeployer_pb.StepStatus_ACTIVE,
+		})
 
 		scaleUpRequest := &awsinfra_tpb.ScaleStackMessage{
 			Request: &messaging_j5pb.RequestMetadata{},
@@ -172,12 +221,11 @@ func TestDeploymentFlow(t *testing.T) {
 		t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEventStepResult, awsdeployer_pb.DeploymentStatus_RUNNING)
 		t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEventRunStep, awsdeployer_pb.DeploymentStatus_RUNNING)
 
-		t.AssertDeploymentStatus(t, request.DeploymentId, awsdeployer_pb.DeploymentStatus_RUNNING)
 	})
 
 	ss.Step("RUNNING --> DONE", func(ctx context.Context, t UniverseAsserter) {
 		_, err := t.CFReplyTopic.StackStatusChanged(ctx, &awsinfra_tpb.StackStatusChangedMessage{
-			EventId:   "evt3",
+			EventId:   "evt4",
 			Request:   stackRequest,
 			StackName: stackName,
 			Lifecycle: awsdeployer_pb.CFLifecycle_COMPLETE,
@@ -331,8 +379,23 @@ func TestStackLock(t *testing.T) {
 		// Deployment: UPSERTING --> UPSERTED --> DONE
 		// Stack: CREATING --> STABLE --> MIGRATING
 		t.AWSStack.StackCreateComplete(t)
+		ss := t.AssertDeploymentStatus(t, firstDeploymentID, awsdeployer_pb.DeploymentStatus_RUNNING)
+		assertStepStatus(t, ss, map[string]awsdeployer_pb.StepStatus{
+			planbuild.StepCFCreateEmpty: awsdeployer_pb.StepStatus_DONE,
+			planbuild.StepCFUpdate:      awsdeployer_pb.StepStatus_ACTIVE,
+		})
 
-		t.AssertDeploymentStatus(t, firstDeploymentID, awsdeployer_pb.DeploymentStatus_DONE)
+		t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEventStepResult, awsdeployer_pb.DeploymentStatus_RUNNING)
+		t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEventRunStep, awsdeployer_pb.DeploymentStatus_RUNNING)
+
+		t.AWSStack.ExpectUpdateStack(t)
+		t.AWSStack.StackUpdateComplete(t)
+
+		ss = t.AssertDeploymentStatus(t, firstDeploymentID, awsdeployer_pb.DeploymentStatus_DONE)
+		assertStepStatus(t, ss, map[string]awsdeployer_pb.StepStatus{
+			planbuild.StepCFCreateEmpty: awsdeployer_pb.StepStatus_DONE,
+			planbuild.StepCFUpdate:      awsdeployer_pb.StepStatus_DONE,
+		})
 
 		t.AssertStackStatus(t, states.StackID("env", "app"),
 			awsdeployer_pb.StackStatus_MIGRATING,

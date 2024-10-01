@@ -46,14 +46,6 @@ func (msg *ApplyChangeSetMessage) GetJ5RequestMetadata() *messaging_j5pb.Request
 }
 
 // Expose Request Metadata
-func (msg *DeleteStackMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
-	msg.Request = md
-}
-func (msg *DeleteStackMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
-	return msg.Request
-}
-
-// Expose Request Metadata
 func (msg *ScaleStackMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
 	msg.Request = md
 }
@@ -102,10 +94,6 @@ func NewCloudFormationRequestTopicTxSender[C any](sender o5msg.TxSender[C]) *Clo
 				Message: (*ApplyChangeSetMessage).ProtoReflect(nil).Descriptor(),
 			},
 			{
-				Name:    "DeleteStack",
-				Message: (*DeleteStackMessage).ProtoReflect(nil).Descriptor(),
-			},
-			{
 				Name:    "ScaleStack",
 				Message: (*ScaleStackMessage).ProtoReflect(nil).Descriptor(),
 			},
@@ -147,10 +135,6 @@ func NewCloudFormationRequestTopicCollector[C any](collector o5msg.Collector[C])
 				Message: (*ApplyChangeSetMessage).ProtoReflect(nil).Descriptor(),
 			},
 			{
-				Name:    "DeleteStack",
-				Message: (*DeleteStackMessage).ProtoReflect(nil).Descriptor(),
-			},
-			{
 				Name:    "ScaleStack",
 				Message: (*ScaleStackMessage).ProtoReflect(nil).Descriptor(),
 			},
@@ -190,10 +174,6 @@ func NewCloudFormationRequestTopicPublisher(publisher o5msg.Publisher) *CloudFor
 			{
 				Name:    "ApplyChangeSet",
 				Message: (*ApplyChangeSetMessage).ProtoReflect(nil).Descriptor(),
-			},
-			{
-				Name:    "DeleteStack",
-				Message: (*DeleteStackMessage).ProtoReflect(nil).Descriptor(),
 			},
 			{
 				Name:    "ScaleStack",
@@ -305,30 +285,6 @@ func (collect CloudFormationRequestTopicCollector[C]) ApplyChangeSet(sendContext
 }
 
 func (publish CloudFormationRequestTopicPublisher) ApplyChangeSet(ctx context.Context, msg *ApplyChangeSetMessage) error {
-	return publish.publisher.Publish(ctx, msg)
-}
-
-// Method: DeleteStack
-
-func (msg *DeleteStackMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
-		GrpcMethod:       "DeleteStack",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_request",
-	}
-	return header
-}
-
-func (send CloudFormationRequestTopicTxSender[C]) DeleteStack(ctx context.Context, sendContext C, msg *DeleteStackMessage) error {
-	return send.sender.Send(ctx, sendContext, msg)
-}
-
-func (collect CloudFormationRequestTopicCollector[C]) DeleteStack(sendContext C, msg *DeleteStackMessage) {
-	collect.collector.Collect(sendContext, msg)
-}
-
-func (publish CloudFormationRequestTopicPublisher) DeleteStack(ctx context.Context, msg *DeleteStackMessage) error {
 	return publish.publisher.Publish(ctx, msg)
 }
 

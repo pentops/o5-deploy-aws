@@ -194,10 +194,7 @@ func (cf *InfraAdapter) StabalizeStack(ctx context.Context, msg *awsinfra_tpb.St
 	}
 
 	if remoteStack.StackStatus == types.StackStatusRollbackComplete {
-		err = cf.cfClient.DeleteStack(ctx, newToken(), &awsinfra_tpb.DeleteStackMessage{
-			Request:   msg.Request,
-			StackName: msg.StackName,
-		})
+		err = cf.cfClient.DeleteStack(ctx, newToken(), msg.StackName)
 		if err != nil {
 			return nil, err
 		}

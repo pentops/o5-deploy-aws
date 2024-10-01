@@ -4,9 +4,9 @@ package o5.aws.infra.v1.topic;
 
 import "buf/validate/validate.proto";
 import "google/protobuf/empty.proto";
-import "o5/aws/deployer/v1/steps.proto";
 import "j5/messaging/v1/annotations.proto";
 import "j5/messaging/v1/reqres.proto";
+import "o5/aws/deployer/v1/steps.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb";
 
@@ -17,7 +17,6 @@ service CloudFormationRequestTopic {
   rpc UpdateStack(UpdateStackMessage) returns (google.protobuf.Empty) {}
   rpc CreateChangeSet(CreateChangeSetMessage) returns (google.protobuf.Empty) {}
   rpc ApplyChangeSet(ApplyChangeSetMessage) returns (google.protobuf.Empty) {}
-  rpc DeleteStack(DeleteStackMessage) returns (google.protobuf.Empty) {}
   rpc ScaleStack(ScaleStackMessage) returns (google.protobuf.Empty) {}
   rpc CancelStackUpdate(CancelStackUpdateMessage) returns (google.protobuf.Empty) {}
 
@@ -63,11 +62,6 @@ message ApplyChangeSetMessage {
   j5.messaging.v1.RequestMetadata request = 1;
   string stack_name = 2;
   string change_set_name = 3;
-}
-
-message DeleteStackMessage {
-  j5.messaging.v1.RequestMetadata request = 1;
-  string stack_name = 2;
 }
 
 message ScaleStackMessage {

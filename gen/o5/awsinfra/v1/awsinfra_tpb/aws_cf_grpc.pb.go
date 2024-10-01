@@ -24,7 +24,6 @@ const (
 	CloudFormationRequestTopic_UpdateStack_FullMethodName       = "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/UpdateStack"
 	CloudFormationRequestTopic_CreateChangeSet_FullMethodName   = "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/CreateChangeSet"
 	CloudFormationRequestTopic_ApplyChangeSet_FullMethodName    = "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/ApplyChangeSet"
-	CloudFormationRequestTopic_DeleteStack_FullMethodName       = "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/DeleteStack"
 	CloudFormationRequestTopic_ScaleStack_FullMethodName        = "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/ScaleStack"
 	CloudFormationRequestTopic_CancelStackUpdate_FullMethodName = "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/CancelStackUpdate"
 	CloudFormationRequestTopic_StabalizeStack_FullMethodName    = "/o5.aws.infra.v1.topic.CloudFormationRequestTopic/StabalizeStack"
@@ -38,7 +37,6 @@ type CloudFormationRequestTopicClient interface {
 	UpdateStack(ctx context.Context, in *UpdateStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	CreateChangeSet(ctx context.Context, in *CreateChangeSetMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ApplyChangeSet(ctx context.Context, in *ApplyChangeSetMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	DeleteStack(ctx context.Context, in *DeleteStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	ScaleStack(ctx context.Context, in *ScaleStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	CancelStackUpdate(ctx context.Context, in *CancelStackUpdateMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	StabalizeStack(ctx context.Context, in *StabalizeStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -88,15 +86,6 @@ func (c *cloudFormationRequestTopicClient) ApplyChangeSet(ctx context.Context, i
 	return out, nil
 }
 
-func (c *cloudFormationRequestTopicClient) DeleteStack(ctx context.Context, in *DeleteStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, CloudFormationRequestTopic_DeleteStack_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *cloudFormationRequestTopicClient) ScaleStack(ctx context.Context, in *ScaleStackMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, CloudFormationRequestTopic_ScaleStack_FullMethodName, in, out, opts...)
@@ -132,7 +121,6 @@ type CloudFormationRequestTopicServer interface {
 	UpdateStack(context.Context, *UpdateStackMessage) (*emptypb.Empty, error)
 	CreateChangeSet(context.Context, *CreateChangeSetMessage) (*emptypb.Empty, error)
 	ApplyChangeSet(context.Context, *ApplyChangeSetMessage) (*emptypb.Empty, error)
-	DeleteStack(context.Context, *DeleteStackMessage) (*emptypb.Empty, error)
 	ScaleStack(context.Context, *ScaleStackMessage) (*emptypb.Empty, error)
 	CancelStackUpdate(context.Context, *CancelStackUpdateMessage) (*emptypb.Empty, error)
 	StabalizeStack(context.Context, *StabalizeStackMessage) (*emptypb.Empty, error)
@@ -154,9 +142,6 @@ func (UnimplementedCloudFormationRequestTopicServer) CreateChangeSet(context.Con
 }
 func (UnimplementedCloudFormationRequestTopicServer) ApplyChangeSet(context.Context, *ApplyChangeSetMessage) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ApplyChangeSet not implemented")
-}
-func (UnimplementedCloudFormationRequestTopicServer) DeleteStack(context.Context, *DeleteStackMessage) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method DeleteStack not implemented")
 }
 func (UnimplementedCloudFormationRequestTopicServer) ScaleStack(context.Context, *ScaleStackMessage) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ScaleStack not implemented")
@@ -253,24 +238,6 @@ func _CloudFormationRequestTopic_ApplyChangeSet_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
-func _CloudFormationRequestTopic_DeleteStack_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DeleteStackMessage)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(CloudFormationRequestTopicServer).DeleteStack(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: CloudFormationRequestTopic_DeleteStack_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(CloudFormationRequestTopicServer).DeleteStack(ctx, req.(*DeleteStackMessage))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _CloudFormationRequestTopic_ScaleStack_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ScaleStackMessage)
 	if err := dec(in); err != nil {
@@ -347,10 +314,6 @@ var CloudFormationRequestTopic_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ApplyChangeSet",
 			Handler:    _CloudFormationRequestTopic_ApplyChangeSet_Handler,
-		},
-		{
-			MethodName: "DeleteStack",
-			Handler:    _CloudFormationRequestTopic_DeleteStack_Handler,
 		},
 		{
 			MethodName: "ScaleStack",

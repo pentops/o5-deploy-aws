@@ -49,7 +49,7 @@ var stackStatusesTerminal = []types.StackStatus{
 }
 
 var stackStatusesTerminalRollback = []types.StackStatus{
-	types.StackStatusUpdateRollbackComplete,
+	types.StackStatusRollbackComplete,
 }
 
 type StackStatus struct {

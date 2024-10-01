@@ -43,6 +43,8 @@ func (m *MockInfra) StabalizeStack(ctx context.Context, msg *awsinfra_tpb.Stabal
 }
 
 func (m *MockInfra) HandleMessage(ctx context.Context, msg proto.Message) (*awsdeployer_pb.DeploymentPSMEventSpec, error) {
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
 	fmt.Printf("MSG: %s\n", msg.ProtoReflect().Descriptor().FullName())
 	select {
 	case <-ctx.Done():
@@ -88,6 +90,10 @@ func (m *MockInfra) Send(msg awsdeployer_pb.DeploymentPSMEvent) {
 }
 
 func (m *MockInfra) Pop(t flowtest.TB, ctx context.Context) proto.Message {
+	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+
+	t.Helper()
 	t.Logf("Pop Request")
 	select {
 	case <-ctx.Done():
@@ -100,6 +106,8 @@ func (m *MockInfra) Pop(t flowtest.TB, ctx context.Context) proto.Message {
 }
 
 func TestLocalRun(t *testing.T) {
+	runCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	name := t.Name()
 	ss := flowtest.NewStepper[*testing.T](name)
@@ -167,7 +175,27 @@ func TestLocalRun(t *testing.T) {
 	ss.Step("CreateNewStack", func(ctx context.Context, t flowtest.Asserter) {
 		req, ok := infra.Pop(t, ctx).(*awsinfra_tpb.CreateNewStackMessage)
 		if !ok {
+			cancel()
 			t.Fatalf("expected CreateNewStackMessage")
+		}
+
+		infra.CFResult(req.Request, awsdeployer_pb.StepStatus_DONE, &awsdeployer_pb.CFStackOutput{
+			Lifecycle: awsdeployer_pb.CFLifecycle_COMPLETE,
+			Outputs: []*awsdeployer_pb.KeyValue{{
+				Name:  "MigrationTaskDefinitionFoo",
+				Value: "arn:taskdef",
+			}, {
+				Name:  "DatabaseSecretFoo",
+				Value: "arn:secret",
+			}},
+		})
+	})
+
+	ss.Step("UpdateStack", func(ctx context.Context, t flowtest.Asserter) {
+		req, ok := infra.Pop(t, ctx).(*awsinfra_tpb.UpdateStackMessage)
+		if !ok {
+			cancel()
+			t.Fatalf("expected UpsertPostgresDatabaseMessage")
 		}
 
 		infra.CFResult(req.Request, awsdeployer_pb.StepStatus_DONE, &awsdeployer_pb.CFStackOutput{
@@ -185,6 +213,7 @@ func TestLocalRun(t *testing.T) {
 	ss.Step("UpsertPostgresDatabase", func(ctx context.Context, t flowtest.Asserter) {
 		msg, ok := infra.Pop(t, ctx).(*awsinfra_tpb.UpsertPostgresDatabaseMessage)
 		if !ok {
+			cancel()
 			t.Fatalf("expected UpsertPostgresDatabaseMessage")
 		}
 
@@ -198,6 +227,7 @@ func TestLocalRun(t *testing.T) {
 	ss.Step("MigratePostgresDatabase", func(ctx context.Context, t flowtest.Asserter) {
 		msg, ok := infra.Pop(t, ctx).(*awsinfra_tpb.MigratePostgresDatabaseMessage)
 		if !ok {
+			cancel()
 			t.Fatalf("expected MigratePostgresDatabaseMessage")
 		}
 
@@ -213,6 +243,7 @@ func TestLocalRun(t *testing.T) {
 	ss.Step("CleanupPostgresDatabase", func(ctx context.Context, t flowtest.Asserter) {
 		msg, ok := infra.Pop(t, ctx).(*awsinfra_tpb.CleanupPostgresDatabaseMessage)
 		if !ok {
+			cancel()
 			t.Fatalf("expected CleanupPostgresDatabaseMessage")
 		}
 
@@ -224,6 +255,7 @@ func TestLocalRun(t *testing.T) {
 	ss.Step("ScaleUp", func(ctx context.Context, t flowtest.Asserter) {
 		msg, ok := infra.Pop(t, ctx).(*awsinfra_tpb.ScaleStackMessage)
 		if !ok {
+			cancel()
 			t.Fatalf("expected ScaleStackMessage")
 		}
 
@@ -235,8 +267,6 @@ func TestLocalRun(t *testing.T) {
 		})
 	})
 
-	runCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 	runErr := make(chan error, 1)
 	go func() {
 		err := RunLocalDeploy(runCtx, templateStore, infra, spec)
