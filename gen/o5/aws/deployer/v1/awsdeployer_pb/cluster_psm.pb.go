@@ -44,6 +44,7 @@ type ClusterPSMEventKey = string
 const (
 	ClusterPSMEventNil        ClusterPSMEventKey = "<nil>"
 	ClusterPSMEventConfigured ClusterPSMEventKey = "configured"
+	ClusterPSMEventOverride   ClusterPSMEventKey = "override"
 )
 
 // EXTEND ClusterKeys with the psm.IKeyset interface
@@ -146,6 +147,8 @@ func (msg *ClusterEvent) UnwrapPSMEvent() ClusterPSMEvent {
 	switch v := msg.Event.Type.(type) {
 	case *ClusterEventType_Configured_:
 		return v.Configured
+	case *ClusterEventType_Override_:
+		return v.Override
 	default:
 		return nil
 	}
@@ -159,6 +162,8 @@ func (msg *ClusterEvent) SetPSMEvent(inner ClusterPSMEvent) error {
 	switch v := inner.(type) {
 	case *ClusterEventType_Configured:
 		msg.Event.Type = &ClusterEventType_Configured_{Configured: v}
+	case *ClusterEventType_Override:
+		msg.Event.Type = &ClusterEventType_Override_{Override: v}
 	default:
 		return fmt.Errorf("invalid type %T for ClusterEventType", v)
 	}
@@ -179,6 +184,17 @@ func (msg *ClusterEventType_Configured) PSMIsSet() bool {
 
 func (*ClusterEventType_Configured) PSMEventKey() ClusterPSMEventKey {
 	return ClusterPSMEventConfigured
+}
+
+// EXTEND ClusterEventType_Override with the ClusterPSMEvent interface
+
+// PSMIsSet is a helper for != nil, which does not work with generic parameters
+func (msg *ClusterEventType_Override) PSMIsSet() bool {
+	return msg != nil
+}
+
+func (*ClusterEventType_Override) PSMEventKey() ClusterPSMEventKey {
+	return ClusterPSMEventOverride
 }
 
 func ClusterPSMBuilder() *psm.StateMachineConfig[

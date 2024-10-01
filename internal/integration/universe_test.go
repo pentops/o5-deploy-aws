@@ -20,10 +20,10 @@ import (
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
 	"github.com/pentops/o5-deploy-aws/internal/integration/mocks"
 	"github.com/pentops/o5-deploy-aws/internal/service"
-	"github.com/pentops/o5-deploy-aws/internal/states"
 	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_pb"
 	"github.com/pentops/o5-messaging/outbox/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
+	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
@@ -106,6 +106,7 @@ type Universe struct {
 	DeploymentQuery  awsdeployer_spb.DeploymentQueryServiceClient
 	StackQuery       awsdeployer_spb.StackQueryServiceClient
 	EnvironmentQuery awsdeployer_spb.EnvironmentQueryServiceClient
+	ClusterQuery     awsdeployer_spb.ClusterQueryServiceClient
 
 	SpecBuilder *deployer.SpecBuilder
 
@@ -284,39 +285,26 @@ func (ss *Stepper) RunSteps(t *testing.T) {
 	}
 	uu.SpecBuilder = trigger
 
-	stateMachines, err := states.NewStateMachines()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	servicePair := flowtest.NewGRPCPair(t, service.GRPCMiddleware()...)
 
-	deploymentWorker, err := service.NewDeployerWorker(conn, trigger, stateMachines)
+	serviceApp, err := service.NewApp(service.AppDeps{
+		DB:           sqrlx.NewPostgres(conn),
+		SpecBuilder:  trigger,
+		GithubClient: uu.Github,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	awsdeployer_tpb.RegisterDeploymentRequestTopicServer(servicePair.Server, deploymentWorker)
+
+	serviceApp.RegisterGRPC(servicePair.Server)
+
 	uu.DeployerTopic = awsdeployer_tpb.NewDeploymentRequestTopicClient(servicePair.Client)
-
-	awsinfra_tpb.RegisterCloudFormationReplyTopicServer(servicePair.Server, deploymentWorker)
 	uu.CFReplyTopic = awsinfra_tpb.NewCloudFormationReplyTopicClient(servicePair.Client)
-
-	deployerService, err := service.NewCommandService(conn, uu.Github, stateMachines)
-	if err != nil {
-		t.Fatal(err)
-	}
-	awsdeployer_spb.RegisterDeploymentCommandServiceServer(servicePair.Server, deployerService)
 	uu.DeployerCommand = awsdeployer_spb.NewDeploymentCommandServiceClient(servicePair.Client)
-
-	queryService, err := service.NewQueryService(conn, stateMachines)
-	if err != nil {
-		t.Fatal(err)
-	}
-	queryService.RegisterGRPC(servicePair.Server)
-
 	uu.DeploymentQuery = awsdeployer_spb.NewDeploymentQueryServiceClient(servicePair.Client)
 	uu.StackQuery = awsdeployer_spb.NewStackQueryServiceClient(servicePair.Client)
 	uu.EnvironmentQuery = awsdeployer_spb.NewEnvironmentQueryServiceClient(servicePair.Client)
+	uu.ClusterQuery = awsdeployer_spb.NewClusterQueryServiceClient(servicePair.Client)
 
 	servicePair.ServeUntilDone(t, ctx)
 

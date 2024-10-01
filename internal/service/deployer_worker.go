@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
 	"github.com/pentops/j5/gen/j5/state/v1/psm_j5pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
@@ -31,13 +30,9 @@ type DeployerWorker struct {
 	deploymentEventer *awsdeployer_pb.DeploymentPSMDB
 }
 
-func NewDeployerWorker(conn sqrlx.Connection, specBuilder *deployer.SpecBuilder, states *states.StateMachines) (*DeployerWorker, error) {
-	db, err := sqrlx.New(conn, sq.Dollar)
-	if err != nil {
-		return nil, err
-	}
+func NewDeployerWorker(db sqrlx.Transactor, specBuilder *deployer.SpecBuilder, states *states.StateMachines) (*DeployerWorker, error) {
 
-	lookupProvider, err := NewLookupProvider(conn)
+	lookupProvider, err := NewLookupProvider(db)
 	if err != nil {
 		return nil, err
 	}

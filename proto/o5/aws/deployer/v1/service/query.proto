@@ -85,7 +85,6 @@ service EnvironmentQueryService {
     option (j5.ext.v1.method).state_query.list_events = true;
   }
 }
-
 message GetDeploymentRequest {
   string deployment_id = 1;
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	sq "github.com/elgris/sqrl"
+	"github.com/google/uuid"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
 	"github.com/pentops/o5-deploy-aws/internal/states"
 	"github.com/pentops/protostate/psm"
@@ -22,14 +22,19 @@ type QueryService struct {
 	environmentQuery *awsdeployer_spb.EnvironmentPSMQuerySet
 	*awsdeployer_spb.UnimplementedEnvironmentQueryServiceServer
 
-	db *sqrlx.Wrapper
+	clusterQuery *awsdeployer_spb.ClusterPSMQuerySet
+	*awsdeployer_spb.UnimplementedClusterQueryServiceServer
+
+	lookup *LookupProvider
+
+	db sqrlx.Transactor
 }
 
-func NewQueryService(conn sqrlx.Connection, stateMachines *states.StateMachines) (*QueryService, error) {
+func NewQueryService(db sqrlx.Transactor, stateMachines *states.StateMachines) (*QueryService, error) {
 
-	db, err := sqrlx.New(conn, sq.Dollar)
+	lookup, err := NewLookupProvider(db)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create lookup provider: %w", err)
 	}
 
 	deploymentQuery, err := awsdeployer_spb.NewDeploymentPSMQuerySet(
@@ -56,12 +61,22 @@ func NewQueryService(conn sqrlx.Connection, stateMachines *states.StateMachines)
 		return nil, fmt.Errorf("failed to build environment query: %w", err)
 	}
 
+	clusterQuery, err := awsdeployer_spb.NewClusterPSMQuerySet(
+		awsdeployer_spb.DefaultClusterPSMQuerySpec(stateMachines.Cluster.StateTableSpec()),
+		psm.StateQueryOptions{},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build cluster query: %w", err)
+	}
+
 	return &QueryService{
-		db: db,
+		db:     db,
+		lookup: lookup,
 
 		deploymentQuery:  deploymentQuery,
 		stackQuery:       stackQuery,
 		environmentQuery: environmentQuery,
+		clusterQuery:     clusterQuery,
 	}, nil
 }
 
@@ -69,6 +84,7 @@ func (ds *QueryService) RegisterGRPC(s *grpc.Server) {
 	awsdeployer_spb.RegisterDeploymentQueryServiceServer(s, ds)
 	awsdeployer_spb.RegisterStackQueryServiceServer(s, ds)
 	awsdeployer_spb.RegisterEnvironmentQueryServiceServer(s, ds)
+	awsdeployer_spb.RegisterClusterQueryServiceServer(s, ds)
 }
 
 func (ds *QueryService) GetDeployment(ctx context.Context, req *awsdeployer_spb.GetDeploymentRequest) (*awsdeployer_spb.GetDeploymentResponse, error) {
@@ -114,4 +130,33 @@ func (ds *QueryService) ListEnvironments(ctx context.Context, req *awsdeployer_s
 func (ds *QueryService) ListEnvironmentEvents(ctx context.Context, req *awsdeployer_spb.ListEnvironmentEventsRequest) (*awsdeployer_spb.ListEnvironmentEventsResponse, error) {
 	res := &awsdeployer_spb.ListEnvironmentEventsResponse{}
 	return res, ds.environmentQuery.ListEvents(ctx, ds.db, req, res)
+}
+
+func (ds *QueryService) GetCluster(ctx context.Context, req *awsdeployer_spb.GetClusterRequest) (*awsdeployer_spb.GetClusterResponse, error) {
+	if _, err := uuid.Parse(req.ClusterId); err != nil {
+		cluster, err := ds.lookup.lookupCluster(ctx, req.ClusterId)
+		if err != nil {
+			return nil, err
+		}
+		req.ClusterId = cluster.clusterID
+	}
+	res := &awsdeployer_spb.GetClusterResponse{}
+	return res, ds.clusterQuery.Get(ctx, ds.db, req, res)
+}
+
+func (ds *QueryService) ListClusters(ctx context.Context, req *awsdeployer_spb.ListClustersRequest) (*awsdeployer_spb.ListClustersResponse, error) {
+	res := &awsdeployer_spb.ListClustersResponse{}
+	return res, ds.clusterQuery.List(ctx, ds.db, req, res)
+}
+
+func (ds *QueryService) ListClusterEvents(ctx context.Context, req *awsdeployer_spb.ListClusterEventsRequest) (*awsdeployer_spb.ListClusterEventsResponse, error) {
+	if _, err := uuid.Parse(req.ClusterId); err != nil {
+		cluster, err := ds.lookup.lookupCluster(ctx, req.ClusterId)
+		if err != nil {
+			return nil, err
+		}
+		req.ClusterId = cluster.clusterID
+	}
+	res := &awsdeployer_spb.ListClusterEventsResponse{}
+	return res, ds.clusterQuery.ListEvents(ctx, ds.db, req, res)
 }

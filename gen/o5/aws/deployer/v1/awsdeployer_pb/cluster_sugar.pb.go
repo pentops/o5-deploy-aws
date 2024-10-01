@@ -12,12 +12,15 @@ type ClusterEventTypeKey string
 
 const (
 	ClusterEvent_Configured ClusterEventTypeKey = "configured"
+	ClusterEvent_Override   ClusterEventTypeKey = "override"
 )
 
 func (x *ClusterEventType) TypeKey() (ClusterEventTypeKey, bool) {
 	switch x.Type.(type) {
 	case *ClusterEventType_Configured_:
 		return ClusterEvent_Configured, true
+	case *ClusterEventType_Override_:
+		return ClusterEvent_Override, true
 	default:
 		return "", false
 	}
@@ -31,18 +34,25 @@ func (x *ClusterEventType) Set(val IsClusterEventTypeWrappedType) {
 	switch v := val.(type) {
 	case *ClusterEventType_Configured:
 		x.Type = &ClusterEventType_Configured_{Configured: v}
+	case *ClusterEventType_Override:
+		x.Type = &ClusterEventType_Override_{Override: v}
 	}
 }
 func (x *ClusterEventType) Get() IsClusterEventTypeWrappedType {
 	switch v := x.Type.(type) {
 	case *ClusterEventType_Configured_:
 		return v.Configured
+	case *ClusterEventType_Override_:
+		return v.Override
 	default:
 		return nil
 	}
 }
 func (x *ClusterEventType_Configured) TypeKey() ClusterEventTypeKey {
 	return ClusterEvent_Configured
+}
+func (x *ClusterEventType_Override) TypeKey() ClusterEventTypeKey {
+	return ClusterEvent_Override
 }
 
 type IsClusterEventType_Type = isClusterEventType_Type

@@ -5,32 +5,23 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bufbuild/protovalidate-go"
 	"github.com/goccy/go-yaml"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
-type S3Client interface {
-	GetObject(ctx context.Context, input *s3.GetObjectInput, options ...func(*s3.Options)) (*s3.GetObjectOutput, error)
-}
-
-func PullAndParse(ctx context.Context, s3Client S3Client, filename string, into proto.Message) error {
-
-	data, err := getFileBytes(ctx, s3Client, filename)
+func PullAndParse(ctx context.Context, filename string, into proto.Message) error {
+	data, err := os.ReadFile(filename)
 	if err != nil {
-		return err
+		return fmt.Errorf("reading file %s: %w", filename, err)
 	}
-
 	return Parse(filename, data, into)
 }
 
@@ -104,35 +95,4 @@ func findTokenError(data []byte, tknErr error) error {
 	}
 
 	return fmt.Errorf("no token error found")
-}
-
-func getFileBytes(ctx context.Context, s3Client S3Client, filename string) ([]byte, error) {
-	if strings.HasPrefix(filename, "s3://") {
-		return getS3File(ctx, s3Client, filename)
-	}
-
-	return os.ReadFile(filename)
-}
-
-func getS3File(ctx context.Context, s3Client S3Client, filename string) ([]byte, error) {
-
-	uri, err := url.Parse(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	bucket := uri.Host
-	key := strings.TrimPrefix(uri.Path, "/")
-
-	input := &s3.GetObjectInput{
-		Bucket: &bucket,
-		Key:    &key,
-	}
-
-	output, err := s3Client.GetObject(context.Background(), input)
-	if err != nil {
-		return nil, fmt.Errorf("get s3 bucket: '%s' key: '%s': %w", bucket, key, err)
-	}
-
-	return io.ReadAll(output.Body)
 }

@@ -17,8 +17,6 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/awsinfra"
@@ -28,9 +26,9 @@ import (
 	"github.com/pentops/o5-deploy-aws/internal/localrun"
 	"github.com/pentops/o5-deploy-aws/internal/protoread"
 	"github.com/pentops/o5-deploy-aws/internal/service"
-	"github.com/pentops/o5-deploy-aws/internal/states"
 	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_tpb"
 	"github.com/pentops/runner/commander"
+	"github.com/pentops/sqrlx.go/sqrlx"
 	"github.com/pressly/goose"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -146,16 +144,6 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	stateMachines, err := states.NewStateMachines()
-	if err != nil {
-		return err
-	}
-
-	deploymentWorker, err := service.NewDeployerWorker(db, specBuilder, stateMachines)
-	if err != nil {
-		return err
-	}
-
 	githubApps := []github.AppConfig{}
 	if err := json.Unmarshal([]byte(cfg.GithubAppsJSON), &githubApps); err != nil {
 		return fmt.Errorf("GITHUB_APPS env var: %w", err)
@@ -165,12 +153,12 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	commandService, err := service.NewCommandService(db, githubClient, stateMachines)
-	if err != nil {
-		return err
-	}
+	serviceApp, err := service.NewApp(service.AppDeps{
+		DB:           sqrlx.NewPostgres(db),
+		GithubClient: githubClient,
+		SpecBuilder:  specBuilder,
+	})
 
-	queryService, err := service.NewQueryService(db, stateMachines)
 	if err != nil {
 		return err
 	}
@@ -180,20 +168,11 @@ func runServe(ctx context.Context, cfg struct {
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(middleware...)),
 	)
 
-	queryService.RegisterGRPC(grpcServer)
-
-	awsdeployer_spb.RegisterDeploymentCommandServiceServer(grpcServer, commandService)
-
-	awsdeployer_tpb.RegisterDeploymentRequestTopicServer(grpcServer, deploymentWorker)
+	serviceApp.RegisterGRPC(grpcServer)
 
 	messaging_tpb.RegisterRawMessageTopicServer(grpcServer, rawWorker)
-
 	awsinfra_tpb.RegisterCloudFormationRequestTopicServer(grpcServer, awsInfraRunner)
-	awsinfra_tpb.RegisterCloudFormationReplyTopicServer(grpcServer, deploymentWorker)
-
 	awsinfra_tpb.RegisterPostgresRequestTopicServer(grpcServer, pgMigrateRunner)
-	awsinfra_tpb.RegisterPostgresReplyTopicServer(grpcServer, deploymentWorker)
-
 	awsinfra_tpb.RegisterECSReplyTopicServer(grpcServer, pgMigrateRunner)
 	awsinfra_tpb.RegisterECSRequestTopicServer(grpcServer, ecsWorker)
 
@@ -221,15 +200,8 @@ func runTemplate(ctx context.Context, cfg struct {
 		return fmt.Errorf("missing application file (-app)")
 	}
 
-	awsConfig, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
-	}
-
-	s3Client := s3.NewFromConfig(awsConfig)
-
 	appConfig := &application_pb.Application{}
-	if err := protoread.PullAndParse(ctx, s3Client, cfg.AppFilename, appConfig); err != nil {
+	if err := protoread.PullAndParse(ctx, cfg.AppFilename, appConfig); err != nil {
 		return err
 	}
 
@@ -254,9 +226,9 @@ func runTemplate(ctx context.Context, cfg struct {
 	return nil
 }
 
-func getCluster(ctx context.Context, s3Client *s3.Client, clusterFilename string, envName string) (*environment_pb.Cluster, *environment_pb.Environment, error) {
+func getCluster(ctx context.Context, clusterFilename string, envName string) (*environment_pb.Cluster, *environment_pb.Environment, error) {
 	clusterFile := &environment_pb.CombinedConfig{}
-	if err := protoread.PullAndParse(ctx, s3Client, clusterFilename, clusterFile); err != nil {
+	if err := protoread.PullAndParse(ctx, clusterFilename, clusterFile); err != nil {
 		return nil, nil, err
 	}
 
@@ -319,7 +291,7 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 	s3Client := s3.NewFromConfig(awsConfig)
 
 	appConfig := &application_pb.Application{}
-	if err := protoread.PullAndParse(ctx, s3Client, cfg.AppFilename, appConfig); err != nil {
+	if err := protoread.PullAndParse(ctx, cfg.AppFilename, appConfig); err != nil {
 		return err
 	}
 
@@ -327,7 +299,7 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		appConfig.DeploymentConfig = &application_pb.DeploymentConfig{}
 	}
 
-	cluster, env, err := getCluster(ctx, s3Client, cfg.ClusterFilename, cfg.EnvName)
+	cluster, env, err := getCluster(ctx, cfg.ClusterFilename, cfg.EnvName)
 	if err != nil {
 		return err
 	}

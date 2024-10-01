@@ -15,7 +15,7 @@ import (
 )
 
 type Storage struct {
-	db *sqrlx.Wrapper
+	db sqrlx.Transactor
 }
 
 func NewStorage(conn sqrlx.Connection) (*Storage, error) {

@@ -15,6 +15,7 @@ import (
 	"github.com/pentops/o5-messaging/outbox/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
 	"github.com/pentops/realms/authtest"
+	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -48,7 +49,7 @@ func TestConfiguration(t *testing.T) {
 	)
 	//outbox := outboxtest.NewOutboxAsserter(t, conn)
 
-	ds, err := NewCommandService(conn, githubMock, stateMachines)
+	ds, err := NewCommandService(sqrlx.NewPostgres(conn), githubMock, stateMachines)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,7 @@ func TestTriggerDeployment(t *testing.T) {
 	)
 	outbox := outboxtest.NewOutboxAsserter(t, conn)
 
-	ds, err := NewCommandService(conn, githubMock, stateMachines)
+	ds, err := NewCommandService(sqrlx.NewPostgres(conn), githubMock, stateMachines)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -28,14 +28,10 @@ func environmentNameID(name string) string {
 // LookupProvider allows API calls to be requested with names rather than UUIDs
 // for the state machines.
 type LookupProvider struct {
-	db *sqrlx.Wrapper
+	db sqrlx.Transactor
 }
 
-func NewLookupProvider(conn sqrlx.Connection) (*LookupProvider, error) {
-	db, err := sqrlx.New(conn, sq.Dollar)
-	if err != nil {
-		return nil, err
-	}
+func NewLookupProvider(db sqrlx.Transactor) (*LookupProvider, error) {
 	return &LookupProvider{
 		db: db,
 	}, nil

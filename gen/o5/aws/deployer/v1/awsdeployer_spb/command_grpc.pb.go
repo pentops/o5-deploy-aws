@@ -24,6 +24,7 @@ const (
 	DeploymentCommandService_UpsertCluster_FullMethodName       = "/o5.aws.deployer.v1.service.DeploymentCommandService/UpsertCluster"
 	DeploymentCommandService_UpsertEnvironment_FullMethodName   = "/o5.aws.deployer.v1.service.DeploymentCommandService/UpsertEnvironment"
 	DeploymentCommandService_UpsertStack_FullMethodName         = "/o5.aws.deployer.v1.service.DeploymentCommandService/UpsertStack"
+	DeploymentCommandService_SetClusterOverride_FullMethodName  = "/o5.aws.deployer.v1.service.DeploymentCommandService/SetClusterOverride"
 )
 
 // DeploymentCommandServiceClient is the client API for DeploymentCommandService service.
@@ -35,6 +36,7 @@ type DeploymentCommandServiceClient interface {
 	UpsertCluster(ctx context.Context, in *UpsertClusterRequest, opts ...grpc.CallOption) (*UpsertClusterResponse, error)
 	UpsertEnvironment(ctx context.Context, in *UpsertEnvironmentRequest, opts ...grpc.CallOption) (*UpsertEnvironmentResponse, error)
 	UpsertStack(ctx context.Context, in *UpsertStackRequest, opts ...grpc.CallOption) (*UpsertStackResponse, error)
+	SetClusterOverride(ctx context.Context, in *SetClusterOverrideRequest, opts ...grpc.CallOption) (*SetClusterOverrideResponse, error)
 }
 
 type deploymentCommandServiceClient struct {
@@ -90,6 +92,15 @@ func (c *deploymentCommandServiceClient) UpsertStack(ctx context.Context, in *Up
 	return out, nil
 }
 
+func (c *deploymentCommandServiceClient) SetClusterOverride(ctx context.Context, in *SetClusterOverrideRequest, opts ...grpc.CallOption) (*SetClusterOverrideResponse, error) {
+	out := new(SetClusterOverrideResponse)
+	err := c.cc.Invoke(ctx, DeploymentCommandService_SetClusterOverride_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DeploymentCommandServiceServer is the server API for DeploymentCommandService service.
 // All implementations must embed UnimplementedDeploymentCommandServiceServer
 // for forward compatibility
@@ -99,6 +110,7 @@ type DeploymentCommandServiceServer interface {
 	UpsertCluster(context.Context, *UpsertClusterRequest) (*UpsertClusterResponse, error)
 	UpsertEnvironment(context.Context, *UpsertEnvironmentRequest) (*UpsertEnvironmentResponse, error)
 	UpsertStack(context.Context, *UpsertStackRequest) (*UpsertStackResponse, error)
+	SetClusterOverride(context.Context, *SetClusterOverrideRequest) (*SetClusterOverrideResponse, error)
 	mustEmbedUnimplementedDeploymentCommandServiceServer()
 }
 
@@ -120,6 +132,9 @@ func (UnimplementedDeploymentCommandServiceServer) UpsertEnvironment(context.Con
 }
 func (UnimplementedDeploymentCommandServiceServer) UpsertStack(context.Context, *UpsertStackRequest) (*UpsertStackResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpsertStack not implemented")
+}
+func (UnimplementedDeploymentCommandServiceServer) SetClusterOverride(context.Context, *SetClusterOverrideRequest) (*SetClusterOverrideResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetClusterOverride not implemented")
 }
 func (UnimplementedDeploymentCommandServiceServer) mustEmbedUnimplementedDeploymentCommandServiceServer() {
 }
@@ -225,6 +240,24 @@ func _DeploymentCommandService_UpsertStack_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DeploymentCommandService_SetClusterOverride_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetClusterOverrideRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DeploymentCommandServiceServer).SetClusterOverride(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DeploymentCommandService_SetClusterOverride_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DeploymentCommandServiceServer).SetClusterOverride(ctx, req.(*SetClusterOverrideRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DeploymentCommandService_ServiceDesc is the grpc.ServiceDesc for DeploymentCommandService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -251,6 +284,10 @@ var DeploymentCommandService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpsertStack",
 			Handler:    _DeploymentCommandService_UpsertStack_Handler,
+		},
+		{
+			MethodName: "SetClusterOverride",
+			Handler:    _DeploymentCommandService_SetClusterOverride_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

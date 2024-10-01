@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
 	"github.com/pentops/envconf.go/envconf"
 	"github.com/pentops/log.go/log"
@@ -64,21 +63,17 @@ type CommandService struct {
 	stackStateMachine       *awsdeployer_pb.StackPSM
 	clusterStateMachine     *awsdeployer_pb.ClusterPSM
 
-	db     *sqrlx.Wrapper
+	db     sqrlx.Transactor
 	github GithubClient
 
 	*LookupProvider
 
-	*awsdeployer_spb.UnimplementedDeploymentCommandServiceServer
+	awsdeployer_spb.UnsafeDeploymentCommandServiceServer
 }
 
-func NewCommandService(conn sqrlx.Connection, github GithubClient, stateMachines *states.StateMachines) (*CommandService, error) {
-	db, err := sqrlx.New(conn, sq.Dollar)
-	if err != nil {
-		return nil, err
-	}
+func NewCommandService(db sqrlx.Transactor, github GithubClient, stateMachines *states.StateMachines) (*CommandService, error) {
 
-	lookupProvider, err := NewLookupProvider(conn)
+	lookupProvider, err := NewLookupProvider(db)
 	if err != nil {
 		return nil, err
 	}
@@ -288,6 +283,43 @@ func (ds *CommandService) UpsertStack(ctx context.Context, req *awsdeployer_spb.
 
 	return &awsdeployer_spb.UpsertStackResponse{
 		State: newState,
+	}, nil
+}
+
+func (ds *CommandService) SetClusterOverride(ctx context.Context, req *awsdeployer_spb.SetClusterOverrideRequest) (*awsdeployer_spb.SetClusterOverrideResponse, error) {
+
+	if err := states.ValidateClusterOverrides(req.Overrides); err != nil {
+		return nil, err
+	}
+	identifiers, err := ds.lookupCluster(ctx, req.ClusterId)
+	if err != nil {
+		return nil, err
+	}
+
+	action, err := j5auth.GetAuthenticatedAction(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	event := &awsdeployer_pb.ClusterPSMEventSpec{
+		Keys: &awsdeployer_pb.ClusterKeys{
+			ClusterId: identifiers.clusterID,
+		},
+		EventID:   uuid.NewString(),
+		Timestamp: time.Now(),
+		Action:    action,
+		Event: &awsdeployer_pb.ClusterEventType_Override{
+			Overrides: req.Overrides,
+		},
+	}
+
+	state, err := ds.clusterStateMachine.Transition(ctx, ds.db, event)
+	if err != nil {
+		return nil, err
+	}
+
+	return &awsdeployer_spb.SetClusterOverrideResponse{
+		State: state,
 	}, nil
 }
 

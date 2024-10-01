@@ -47,6 +47,13 @@ service DeploymentCommandService {
       body: "*"
     };
   }
+
+  rpc SetClusterOverride(SetClusterOverrideRequest) returns (SetClusterOverrideResponse) {
+    option (google.api.http) = {
+      post: "/deployer/v1/c/clusters/{cluster_id}/override"
+      body: "*"
+    };
+  }
 }
 
 message TriggerDeploymentRequest {
@@ -136,4 +143,13 @@ message UpsertStackRequest {
 
 message UpsertStackResponse {
   o5.aws.deployer.v1.StackState state = 1 [(buf.validate.field).required = true];
+}
+
+message SetClusterOverrideRequest {
+  string cluster_id = 1 [(buf.validate.field).string.uuid = true];
+  repeated o5.aws.deployer.v1.ParameterOverride overrides = 2;
+}
+
+message SetClusterOverrideResponse {
+  o5.aws.deployer.v1.ClusterState state = 1 [(buf.validate.field).required = true];
 }
