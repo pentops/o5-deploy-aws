@@ -282,7 +282,7 @@ type ECSTaskEventType_Exited_ struct {
 }
 
 type ECSTaskEventType_Stopped_ struct {
-	// Deliberately stoped, e.g. by scaling, after Running
+	// Deliberately stopped, e.g. by scaling, after Running
 	Stopped *ECSTaskEventType_Stopped `protobuf:"bytes,5,opt,name=stopped,proto3,oneof"`
 }
 

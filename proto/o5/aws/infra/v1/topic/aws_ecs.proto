@@ -49,7 +49,7 @@ message ECSTaskEventType {
     // The code itself exited, after Running
     Exited exited = 4;
 
-    // Deliberately stoped, e.g. by scaling, after Running
+    // Deliberately stopped, e.g. by scaling, after Running
     Stopped stopped = 5;
   }
 

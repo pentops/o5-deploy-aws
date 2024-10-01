@@ -216,7 +216,7 @@ func (rs *RuntimeService) Apply(template *Application) error {
 
 	rs.Service.Override("DesiredCount", cloudformation.Ref(desiredCountParameter))
 
-	// capture beofre running subscriptions as that adds to this set
+	// capture beofore running subscriptions as that adds to this set
 	ingressNeedsPublicPort := len(rs.ingressEndpoints) > 0
 
 	needsAdapterSidecar := false

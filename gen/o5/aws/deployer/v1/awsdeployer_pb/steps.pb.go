@@ -194,18 +194,20 @@ type CFLifecycle int32
 
 const (
 	CFLifecycle_CF_LIFECYCLE_UNSPECIFIED CFLifecycle = 0
-	// Progressing well, no errors, no rollback
+	// Going well, no errors yet, no rollback, keep waiting.
 	CFLifecycle_CF_LIFECYCLE_PROGRESS CFLifecycle = 1
 	// Update or Create Completed successfully
 	CFLifecycle_CF_LIFECYCLE_COMPLETE CFLifecycle = 2
 	// Rolling back to previous version or deleting on create failure
 	CFLifecycle_CF_LIFECYCLE_ROLLING_BACK CFLifecycle = 3
-	// Create failure, rolled back to nothing
+	// Create Failed: The stack was not created, it may need to be deleted, manual
+	// intervention may be required.
 	CFLifecycle_CF_LIFECYCLE_CREATE_FAILED CFLifecycle = 4
-	// Update or create failure
+	// Something we can't automatically recover from, manual intervention is
+	// required.
 	CFLifecycle_CF_LIFECYCLE_TERMINAL CFLifecycle = 5
-	// Update failure, rolled back to previous version and now stable.
-	// Good when waiting, bad when updating or scaling.
+	// Rolled Back: The last update failed, but the stack is now stable so a new
+	// deployment can begin.
 	CFLifecycle_CF_LIFECYCLE_ROLLED_BACK CFLifecycle = 7
 	// Missing, not present currently, either never created or deleted, not not
 	// 'rolled back'

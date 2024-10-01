@@ -7,49 +7,48 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 )
 
-var stackStatusProgress = []types.StackStatus{
-	types.StackStatusCreateInProgress,
-	types.StackStatusUpdateInProgress,
-	types.StackStatusReviewInProgress,
-	types.StackStatusImportInProgress,
-	types.StackStatusDeleteInProgress,
-	types.StackStatusUpdateCompleteCleanupInProgress,
-}
+var statusMap = map[types.StackStatus]awsdeployer_pb.CFLifecycle{
+	// Progress: Going well, no errors yet, keep waiting.
+	types.StackStatusCreateInProgress:                awsdeployer_pb.CFLifecycle_PROGRESS,
+	types.StackStatusUpdateInProgress:                awsdeployer_pb.CFLifecycle_PROGRESS,
+	types.StackStatusReviewInProgress:                awsdeployer_pb.CFLifecycle_PROGRESS,
+	types.StackStatusImportInProgress:                awsdeployer_pb.CFLifecycle_PROGRESS,
+	types.StackStatusDeleteInProgress:                awsdeployer_pb.CFLifecycle_PROGRESS,
+	types.StackStatusUpdateCompleteCleanupInProgress: awsdeployer_pb.CFLifecycle_PROGRESS,
+	types.StackStatusImportRollbackInProgress:        awsdeployer_pb.CFLifecycle_PROGRESS,
 
-var stackStatusRollingBack = []types.StackStatus{
-	types.StackStatusRollbackInProgress,
-	types.StackStatusRollbackComplete,
-	types.StackStatusUpdateRollbackInProgress,
-	types.StackStatusUpdateRollbackFailed,
-	types.StackStatusUpdateRollbackCompleteCleanupInProgress,
-}
+	// Rolling Back: Something has gone wrong but the stack isn't stable yet,
+	// keep waiting.
+	types.StackStatusRollbackInProgress:                      awsdeployer_pb.CFLifecycle_ROLLING_BACK,
+	types.StackStatusUpdateRollbackInProgress:                awsdeployer_pb.CFLifecycle_ROLLING_BACK,
+	types.StackStatusUpdateRollbackCompleteCleanupInProgress: awsdeployer_pb.CFLifecycle_ROLLING_BACK,
 
-var stackStatusCreateFailed = []types.StackStatus{
-	types.StackStatusRollbackComplete,
-}
+	// Rolled Back: The last update failed, but the stack is now stable so a new
+	// deployment can begin.
+	types.StackStatusUpdateRollbackComplete: awsdeployer_pb.CFLifecycle_ROLLED_BACK,
 
-var stackStatusDeleted = []types.StackStatus{
-	types.StackStatusDeleteComplete,
-}
+	// Create Failed: The stack was not created, it may need to be deleted,
+	// manual intervention may be required.
+	types.StackStatusRollbackComplete:       awsdeployer_pb.CFLifecycle_CREATE_FAILED,
+	types.StackStatusImportRollbackComplete: awsdeployer_pb.CFLifecycle_CREATE_FAILED,
 
-var stackStatusComplete = []types.StackStatus{
-	types.StackStatusCreateComplete,
-	types.StackStatusImportComplete,
-	types.StackStatusUpdateComplete,
-}
+	// Missing: There is no stack, create a new one.
+	types.StackStatusDeleteComplete: awsdeployer_pb.CFLifecycle_MISSING,
 
-var stackStatusesTerminal = []types.StackStatus{
-	types.StackStatusCreateFailed,
-	types.StackStatusRollbackFailed,
-	types.StackStatusDeleteFailed,
-	types.StackStatusUpdateFailed,
-	types.StackStatusImportRollbackInProgress,
-	types.StackStatusImportRollbackFailed,
-	types.StackStatusImportRollbackComplete,
-}
+	// Complete: The change succeeded, and the stack is stable, ready for a new
+	// deployment
+	types.StackStatusCreateComplete: awsdeployer_pb.CFLifecycle_COMPLETE,
+	types.StackStatusImportComplete: awsdeployer_pb.CFLifecycle_COMPLETE,
+	types.StackStatusUpdateComplete: awsdeployer_pb.CFLifecycle_COMPLETE,
 
-var stackStatusesTerminalRollback = []types.StackStatus{
-	types.StackStatusRollbackComplete,
+	// Terminal: Something we can't automatically recover from, manual
+	// intervention is required.
+	types.StackStatusCreateFailed:         awsdeployer_pb.CFLifecycle_TERMINAL,
+	types.StackStatusRollbackFailed:       awsdeployer_pb.CFLifecycle_TERMINAL,
+	types.StackStatusDeleteFailed:         awsdeployer_pb.CFLifecycle_TERMINAL,
+	types.StackStatusUpdateFailed:         awsdeployer_pb.CFLifecycle_TERMINAL,
+	types.StackStatusUpdateRollbackFailed: awsdeployer_pb.CFLifecycle_TERMINAL,
+	types.StackStatusImportRollbackFailed: awsdeployer_pb.CFLifecycle_TERMINAL,
 }
 
 type StackStatus struct {
@@ -62,50 +61,10 @@ type StackStatus struct {
 }
 
 func stackLifecycle(remoteStatus types.StackStatus) (awsdeployer_pb.CFLifecycle, error) {
-	for _, status := range stackStatusesTerminal {
-		if remoteStatus == status {
-			return awsdeployer_pb.CFLifecycle_TERMINAL, nil
-		}
+	if status, ok := statusMap[remoteStatus]; ok {
+		return status, nil
 	}
-
-	for _, status := range stackStatusesTerminalRollback {
-		if remoteStatus == status {
-			return awsdeployer_pb.CFLifecycle_ROLLED_BACK, nil
-		}
-	}
-
-	for _, status := range stackStatusDeleted {
-		if remoteStatus == status {
-			return awsdeployer_pb.CFLifecycle_MISSING, nil
-		}
-	}
-
-	for _, status := range stackStatusComplete {
-		if remoteStatus == status {
-			return awsdeployer_pb.CFLifecycle_COMPLETE, nil
-		}
-	}
-
-	for _, status := range stackStatusCreateFailed {
-		if remoteStatus == status {
-			return awsdeployer_pb.CFLifecycle_CREATE_FAILED, nil
-		}
-	}
-
-	for _, status := range stackStatusRollingBack {
-		if remoteStatus == status {
-			return awsdeployer_pb.CFLifecycle_ROLLING_BACK, nil
-		}
-	}
-
-	for _, status := range stackStatusProgress {
-		if remoteStatus == status {
-			return awsdeployer_pb.CFLifecycle_PROGRESS, nil
-		}
-	}
-
 	return awsdeployer_pb.CFLifecycle_UNSPECIFIED, fmt.Errorf("unknown stack status %s", remoteStatus)
-
 }
 
 func mapOutputs(outputs []types.Output) []*awsdeployer_pb.KeyValue {
