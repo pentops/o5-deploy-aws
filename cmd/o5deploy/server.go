@@ -265,24 +265,24 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 	EnvName         string `flag:"envname" description:"environment name"`
 	AppFilename     string `flag:"app" description:"application file"`
 	Version         string `flag:"version" description:"version tag"`
+	SidecarVersion  string `flag:"sidecar-version" required:"false" description:"sidecar version tag - defaults to the cluster config"`
+	ScratchBucket   string `flag:"scratch-bucket" required:"false" description:"An S3 bucket name to upload templates"`
 
-	RotateSecrets   bool   `flag:"rotate-secrets" description:"rotate secrets - rotate any existing secrets (e.g. db creds)"`
-	CancelUpdate    bool   `flag:"cancel-update" description:"cancel update - cancel any ongoing update prior to deployment"`
-	ScratchBucket   string `flag:"scratch-bucket" env:"O5_DEPLOYER_SCRATCH_BUCKET" description:"An S3 bucket name to upload templates"`
-	QuickMode       bool   `flag:"quick" description:"Skips scale down/up, calls stack update with all changes once, and skips DB migration"`
-	InfraOnly       bool   `flag:"infra-only" description:"Deploy with scale at 0"`
-	DBOnly          bool   `flag:"db-only" description:"Only migrate database"`
-	ImportResources bool   `flag:"import-resources" description:"Import resources, implies infra-only"`
-	Auto            bool   `flag:"auto" description:"Automatically approve plan"`
+	Auto bool `flag:"auto" description:"Automatically approve plan"`
+
+	// Stratedy Flags
+	RotateSecrets   bool `flag:"rotate-secrets" description:"rotate secrets - rotate any existing secrets (e.g. db creds)"`
+	CancelUpdate    bool `flag:"cancel-update" description:"cancel update - cancel any ongoing update prior to deployment"`
+	SlowMode        bool `flag:"slow" description:"Default is to run the quick flag"`
+	InfraOnly       bool `flag:"infra-only" description:"Deploy with scale at 0"`
+	DBOnly          bool `flag:"db-only" description:"Only migrate database"`
+	ImportResources bool `flag:"import-resources" description:"Import resources, implies infra-only"`
 }) error {
 
 	if cfg.AppFilename == "" {
 		return fmt.Errorf("missing application file (-app)")
 	}
 
-	if cfg.ScratchBucket == "" {
-		return fmt.Errorf("missing scratch bucket (-scratch-bucket)")
-	}
 	awsConfig, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
@@ -304,9 +304,18 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		return err
 	}
 
+	ecsCluster := cluster.GetEcsCluster()
+	if cfg.SidecarVersion != "" {
+		ecsCluster.SidecarImageVersion = cfg.SidecarVersion
+	}
+
 	awsTarget := env.GetAws()
 	if awsTarget == nil {
 		return fmt.Errorf("AWS Deployer requires the type of environment provider to be AWS")
+	}
+
+	if cfg.ScratchBucket == "" {
+		cfg.ScratchBucket = fmt.Sprintf("%s.o5-deployer.%s.%s", cluster.Name, ecsCluster.AwsRegion, ecsCluster.GlobalNamespace)
 	}
 
 	templateStore, err := deployer.NewS3TemplateStore(ctx, s3Client, cfg.ScratchBucket)
@@ -327,7 +336,7 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		ConfirmPlan:   !cfg.Auto,
 		Flags: &awsdeployer_pb.DeploymentFlags{
 			RotateCredentials: cfg.RotateSecrets,
-			QuickMode:         cfg.QuickMode,
+			QuickMode:         !cfg.SlowMode,
 			InfraOnly:         cfg.InfraOnly,
 			CancelUpdates:     cfg.CancelUpdate,
 			DbOnly:            cfg.DBOnly,
