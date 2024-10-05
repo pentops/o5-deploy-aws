@@ -27,7 +27,7 @@ func ensureEnvVar(envVars *[]ecs.TaskDefinition_KeyValuePair, name string, value
 	})
 }
 
-func buildContainer(globals globalData, def *application_pb.Container) (*ContainerDefinition, error) {
+func buildContainer(globals Globals, iamPolicy *PolicyBuilder, def *application_pb.Container) (*ContainerDefinition, error) {
 	container := &ecs.TaskDefinition_ContainerDefinition{
 		Name:      def.Name,
 		Essential: cf.Bool(true),
@@ -86,7 +86,7 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 
 		case *application_pb.EnvironmentVariable_Blobstore:
 			bucketName := varType.Blobstore.Name
-			bucketResource, ok := globals.buckets[bucketName]
+			bucket, ok := globals.Bucket(bucketName)
 			if !ok {
 				return nil, fmt.Errorf("unknown blobstore: %s", bucketName)
 			}
@@ -95,56 +95,44 @@ func buildContainer(globals globalData, def *application_pb.Container) (*Contain
 				return nil, fmt.Errorf("only S3Direct is supported")
 			}
 
-			var value *string
-			if varType.Blobstore.SubPath == nil {
-				value = cloudformation.JoinPtr("", []string{
-					"s3://",
-					*bucketResource.name, // This is NOT a real string
-				})
-			} else {
-				value = cloudformation.JoinPtr("", []string{
-					"s3://",
-					*bucketResource.name, // This is NOT a real string
-					"/",
-					*varType.Blobstore.SubPath,
-				})
-			}
-
 			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
 				Name:  cf.String(envVar.Name),
-				Value: value,
+				Value: bucket.S3URL(varType.Blobstore.SubPath).RefPtr(),
 			})
+
+			if iamPolicy == nil {
+				return nil, fmt.Errorf("iamPolicy is required for blobstore env vars")
+			}
+			switch bucket.GetPermissions() {
+			case ReadWrite:
+				iamPolicy.AddBucketReadWrite(bucket.ARN())
+			case ReadOnly:
+				iamPolicy.AddBucketReadOnly(bucket.ARN())
+			case WriteOnly:
+				iamPolicy.AddBucketWriteOnly(bucket.ARN())
+			}
 
 		case *application_pb.EnvironmentVariable_Secret:
 			secretName := varType.Secret.SecretName
-			secretDef, ok := globals.secrets[secretName]
+			secretDef, ok := globals.Secret(secretName)
 			if !ok {
 				return nil, fmt.Errorf("unknown secret: %s", secretName)
 			}
 
-			jsonKey := varType.Secret.JsonKey
-			versionStage := ""
-			versionID := ""
-
 			container.Secrets = append(container.Secrets, ecs.TaskDefinition_Secret{
-				Name: envVar.Name,
-				ValueFrom: cloudformation.Join(":", []string{
-					secretDef.Ref(),
-					jsonKey,
-					versionStage,
-					versionID,
-				}),
+				Name:      envVar.Name,
+				ValueFrom: string(secretDef.SecretValueFrom(varType.Secret.JsonKey)),
 			})
 
 		case *application_pb.EnvironmentVariable_Database:
 			dbName := varType.Database.DatabaseName
-			dbDef, ok := globals.databases[dbName]
+			dbDef, ok := globals.Database(dbName)
 			if !ok {
 				return nil, fmt.Errorf("unknown database: %s", dbName)
 			}
 			container.Secrets = append(container.Secrets, ecs.TaskDefinition_Secret{
 				Name:      envVar.Name,
-				ValueFrom: dbDef.SecretValueFrom(),
+				ValueFrom: string(dbDef.SecretValueFrom()),
 			})
 
 			continue

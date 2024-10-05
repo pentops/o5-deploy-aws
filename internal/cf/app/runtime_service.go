@@ -35,10 +35,13 @@ type RuntimeService struct {
 
 	spec *application_pb.Runtime
 
-	outboxDatabases []DatabaseReference
+	outboxDatabases []DatabaseRef
 }
 
-func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*RuntimeService, error) {
+func NewRuntimeService(globals Globals, runtime *application_pb.Runtime) (*RuntimeService, error) {
+
+	policy := NewPolicyBuilder()
+
 	defs := []*ContainerDefinition{}
 	serviceLinks := []string{}
 
@@ -47,14 +50,14 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 
 		serviceLinks = append(serviceLinks, fmt.Sprintf("%s:%s", def.Name, def.Name))
 
-		container, err := buildContainer(globals, def)
+		container, err := buildContainer(globals, policy, def)
 		if err != nil {
 			return nil, fmt.Errorf("building service container %s: %w", def.Name, err)
 		}
 
 		needsDockerVolume = needsDockerVolume || def.MountDockerSocket
 
-		addLogs(container.Container, globals.appName)
+		addLogs(container.Container, globals.AppName())
 		defs = append(defs, container)
 	}
 
@@ -73,7 +76,7 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 			Value: cf.String(cloudformation.Ref(EventBusARNParameter)),
 		}, {
 			Name:  cf.String("APP_NAME"),
-			Value: cf.String(globals.appName),
+			Value: cf.String(globals.AppName()),
 		}, {
 			Name:  cf.String("ENVIRONMENT_NAME"),
 			Value: cf.String(cloudformation.Ref(EnvNameParameter)),
@@ -108,10 +111,10 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		}
 	}
 
-	addLogs(runtimeSidecar, globals.appName)
+	addLogs(runtimeSidecar, globals.AppName())
 
 	taskDefinition := cf.NewResource(runtime.Name, &ecs.TaskDefinition{
-		Family:                  cf.String(fmt.Sprintf("%s_%s", globals.appName, runtime.Name)),
+		Family:                  cf.String(fmt.Sprintf("%s_%s", globals.AppName(), runtime.Name)),
 		ExecutionRoleArn:        cloudformation.RefPtr(ECSTaskExecutionRoleParameter),
 		RequiresCompatibilities: []string{"EC2"},
 		//TaskRoleArn:  Set on Apply
@@ -135,8 +138,6 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		PropagateTags: cf.String("TASK_DEFINITION"),
 	})
 
-	policy := NewPolicyBuilder()
-
 	if needsDockerVolume {
 		taskDefinition.Resource.Volumes = []ecs.TaskDefinition_Volume{{
 			Name: cf.String("docker-socket"),
@@ -147,31 +148,9 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		policy.AddECRPull()
 	}
 
-	for _, bucket := range globals.buckets {
-		if !bucket.write && !bucket.read {
-			bucket.read = true
-		}
-		if bucket.read && bucket.write {
-			policy.AddBucketReadWrite(bucket.arn)
-		} else if bucket.read {
-			policy.AddBucketReadOnly(bucket.arn)
-		} else if bucket.write {
-			policy.AddBucketWriteOnly(bucket.arn)
-		}
-	}
-
-	outboxDatabases := []DatabaseReference{}
-	for _, db := range globals.databases {
-		postgres := db.Definition.GetPostgres()
-		if postgres == nil || !postgres.RunOutbox {
-			continue
-		}
-		outboxDatabases = append(outboxDatabases, db)
-	}
-
 	return &RuntimeService{
 		spec:             runtime,
-		Prefix:           globals.appName,
+		Prefix:           globals.AppName(),
 		Name:             runtime.Name,
 		Containers:       defs,
 		TaskDefinition:   taskDefinition,
@@ -180,7 +159,6 @@ func NewRuntimeService(globals globalData, runtime *application_pb.Runtime) (*Ru
 		TargetGroups:     map[string]*cf.Resource[*elbv2.TargetGroup]{},
 		ingressEndpoints: map[string]struct{}{},
 		AdapterContainer: runtimeSidecar,
-		outboxDatabases:  outboxDatabases,
 	}, nil
 }
 
@@ -201,7 +179,7 @@ func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
 
 }
 
-func (rs *RuntimeService) Apply(template *Application) error {
+func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) error {
 
 	desiredCountParameter := fmt.Sprintf("DesiredCount%s", rs.Name)
 	template.AddParameter(&awsdeployer_pb.Parameter{
@@ -351,7 +329,7 @@ func (rs *RuntimeService) Apply(template *Application) error {
 		needsAdapterSidecar = true
 		rs.AdapterContainer.Secrets = append(rs.AdapterContainer.Secrets, ecs.TaskDefinition_Secret{
 			Name:      "POSTGRES_OUTBOX",
-			ValueFrom: db.SecretValueFrom(),
+			ValueFrom: db.SecretValueFrom().Ref(),
 		})
 	}
 

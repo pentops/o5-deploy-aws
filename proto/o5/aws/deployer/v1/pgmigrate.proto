@@ -9,21 +9,61 @@ option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/aws
 message PostgresSpec {
   string db_name = 1;
   repeated string db_extensions = 3;
-  string root_secret_name = 5;
   optional string migration_task_output_name = 7;
+
+  RDSHostSpec host = 4;
+  RDSHost admin_connection = 5;
+  RDSHost app_connection = 6;
+
+  // Either this:
+  string root_secret_name = 5;
   string secret_output_name = 9;
+
+  // Or this
+  AuroraAuth aurora_auth = 6;
+}
+
+message RDSHostSpec {
+  oneof type {
+    Aurora aurora = 1;
+    SecretsManager secrets_manager = 2;
+  }
+
+  message Aurora {
+    string admin_endpoint = 1;
+    string admin_user = 2;
+
+    string app_endpoint = 3;
+    string app_user = 4;
+
+    string db_name = 5;
+  }
+
+  message SecretsManager {
+    string root_secret_arn = 1;
+
+    // the name of the secret in the
+    string secret_output_name = 2;
+  }
+}
+
+message AuroraAuth {
+  string endpoint = 1;
+  string username = 2;
 }
 
 message PostgresCreationSpec {
   string db_name = 1;
-  string root_secret_name = 2;
   repeated string db_extensions = 3;
-  string secret_arn = 4;
-  bool rotate_credentials = 5;
+
+  PostgresAuth auth = 4;
 }
 
 message PostgresCleanupSpec {
   string db_name = 1;
+
+  PostgresAuth auth = 4;
+
   string root_secret_name = 2;
 }
 
@@ -36,4 +76,62 @@ message PostgresMigrationSpec {
 message MigrationTaskContext {
   j5.messaging.v1.RequestMetadata upstream = 1;
   string migration_id = 2;
+}
+
+message PostgresAuth {
+  oneof auth {
+    AuroraIAM aurora = 6;
+    SecretsManager secrets_manager = 7;
+  }
+
+  message SecretsManager {
+    string root_secret_name = 2;
+    string secret_arn = 4;
+  }
+
+  message AuroraIAM {
+    string endpoint = 1;
+    string username = 2;
+  }
+}
+
+// RDSHost represents a Cluister or Proxy in AWS RDS
+message RDSHost {
+  // Matches o5.application.v1.Database.Postgres.server_group
+  string server_group_name = 1;
+
+  // AWS API: 'Endpoint' - hostname without port.
+  // Used for connection and authentication tokens.
+  string endpoint = 2;
+
+  // AWS API: 'Port'
+  // The port that the database engine is listening on.
+  int32 port = 3;
+
+  RDSAuth auth = 4;
+}
+
+message RDSAuth {
+  oneof type {
+    SecretsManager secrets_manager = 4;
+    IAM iam = 5;
+  }
+
+  // RDS IAM authentication
+  // https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/UsingWithRDS.IAMDBAuth.Connecting.html
+  message IAM {
+    // A username to use getting the token, which then also matches the user
+    // implementation of the engine.
+    // For root access, this could be the master_user but it only needs to be a
+    // user with the correct permissions.
+    string db_user = 1;
+
+    // defaults to the user's name. Used when accessing, not required for the
+    // token.
+    optional string db_name = 2;
+  }
+
+  message SecretsManager {
+    string secret_arn = 1;
+  }
 }

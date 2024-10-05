@@ -9,6 +9,8 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	"github.com/awslabs/goformation/v7/cloudformation/iam"
 	"github.com/awslabs/goformation/v7/cloudformation/s3"
+	"github.com/awslabs/goformation/v7/intrinsics"
+	"github.com/google/go-cmp/cmp"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/internal/cf"
 	"github.com/pentops/o5-deploy-aws/internal/cf/cftest"
@@ -122,6 +124,16 @@ func TestIndirectPortAccess(t *testing.T) {
 	aa.GetResource(t, "main", taskDef)
 	t.Logf("ports: %v", taskDef.ContainerDefinitions[1].PortMappings)
 }
+
+type globalData struct {
+	appName string
+	Globals
+}
+
+func (g globalData) AppName() string {
+	return g.appName
+}
+
 func TestRuntime(t *testing.T) {
 	global := globalData{
 		appName: "Test",
@@ -251,6 +263,7 @@ func TestBlobstore(t *testing.T) {
 	}
 
 	run := func(t *testing.T, def *application_pb.Blobstore) result {
+		t.Helper()
 		app := &application_pb.Application{
 			Name:       "app1",
 			Blobstores: []*application_pb.Blobstore{def},
@@ -340,10 +353,9 @@ func TestBlobstore(t *testing.T) {
 		want := cloudformation.Join("", []string{
 			"s3://",
 			*rr.bucket.Resource.BucketName,
-			"/",
-			"subpath",
+			"/subpath",
 		})
-		assert.Equal(t, want, *rr.envVar.Value)
+		assertFunctionEqual(t, want, *rr.envVar.Value)
 	})
 
 	t.Run("App Ref", func(t *testing.T) {
@@ -382,25 +394,36 @@ func TestBlobstore(t *testing.T) {
 			bucketName,
 		})
 
+		bucketS3URL := cloudformation.Join("", []string{
+			"s3://",
+			bucketName,
+			"/subpath",
+		})
+
 		assertFunctionEqual(t, rwPolicy.Statement[0].Resource[0], bucketARN)
 
 		if rr.envVar == nil {
 			t.Fatalf("env var not found")
 		}
-		rootJoin := decodeJoin(t, *rr.envVar.Value)
-		t.Log(rootJoin)
-		assert.Equal(t, "s3://", rootJoin.Vals[0])
-		assert.Equal(t, "/", rootJoin.Vals[2])
-		assert.Equal(t, "subpath", rootJoin.Vals[3])
-		ref := rootJoin.Vals[1]
-		assert.Equal(t, bucketName, ref)
+
+		assertFunctionEqual(t, bucketS3URL, *rr.envVar.Value)
 	})
 
 }
 
 func assertFunctionEqual(t testing.TB, want, got string) {
 	t.Helper()
-	assert.Equal(t, want, got)
+	if want == got {
+		return
+	}
+
+	wantAny := decodeAny(t, want)
+	gotAny := decodeAny(t, got)
+
+	diff := cmp.Diff(wantAny, gotAny)
+	if diff != "" {
+		t.Fatalf("values differ: %s", diff)
+	}
 }
 
 func findPolicy(t testing.TB, roleResource *iam.Role, name string) *PolicyDocument {
@@ -423,6 +446,25 @@ func decodeJoin(t testing.TB, s string) *Join {
 	join := &Join{}
 	decode(t, s, join)
 	return join
+}
+
+func decodeAny(t testing.TB, s string) interface{} {
+
+	jb, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	processed, err := intrinsics.ProcessJSON(jb, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out interface{}
+	if err := json.Unmarshal(processed, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
 }
 
 func decode(t testing.TB, s string, into interface{}) {

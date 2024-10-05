@@ -5,10 +5,10 @@ package o5.aws.deployer.v1;
 import "buf/validate/validate.proto";
 import "j5/ext/v1/annotations.proto";
 import "j5/list/v1/annotations.proto";
-import "o5/aws/deployer/v1/pgmigrate.proto";
-import "o5/aws/deployer/v1/steps.proto";
 import "j5/messaging/v1/reqres.proto";
 import "j5/state/v1/metadata.proto";
+import "o5/aws/deployer/v1/pgmigrate.proto";
+import "o5/aws/deployer/v1/steps.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb";
 

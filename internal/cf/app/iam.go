@@ -22,20 +22,20 @@ func NewPolicyBuilder() *PolicyBuilder {
 	return &PolicyBuilder{}
 }
 
-func (pb *PolicyBuilder) AddBucketReadOnly(arn string) {
-	pb.s3ReadOnly = append(pb.s3ReadOnly, arn)
+func (pb *PolicyBuilder) AddBucketReadOnly(arn TemplateRef) {
+	pb.s3ReadOnly = append(pb.s3ReadOnly, arn.Ref())
 }
 
-func (pb *PolicyBuilder) AddBucketWriteOnly(arn string) {
-	pb.s3WriteOnly = append(pb.s3WriteOnly, arn)
+func (pb *PolicyBuilder) AddBucketWriteOnly(arn TemplateRef) {
+	pb.s3WriteOnly = append(pb.s3WriteOnly, arn.Ref())
 }
 
-func (pb *PolicyBuilder) AddBucketReadWrite(arn string) {
-	pb.s3ReadWrite = append(pb.s3ReadWrite, arn)
+func (pb *PolicyBuilder) AddBucketReadWrite(arn TemplateRef) {
+	pb.s3ReadWrite = append(pb.s3ReadWrite, arn.Ref())
 }
 
-func (pb *PolicyBuilder) AddBucketReadWriteAcl(arn string) {
-	pb.s3ReadWriteAcl = append(pb.s3ReadWriteAcl, arn)
+func (pb *PolicyBuilder) AddBucketReadWriteAcl(arn TemplateRef) {
+	pb.s3ReadWriteAcl = append(pb.s3ReadWriteAcl, arn.Ref())
 }
 
 func (pb *PolicyBuilder) AddSQSSubscribe(arn string) {

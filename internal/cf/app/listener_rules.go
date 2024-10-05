@@ -21,6 +21,12 @@ func NewListenerRuleSet() *ListenerRuleSet {
 	}
 }
 
+func (ll *ListenerRuleSet) AddTemplateResources(template *cf.TemplateBuilder) {
+	for _, listenerRule := range ll.Rules {
+		template.AddResource(listenerRule)
+	}
+}
+
 func (ll *ListenerRuleSet) AddRoute(targetGroup *cf.Resource[*elbv2.TargetGroup], route *application_pb.Route) (*cf.Resource[*elbv2.ListenerRule], error) {
 	hash := sha1.New()
 	hash.Write([]byte(route.Prefix))

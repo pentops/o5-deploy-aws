@@ -20,6 +20,7 @@ require (
 	github.com/bufbuild/protovalidate-go v0.6.3
 	github.com/elgris/sqrl v0.0.0-20210727210741-7e0198b30236
 	github.com/goccy/go-yaml v1.12.0
+	github.com/google/go-cmp v0.6.0
 	github.com/google/go-github/v47 v47.1.0
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0

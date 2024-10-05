@@ -1693,7 +1693,8 @@ type Database_Postgres struct {
 	// name in the parent message
 	DbName string `protobuf:"bytes,1,opt,name=db_name,json=dbName,proto3" json:"db_name,omitempty"`
 	// default is 'default' - identifies which database server from the
-	// environment config this belongs with
+	// environment config this belongs with.
+	// Matches o5.environment.v1.RDSHost.server_group_name
 	ServerGroup      string     `protobuf:"bytes,2,opt,name=server_group,json=serverGroup,proto3" json:"server_group,omitempty"`
 	DbExtensions     []string   `protobuf:"bytes,3,rep,name=db_extensions,json=dbExtensions,proto3" json:"db_extensions,omitempty"`
 	MigrateContainer *Container `protobuf:"bytes,4,opt,name=migrate_container,json=migrateContainer,proto3" json:"migrate_container,omitempty"`

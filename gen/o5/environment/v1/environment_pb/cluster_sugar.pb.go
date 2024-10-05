@@ -4,3 +4,4 @@ package environment_pb
 
 type IsCluster_Provider = isCluster_Provider
 type IsCombinedConfig_Provider = isCombinedConfig_Provider
+type IsRDSAuth_Type = isRDSAuth_Type

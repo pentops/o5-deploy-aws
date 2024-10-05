@@ -326,19 +326,16 @@ func stepToSideEffect(step *awsdeployer_pb.DeploymentStep, keys *awsdeployer_pb.
 			DbExtensions:      src.DbExtensions,
 			RotateCredentials: st.PgUpsert.RotateCredentials,
 		}
+
 		outputs, err := getStackOutputs(dependencies, st.PgUpsert.InfraOutputStepId)
 		if err != nil {
 			return nil, err
 		}
-
-		for _, output := range outputs {
-			if src.SecretOutputName == output.Name {
-				spec.SecretArn = output.Value
-			}
-		}
-		if spec.SecretArn == "" {
+		secretARN, ok := outputs.Find(src.SecretOutputName)
+		if !ok {
 			return nil, fmt.Errorf("stack output missing %s for database %s", src.SecretOutputName, src.DbName)
 		}
+		spec.SecretArn = secretARN
 
 		return &awsinfra_tpb.UpsertPostgresDatabaseMessage{
 			Request:     requestMetadata,
@@ -394,7 +391,18 @@ func stepToSideEffect(step *awsdeployer_pb.DeploymentStep, keys *awsdeployer_pb.
 	}
 }
 
-func getStackOutputs(dependencies map[string]*awsdeployer_pb.DeploymentStep, id string) ([]*awsdeployer_pb.KeyValue, error) {
+type StackOutputs []*awsdeployer_pb.KeyValue
+
+func (s StackOutputs) Find(name string) (string, bool) {
+	for _, kv := range s {
+		if kv.Name == name {
+			return kv.Value, true
+		}
+	}
+	return "", false
+}
+
+func getStackOutputs(dependencies map[string]*awsdeployer_pb.DeploymentStep, id string) (StackOutputs, error) {
 
 	infraOutputStep, ok := dependencies[id]
 	if !ok {
@@ -405,5 +413,5 @@ func getStackOutputs(dependencies map[string]*awsdeployer_pb.DeploymentStep, id 
 		return nil, fmt.Errorf("unexpected step type for CF Output: %T", infraOutputStep.Output)
 	}
 
-	return stackOutput.CfStatus.Output.Outputs, nil
+	return StackOutputs(stackOutput.CfStatus.Output.Outputs), nil
 }
