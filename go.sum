@@ -161,6 +161,8 @@ github.com/pentops/o5-messaging v0.0.0-20240925203152-81b197123419 h1:vDGjOjzbpm
 github.com/pentops/o5-messaging v0.0.0-20240925203152-81b197123419/go.mod h1:AWRFW50+2q4/IFOP8YWuYcsJ6bkqiEQr6czVua7YfmQ=
 github.com/pentops/pgtest.go v0.0.0-20240806042712-cca5bdfe6542 h1:fYu4o1pc99WCCbMSk3WLdLplHbUpqtceTnhKmqfAeEE=
 github.com/pentops/pgtest.go v0.0.0-20240806042712-cca5bdfe6542/go.mod h1:BgX0+UvohWaq7Vr3McsBWt8FpzerKaNRsmG2uH7L1FE=
+github.com/pentops/protostate v0.0.0-20241003002218-bcccb817dd6b h1:yw61V0wh2AUS42yekgiqyRXE5luE4xf6XwJtxDz+rq8=
+github.com/pentops/protostate v0.0.0-20241003002218-bcccb817dd6b/go.mod h1:qpQie3o/0xnDyhqG+H/oBGlwoAu+iwpGtYV6+Jdekvk=
 github.com/pentops/realms v0.0.0-20240925233004-d7d1859e7eb2 h1:u2Emacpf6alVTZkKTURFouxeJ/WUemfdlsIGurson4o=
 github.com/pentops/realms v0.0.0-20240925233004-d7d1859e7eb2/go.mod h1:pq+Y33hKKE8IWpAOAv2k10aoM7QcPVhxnx1CKUiLJHY=
 github.com/pentops/runner v0.0.0-20240920235254-d99051980854 h1:YARpn9+XrbYs5iQ0vbypVYM0Ncjx+49GmLWlkdVNpts=
