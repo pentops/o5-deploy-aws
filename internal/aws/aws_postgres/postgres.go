@@ -149,7 +149,7 @@ func (d *DBMigrator) buildSpec(ctx context.Context, spec *awsinfra_pb.RDSHostTyp
 		return nil, fmt.Errorf("Aurora not supported")
 	case *awsinfra_pb.RDSHostType_SecretsManager:
 
-		secret, err := d.rootPostgresCredentials(ctx, spec.SecretArn)
+		secret, err := d.rootPostgresCredentials(ctx, spec.SecretName)
 		if err != nil {
 			return nil, err
 		}
@@ -404,16 +404,16 @@ func (d *DBMigrator) buildSecretsUser(ctx context.Context, connSpec DBSpec, dbNa
 
 	log.WithFields(ctx, map[string]interface{}{
 		"newUsername": newSecret.Username,
-		"secretARN":   msg.AppSecretArn,
+		"secretARN":   msg.AppSecretName,
 	}).Debug("Storing New User Credentials")
 
 	_, err = d.secretsManager.UpdateSecret(ctx, &secretsmanager.UpdateSecretInput{
 		// ARN or Name
-		SecretId:     aws.String(msg.AppSecretArn),
+		SecretId:     aws.String(msg.AppSecretName),
 		SecretString: aws.String(string(jsonBytes)),
 	})
 	if err != nil {
-		return fmt.Errorf("Storing new secret value (%s) failed. The user was still created: %w", msg.AppSecretArn, err)
+		return fmt.Errorf("Storing new secret value (%s) failed. The user was still created: %w", msg.AppSecretName, err)
 	}
 
 	return nil

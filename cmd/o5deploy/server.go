@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/bufbuild/protovalidate-go"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
@@ -41,6 +42,7 @@ func main() {
 
 	cmdGroup := commander.NewCommandSet()
 
+	cmdGroup.Add("validate", commander.NewCommand(runValidate))
 	cmdGroup.Add("serve", commander.NewCommand(runServe))
 	cmdGroup.Add("migrate", commander.NewCommand(runMigrate))
 	cmdGroup.Add("local-deploy", commander.NewCommand(runLocalDeploy))
@@ -209,7 +211,7 @@ func runTemplate(ctx context.Context, cfg struct {
 	built, err := appbuilder.BuildApplication(appbuilder.AppInput{
 		Application: appConfig,
 		VersionTag:  cfg.Version,
-		// TODO: RDS Hosts
+		RDSHosts:    fakeHosts(environment_pb.RDSAuth_SecretsManager),
 	})
 	if err != nil {
 		return err
@@ -223,6 +225,49 @@ func runTemplate(ctx context.Context, cfg struct {
 	fmt.Println(string(yaml))
 
 	return nil
+}
+
+func runValidate(ctx context.Context, cfg struct {
+	AppFilename string `flag:"app" required:"false" description:"application file"`
+	ClusterFile string `flag:"cluster" required:"false" description:"cluster file"`
+}) error {
+	if cfg.AppFilename == "" && cfg.ClusterFile == "" {
+		return fmt.Errorf("requires application file (-app) and/or cluster file (-cluster)")
+	}
+
+	pv, err := protovalidate.New()
+	if err != nil {
+		return err
+	}
+
+	if cfg.AppFilename != "" {
+		appConfig := &application_pb.Application{}
+		if err := protoread.PullAndParse(ctx, cfg.AppFilename, appConfig); err != nil {
+			return err
+		}
+		if err := pv.Validate(appConfig); err != nil {
+			return err
+		}
+	}
+
+	if cfg.ClusterFile != "" {
+		clusterFile := &environment_pb.CombinedConfig{}
+		if err := protoread.PullAndParse(ctx, cfg.ClusterFile, clusterFile); err != nil {
+			return err
+		}
+		if err := pv.Validate(clusterFile); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type fakeHosts environment_pb.RDSAuthTypeKey
+
+func (hh fakeHosts) FindRDSHost(string) (*appbuilder.RDSHost, bool) {
+	return &appbuilder.RDSHost{
+		AuthType: environment_pb.RDSAuthTypeKey(hh),
+	}, true
 }
 
 func getCluster(ctx context.Context, clusterFilename string, envName string) (*environment_pb.Cluster, *environment_pb.Environment, error) {

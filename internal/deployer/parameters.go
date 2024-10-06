@@ -65,7 +65,7 @@ func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster
 			appbuilder.EnvNameParameter:              environment.FullName,
 			appbuilder.ClusterNameParameter:          cluster.Name,
 			appbuilder.VPCParameter:                  ecsCluster.VpcId,
-			appbuilder.MetaDeployAssumeRoleParameter: ecsCluster.O5Deployer.AssumeRole,
+			appbuilder.MetaDeployAssumeRoleParameter: ecsCluster.O5Deployer.AssumeRoleArn,
 			appbuilder.JWKSParameter:                 strings.Join(environment.TrustJwks, ","),
 			appbuilder.SNSPrefixParameter:            fmt.Sprintf("arn:aws:sns:%s:%s:%s", ecsCluster.AwsRegion, ecsCluster.AwsAccount, environment.FullName),
 			appbuilder.S3BucketNamespaceParameter:    ecsCluster.GlobalNamespace,

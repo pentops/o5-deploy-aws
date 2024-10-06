@@ -159,7 +159,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 			})
 
 			adminConn.Set(&awsinfra_pb.RDSHostType_SecretsManager{
-				SecretArn: hostType.SecretArn,
+				SecretName: hostType.SecretName,
 			})
 
 		case *environment_pb.RDSAuthType_IAM:

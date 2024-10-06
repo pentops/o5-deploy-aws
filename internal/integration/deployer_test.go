@@ -68,7 +68,7 @@ func tValidAWSCluster() *environment_pb.AWSCluster {
 			EventBusArn: "bus",
 		},
 		O5Deployer: &environment_pb.O5Deployer{
-			AssumeRole: "role",
+			AssumeRoleArn: "role",
 		},
 	}
 }

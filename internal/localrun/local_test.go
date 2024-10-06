@@ -163,7 +163,7 @@ func TestLocalRun(t *testing.T) {
 						ClusterName: "ecs-cluster",
 					},
 					O5Deployer: &environment_pb.O5Deployer{
-						AssumeRole: "arn:role",
+						AssumeRoleArn: "arn:role",
 					},
 					AlbIngress: &environment_pb.ALBIngress{
 						ListenerArn: "arn:listener",
@@ -175,7 +175,7 @@ func TestLocalRun(t *testing.T) {
 						Auth: &environment_pb.RDSAuthType{
 							Type: &environment_pb.RDSAuthType_SecretsManager_{
 								SecretsManager: &environment_pb.RDSAuthType_SecretsManager{
-									SecretArn: "arn:secret",
+									SecretName: "/env/root/secret",
 								},
 							},
 						},
@@ -206,6 +206,20 @@ func TestLocalRun(t *testing.T) {
 		},
 	}
 
+	runErr := make(chan error, 1)
+	ss.Setup(func(ctx context.Context, t flowtest.Asserter) error {
+		go func() {
+			err := RunLocalDeploy(runCtx, templateStore, infra, spec)
+			if err != nil {
+				fmt.Printf("RunLocalDeploy: %s\n", err)
+			} else {
+				fmt.Printf("RunLocalDeploy: success\n")
+			}
+			cancel()
+			runErr <- err
+		}()
+		return nil
+	})
 	ss.Step("CreateNewStack", func(ctx context.Context, t flowtest.Asserter) {
 		req, ok := infra.Pop(t, ctx).(*awsinfra_tpb.CreateNewStackMessage)
 		if !ok {
@@ -220,7 +234,7 @@ func TestLocalRun(t *testing.T) {
 				Value: "arn:taskdef",
 			}, {
 				Name:  "DatabaseSecretFoo",
-				Value: "arn:secret",
+				Value: "/env/app/secret",
 			}},
 		})
 	})
@@ -239,7 +253,7 @@ func TestLocalRun(t *testing.T) {
 				Value: "arn:taskdef",
 			}, {
 				Name:  "DatabaseSecretFoo",
-				Value: "arn:secret",
+				Value: "/env/app/secret",
 			}},
 		})
 	})
@@ -254,7 +268,7 @@ func TestLocalRun(t *testing.T) {
 		prototest.AssertEqualProto(t, msg.AppAccess, &awsinfra_pb.RDSAppSpecType{
 			Type: &awsinfra_pb.RDSAppSpecType_AppSecret{
 				AppSecret: &awsinfra_pb.RDSAppSpecType_SecretsManager{
-					AppSecretArn: "arn:secret",
+					AppSecretName: "/env/app/secret",
 				},
 			},
 		})
@@ -262,7 +276,7 @@ func TestLocalRun(t *testing.T) {
 		prototest.AssertEqualProto(t, msg.AdminHost, &awsinfra_pb.RDSHostType{
 			Type: &awsinfra_pb.RDSHostType_SecretsManager_{
 				SecretsManager: &awsinfra_pb.RDSHostType_SecretsManager{
-					SecretArn: "arn:secret",
+					SecretName: "/env/root/secret",
 				},
 			},
 		})
@@ -280,7 +294,7 @@ func TestLocalRun(t *testing.T) {
 		}
 
 		t.Equal("ecs-cluster", msg.EcsClusterName)
-		t.Equal("arn:secret", msg.SecretArn)
+		t.Equal("/env/app/secret", msg.SecretArn)
 
 		infra.StepResult(msg.Request, &awsdeployer_pb.DeploymentEventType_StepResult{
 			Status: awsdeployer_pb.StepStatus_DONE,
@@ -314,21 +328,11 @@ func TestLocalRun(t *testing.T) {
 		})
 	})
 
-	runErr := make(chan error, 1)
-	go func() {
-		err := RunLocalDeploy(runCtx, templateStore, infra, spec)
-		if err != nil {
-			fmt.Printf("RunLocalDeploy: %s\n", err)
-		} else {
-			fmt.Printf("RunLocalDeploy: success\n")
-		}
-		cancel()
-		runErr <- err
-	}()
-
 	ss.RunSteps(t)
 
-	if err := <-runErr; err != nil {
-		t.Fatal(err.Error())
-	}
+	ss.Step("Final Wait", func(ctx context.Context, t flowtest.Asserter) {
+		if err := <-runErr; err != nil {
+			t.Fatal(err.Error())
+		}
+	})
 }

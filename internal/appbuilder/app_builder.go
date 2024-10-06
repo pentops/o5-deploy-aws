@@ -8,6 +8,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/cf"
+	"github.com/pkg/errors"
 )
 
 type AppInput struct {
@@ -15,6 +16,19 @@ type AppInput struct {
 
 	RDSHosts   RDSHostLookup
 	VersionTag string
+}
+
+func (ai AppInput) Validate() error {
+	if ai.Application == nil {
+		return fmt.Errorf("application is required")
+	}
+	if ai.RDSHosts == nil {
+		return fmt.Errorf("RDSHosts is required")
+	}
+	if ai.VersionTag == "" {
+		return fmt.Errorf("VersionTag is required")
+	}
+	return nil
 }
 
 type RDSHostMap map[string]*RDSHost
@@ -133,6 +147,10 @@ type Builder struct {
 }
 
 func NewBuilder(input AppInput) (*Builder, resourceBuilder, error) {
+	err := input.Validate()
+	if err != nil {
+		return nil, nil, errors.WithStack(fmt.Errorf("AppInput invalid: %w", err))
+	}
 
 	template := cf.NewTemplateBuilder()
 

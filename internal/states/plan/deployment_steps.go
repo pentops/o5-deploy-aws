@@ -334,13 +334,13 @@ func stepToSideEffect(step *awsdeployer_pb.DeploymentStep, keys *awsdeployer_pb.
 			})
 
 		case *awsdeployer_pb.PostgresConnectionType_SecretsManager:
-			secretARN, ok := outputs.Find(conn.AppSecretOutputName)
+			secret, ok := outputs.Find(conn.AppSecretOutputName)
 			if !ok {
 				return nil, fmt.Errorf("stack output missing %s for database %s", conn.AppSecretOutputName, src.DbName)
 			}
 
 			appSpec.Set(&awsinfra_pb.RDSAppSpecType_SecretsManager{
-				AppSecretArn:      secretARN,
+				AppSecretName:     secret,
 				RotateCredentials: st.PgUpsert.RotateCredentials,
 			})
 

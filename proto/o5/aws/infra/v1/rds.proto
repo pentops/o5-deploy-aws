@@ -15,7 +15,7 @@ message RDSAppSpecType {
     Aurora app_conn = 4;
   }
   message SecretsManager {
-    string app_secret_arn = 2;
+    string app_secret_name = 2;
     bool rotate_credentials = 5;
   }
   message Aurora {
@@ -34,7 +34,7 @@ message RDSHostType {
   }
 
   message SecretsManager {
-    string secret_arn = 1;
+    string secret_name = 1;
   }
 }
 

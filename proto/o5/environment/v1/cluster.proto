@@ -105,7 +105,7 @@ message RDSAuthType {
   }
 
   message SecretsManager {
-    // ARN of a secrets which contains the fields:
+    // Name (or ARN) of a secret which contains the fields:
     // dbuser
     // dbpassword
     // dbhost:
@@ -114,6 +114,6 @@ message RDSAuthType {
     //   (e.g. 5423 or 3306)
     // dbname
     // dburl: Full url/dsn style like postgres://...
-    string secret_arn = 1;
+    string secretName = 1;
   }
 }
