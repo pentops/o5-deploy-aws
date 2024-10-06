@@ -81,8 +81,8 @@ func TestConfiguration(t *testing.T) {
 		Src: &awsdeployer_spb.UpsertClusterRequest_Config{
 			Config: &environment_pb.CombinedConfig{
 				Name: "cluster",
-				Provider: &environment_pb.CombinedConfig_EcsCluster{
-					EcsCluster: &environment_pb.ECSCluster{},
+				Provider: &environment_pb.CombinedConfig_Aws{
+					Aws: &environment_pb.AWSCluster{},
 				},
 			},
 		},
@@ -143,8 +143,8 @@ func TestTriggerDeployment(t *testing.T) {
 		Src: &awsdeployer_spb.UpsertClusterRequest_Config{
 			Config: &environment_pb.CombinedConfig{
 				Name: "cluster",
-				Provider: &environment_pb.CombinedConfig_EcsCluster{
-					EcsCluster: &environment_pb.ECSCluster{},
+				Provider: &environment_pb.CombinedConfig_Aws{
+					Aws: &environment_pb.AWSCluster{},
 				},
 				Environments: []*environment_pb.Environment{{
 					FullName: "test",

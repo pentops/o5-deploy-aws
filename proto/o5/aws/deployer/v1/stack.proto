@@ -104,8 +104,8 @@ message StackEventType {
 
   message DeploymentRequested {
     StackDeployment deployment = 1;
-    string application_name = 2;
-    string environment_name = 3;
+    string application_name = 2 [(buf.validate.field).string.pattern = "^[a-z][a-z0-9-]+$"];
+    string environment_name = 3 [(buf.validate.field).string.pattern = "^[a-z][a-z0-9-]+$"];
     string environment_id = 4;
   }
 

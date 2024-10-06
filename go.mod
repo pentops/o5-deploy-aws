@@ -27,12 +27,13 @@ require (
 	github.com/iancoleman/strcase v0.3.0
 	github.com/lib/pq v1.10.9
 	github.com/pentops/envconf.go v0.0.0-20240806040806-dcab509e8c71
-	github.com/pentops/flowtest v0.0.0-20240917192406-c387da443c68
-	github.com/pentops/j5 v0.0.0-20240930180705-ffdad52aa4ce
+	github.com/pentops/flowtest v0.0.0-20241005200401-85365de288f3
+	github.com/pentops/go-grpc-helpers v0.0.0-20241002234340-6ee56e1a2298
+	github.com/pentops/j5 v0.0.0-20241001000547-80229b8bcdcc
 	github.com/pentops/log.go v0.0.0-20240930194039-e8e09c525e33
 	github.com/pentops/o5-messaging v0.0.0-20240925203152-81b197123419
 	github.com/pentops/pgtest.go v0.0.0-20240806042712-cca5bdfe6542
-	github.com/pentops/protostate v0.0.0-20241001011134-12156bea2df6
+	github.com/pentops/protostate v0.0.0-20241003002218-bcccb817dd6b
 	github.com/pentops/realms v0.0.0-20240925233004-d7d1859e7eb2
 	github.com/pentops/runner v0.0.0-20240920235254-d99051980854
 	github.com/pentops/sqrlx.go v0.0.0-20240806064322-33adc0ac5bd4
@@ -60,6 +61,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.17.15 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.22.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.26.4 // indirect
+	github.com/bufbuild/protocompile v0.14.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/fatih/color v1.17.0 // indirect
@@ -67,6 +69,7 @@ require (
 	github.com/google/cel-go v0.21.0 // indirect
 	github.com/google/go-github/v29 v29.0.3 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
+	github.com/jhump/protoreflect v1.16.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
@@ -79,8 +82,11 @@ require (
 	golang.org/x/crypto v0.27.0 // indirect
 	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0 // indirect
 	golang.org/x/net v0.29.0 // indirect
+	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.25.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240716161551-93cc26a95ae9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240930140551-af27646dc61f // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/pentops/protostate => /Users/daemonl/pentops/protostate

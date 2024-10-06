@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package o5.aws.deployer.v1;
 
-import "j5/messaging/v1/reqres.proto";
+import "o5/aws/infra/v1/rds.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb";
 
@@ -11,127 +11,40 @@ message PostgresSpec {
   repeated string db_extensions = 3;
   optional string migration_task_output_name = 7;
 
-  RDSHostSpec host = 4;
-  RDSHost admin_connection = 5;
-  RDSHost app_connection = 6;
+  o5.aws.infra.v1.RDSHostType admin_connection = 4;
 
-  // Either this:
-  string root_secret_name = 5;
-  string secret_output_name = 9;
-
-  // Or this
-  AuroraAuth aurora_auth = 6;
+  PostgresConnectionType app_connection = 5;
 }
 
-message RDSHostSpec {
+message PostgresConnectionType {
   oneof type {
     Aurora aurora = 1;
     SecretsManager secrets_manager = 2;
   }
 
   message Aurora {
-    string admin_endpoint = 1;
-    string admin_user = 2;
-
-    string app_endpoint = 3;
-    string app_user = 4;
-
-    string db_name = 5;
+    o5.aws.infra.v1.AuroraConnection conn = 1;
   }
 
   message SecretsManager {
-    string root_secret_arn = 1;
-
-    // the name of the secret in the
-    string secret_output_name = 2;
+    string app_secret_output_name = 1;
   }
 }
 
-message AuroraAuth {
-  string endpoint = 1;
-  string username = 2;
-}
-
-message PostgresCreationSpec {
+message PostgresDatabaseResource {
   string db_name = 1;
-  repeated string db_extensions = 3;
+  repeated string db_extensions = 2;
+  optional string migration_task_output_name = 3;
 
-  PostgresAuth auth = 4;
-}
+  string server_group = 4;
 
-message PostgresCleanupSpec {
-  string db_name = 1;
+  oneof connection {
+    // The main runtime has a SecretFrom loading the
+    // credentials and expects a direct connection
+    string secret_output_name = 10;
 
-  PostgresAuth auth = 4;
-
-  string root_secret_name = 2;
-}
-
-message PostgresMigrationSpec {
-  string migration_task_arn = 1;
-  string secret_arn = 2;
-  string ecs_cluster_name = 3;
-}
-
-message MigrationTaskContext {
-  j5.messaging.v1.RequestMetadata upstream = 1;
-  string migration_id = 2;
-}
-
-message PostgresAuth {
-  oneof auth {
-    AuroraIAM aurora = 6;
-    SecretsManager secrets_manager = 7;
-  }
-
-  message SecretsManager {
-    string root_secret_name = 2;
-    string secret_arn = 4;
-  }
-
-  message AuroraIAM {
-    string endpoint = 1;
-    string username = 2;
-  }
-}
-
-// RDSHost represents a Cluister or Proxy in AWS RDS
-message RDSHost {
-  // Matches o5.application.v1.Database.Postgres.server_group
-  string server_group_name = 1;
-
-  // AWS API: 'Endpoint' - hostname without port.
-  // Used for connection and authentication tokens.
-  string endpoint = 2;
-
-  // AWS API: 'Port'
-  // The port that the database engine is listening on.
-  int32 port = 3;
-
-  RDSAuth auth = 4;
-}
-
-message RDSAuth {
-  oneof type {
-    SecretsManager secrets_manager = 4;
-    IAM iam = 5;
-  }
-
-  // RDS IAM authentication
-  // https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/UsingWithRDS.IAMDBAuth.Connecting.html
-  message IAM {
-    // A username to use getting the token, which then also matches the user
-    // implementation of the engine.
-    // For root access, this could be the master_user but it only needs to be a
-    // user with the correct permissions.
-    string db_user = 1;
-
-    // defaults to the user's name. Used when accessing, not required for the
-    // token.
-    optional string db_name = 2;
-  }
-
-  message SecretsManager {
-    string secret_arn = 1;
+    // The sidecar/app has an environment variable coming from
+    // this parameter for proxy.
+    string parameter_name = 11;
   }
 }

@@ -6,15 +6,6 @@ import "o5/application/v1/application.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb";
 
-message BuiltApplication {
-  string name = 1;
-  string version = 2;
-  bool quick_mode = 3;
-  repeated Parameter parameters = 4;
-  repeated string sns_topics = 5;
-  repeated PostgresDatabaseResource postgres_databases = 6;
-}
-
 message Parameter {
   string name = 1;
   string type = 2;
@@ -22,14 +13,6 @@ message Parameter {
   ParameterSourceType source = 4;
 
   repeated string args = 6;
-}
-
-message PostgresDatabaseResource {
-  string db_name = 1;
-  string server_group = 2;
-  string secret_output_name = 3;
-  repeated string db_extensions = 4;
-  optional string migration_task_output_name = 5;
 }
 
 message ParameterSourceType {

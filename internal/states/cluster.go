@@ -9,7 +9,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 func NewClusterEventer() (*awsdeployer_pb.ClusterPSM, error) {
@@ -84,18 +83,20 @@ func applyOverrides(base, in []*awsdeployer_pb.ParameterOverride) []*awsdeployer
 	return out
 }
 
+var clusterOverrides = map[string]func(*environment_pb.AWSCluster, string){
+	"sidecarImageVersion": func(c *environment_pb.AWSCluster, v string) {
+		c.O5Sidecar.ImageVersion = v
+	},
+}
+
 func ValidateClusterOverrides(overrides []*awsdeployer_pb.ParameterOverride) error {
-	descFields := (&environment_pb.ECSCluster{}).ProtoReflect().Descriptor().Fields()
 	for _, override := range overrides {
 		if override.Key == "" {
 			return status.Error(codes.InvalidArgument, "key is empty")
 		}
-		field := descFields.ByJSONName(override.Key)
-		if field == nil {
-			return status.Errorf(codes.InvalidArgument, "field not found: %s", override.Key)
-		}
-		if field.IsMap() || field.IsList() || field.Kind() != protoreflect.StringKind {
-			return status.Errorf(codes.InvalidArgument, "field not string: %s", override.Key)
+		_, ok := clusterOverrides[override.Key]
+		if !ok {
+			return status.Errorf(codes.InvalidArgument, "override not found: %s", override.Key)
 		}
 	}
 	return nil
@@ -107,21 +108,17 @@ func mergeClusterConfig(base *environment_pb.Cluster, overrides []*awsdeployer_p
 	}
 
 	merged := proto.Clone(base).(*environment_pb.Cluster)
-	provider := merged.GetEcsCluster()
+	provider := merged.GetAws()
 	if provider == nil {
-		return nil, fmt.Errorf("cluster provider not set")
+		return nil, fmt.Errorf("aws provider not set")
 	}
-	refl := provider.ProtoReflect()
-	descFields := refl.Descriptor().Fields()
 	for _, override := range overrides {
-		field := descFields.ByJSONName(override.Key)
-		if field == nil {
-			return nil, fmt.Errorf("field not found: %s", override.Key)
+		fn, ok := clusterOverrides[override.Key]
+		if !ok {
+			return nil, fmt.Errorf("override not found: %s", override.Key)
 		}
-		if field.IsMap() || field.IsList() || field.Kind() != protoreflect.StringKind {
-			return nil, fmt.Errorf("field not string: %s", override.Key)
-		}
-		refl.Set(field, protoreflect.ValueOfString(*override.Value))
+		fn(provider, *override.Value)
+
 	}
 	return merged, nil
 }

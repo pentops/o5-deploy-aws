@@ -11,7 +11,7 @@ import (
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/internal/cf/app"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
 )
 
 type DeferredParameterResolver struct {
@@ -35,7 +35,7 @@ func (dpr *DeferredParameterResolver) getTakenPriorities(ctx context.Context) (m
 	}
 
 	if dpr.listenerARN == "" {
-		return nil, fmt.Errorf("missing listener ARN - The Stack must have a parameter named %s to automatically resolve rule priorities", app.ListenerARNParameter)
+		return nil, fmt.Errorf("missing listener ARN - The Stack must have a parameter named %s to automatically resolve rule priorities", appbuilder.ListenerARNParameter)
 	}
 
 	takenPriorities := make(map[int]bool)

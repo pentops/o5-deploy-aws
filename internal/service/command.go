@@ -364,9 +364,9 @@ func (ds *CommandService) UpsertCluster(ctx context.Context, req *awsdeployer_sp
 		Name: config.Name,
 	}
 	switch et := config.Provider.(type) {
-	case *environment_pb.CombinedConfig_EcsCluster:
-		cluster.Provider = &environment_pb.Cluster_EcsCluster{
-			EcsCluster: et.EcsCluster,
+	case *environment_pb.CombinedConfig_Aws:
+		cluster.Provider = &environment_pb.Cluster_Aws{
+			Aws: et.Aws,
 		}
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "unsupported provider %T", config.Provider)

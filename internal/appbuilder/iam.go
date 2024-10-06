@@ -1,4 +1,4 @@
-package app
+package appbuilder
 
 import (
 	"github.com/awslabs/goformation/v7/cloudformation"

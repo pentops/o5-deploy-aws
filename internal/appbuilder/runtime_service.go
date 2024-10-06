@@ -1,4 +1,4 @@
-package app
+package appbuilder
 
 import (
 	"fmt"
@@ -327,25 +327,39 @@ func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) err
 
 	for _, db := range rs.outboxDatabases {
 		needsAdapterSidecar = true
-		rs.AdapterContainer.Secrets = append(rs.AdapterContainer.Secrets, ecs.TaskDefinition_Secret{
-			Name:      "POSTGRES_OUTBOX",
-			ValueFrom: db.SecretValueFrom().Ref(),
-		})
+		if db.IsProxy() {
+		} else {
+			secretVal, ok := db.SecretValueFrom()
+			if !ok {
+				return fmt.Errorf("outbox database %s is not a proxy and has no secret", db)
+			}
+			rs.AdapterContainer.Secrets = append(rs.AdapterContainer.Secrets, ecs.TaskDefinition_Secret{
+				Name:      "POSTGRES_OUTBOX",
+				ValueFrom: secretVal.Ref(),
+			})
+		}
 	}
 
 	needsAdapterPort := false
 
+	proxyDBs := map[string]DatabaseRef{}
+
 	// If the app has the endpoint of the adapter, we still need ingress
-	for _, container := range rs.spec.Containers {
-		for _, envVar := range container.EnvVars {
-			o5Type, ok := envVar.Spec.(*application_pb.EnvironmentVariable_O5)
-			if !ok {
-				continue
+	for _, container := range rs.Containers {
+		if container.AdapterEndpoint != nil {
+			needsAdapterPort = true
+			value := cf.String(fmt.Sprintf("http://%s:%d", O5SidecarContainerName, O5SidecarInternalPort))
+			container.AdapterEndpoint.EnvVar.Value = value
+		}
+
+		for _, ref := range container.ProxyDBs {
+			envVarValue, err := ref.Database.ProxyEnvVal(O5SidecarContainerName)
+			if err != nil {
+				return err
 			}
-			if o5Type.O5 == application_pb.O5Var_ADAPTER_ENDPOINT {
-				needsAdapterPort = true
-				break
-			}
+
+			ref.EnvVar.Value = envVarValue
+			proxyDBs[ref.Database.Name()] = ref.Database
 		}
 	}
 

@@ -10,7 +10,7 @@ message Cluster {
   string name = 1;
 
   oneof provider {
-    ECSCluster ecs_cluster = 10;
+    AWSCluster aws = 10;
   }
 }
 
@@ -65,7 +65,7 @@ message EventBridge {
 
 message O5Deployer {
   // The role O5 assumes when deploying to this environment
-  string assume_role = 8;
+  string assume_role_arn = 1;
 }
 
 // RDSHost represents a Cluister or Proxy in AWS RDS
@@ -81,10 +81,10 @@ message RDSHost {
   // The port that the database engine is listening on.
   int32 port = 3;
 
-  RDSAuth auth = 4;
+  RDSAuthType auth = 4;
 }
 
-message RDSAuth {
+message RDSAuthType {
   oneof type {
     SecretsManager secrets_manager = 4;
     IAM iam = 5;

@@ -15,7 +15,7 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
-	"github.com/pentops/o5-deploy-aws/internal/cf/app"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
 )
 
 type CFClient struct {
@@ -101,7 +101,7 @@ func (cf *CFClient) resolveParameters(ctx context.Context, lastInput []types.Par
 
 	var listenerARN string
 	for _, param := range input {
-		if param.Name == app.ListenerARNParameter {
+		if param.Name == appbuilder.ListenerARNParameter {
 			listenerARN = param.GetValue()
 			break
 		}

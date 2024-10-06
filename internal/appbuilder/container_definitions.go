@@ -1,4 +1,4 @@
-package app
+package appbuilder
 
 import (
 	"fmt"
@@ -13,6 +13,18 @@ import (
 type ContainerDefinition struct {
 	Container  *ecs.TaskDefinition_ContainerDefinition
 	Parameters map[string]*awsdeployer_pb.Parameter
+
+	ProxyDBs        []ProxyDB
+	AdapterEndpoint *AdapterEndpoint
+}
+
+type ProxyDB struct {
+	Database DatabaseRef
+	EnvVar   *ecs.TaskDefinition_KeyValuePair
+}
+
+type AdapterEndpoint struct {
+	EnvVar *ecs.TaskDefinition_KeyValuePair
 }
 
 func ensureEnvVar(envVars *[]ecs.TaskDefinition_KeyValuePair, name string, value *string) {
@@ -130,10 +142,29 @@ func buildContainer(globals Globals, iamPolicy *PolicyBuilder, def *application_
 			if !ok {
 				return nil, fmt.Errorf("unknown database: %s", dbName)
 			}
-			container.Secrets = append(container.Secrets, ecs.TaskDefinition_Secret{
-				Name:      envVar.Name,
-				ValueFrom: string(dbDef.SecretValueFrom()),
-			})
+
+			isProxy := dbDef.IsProxy()
+			if isProxy {
+				envVar := ecs.TaskDefinition_KeyValuePair{
+					Name:  cf.String(envVar.Name),
+					Value: nil, // dbDef.RefToProxy(host),
+				}
+				container.Environment = append(container.Environment, envVar)
+				containerDef.ProxyDBs = append(containerDef.ProxyDBs, ProxyDB{
+					Database: dbDef,
+					EnvVar:   &envVar,
+				})
+
+			} else {
+				secretRef, ok := dbDef.SecretValueFrom()
+				if !ok {
+					return nil, fmt.Errorf("database %s is a proxy, but has no secret", dbName)
+				}
+				container.Secrets = append(container.Secrets, ecs.TaskDefinition_Secret{
+					Name:      envVar.Name,
+					ValueFrom: string(secretRef),
+				})
+			}
 
 			continue
 		case *application_pb.EnvironmentVariable_EnvMap:
@@ -162,18 +193,20 @@ func buildContainer(globals Globals, iamPolicy *PolicyBuilder, def *application_
 			continue
 
 		case *application_pb.EnvironmentVariable_O5:
-			var value *string
+			envVar := ecs.TaskDefinition_KeyValuePair{
+				Name:  cf.String(envVar.Name),
+				Value: nil,
+			}
+			container.Environment = append(container.Environment, envVar)
 			switch varType.O5 {
 			case application_pb.O5Var_ADAPTER_ENDPOINT:
-				value = cf.String(fmt.Sprintf("http://%s:%d", O5SidecarContainerName, O5SidecarInternalPort))
+				containerDef.AdapterEndpoint = &AdapterEndpoint{
+					EnvVar: &envVar,
+				}
+
 			default:
 				return nil, fmt.Errorf("unknown O5 var: %s", varType.O5)
 			}
-
-			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  cf.String(envVar.Name),
-				Value: value,
-			})
 
 		default:
 			return nil, fmt.Errorf("unknown env var type: %T", varType)

@@ -8,7 +8,7 @@ import (
 
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
-	"github.com/pentops/o5-deploy-aws/internal/cf/app"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
 )
 
 const (
@@ -26,7 +26,7 @@ func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster
 		return nil, errors.New("AWS Deployer requires the type of environment provider to be AWS")
 	}
 
-	ecsCluster := cluster.GetEcsCluster()
+	ecsCluster := cluster.GetAws()
 
 	hostHeader := "*.*"
 	if awsEnv.HostHeader != nil {
@@ -40,11 +40,14 @@ func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster
 	}
 
 	sidecarImageName := DefaultO5SidecarImageName
-	if ecsCluster.SidecarImageRepo != nil {
-		sidecarImageName = *ecsCluster.SidecarImageRepo
+	if ecsCluster.O5Sidecar == nil {
+		return nil, errors.New("O5Sidecar is required for AWS Deployer")
 	}
+	if ecsCluster.O5Sidecar.ImageRepo != nil {
+		sidecarImageName = *ecsCluster.O5Sidecar.ImageRepo
+	}
+	sidecarImageVersion := ecsCluster.O5Sidecar.ImageVersion
 
-	sidecarImageVersion := ecsCluster.SidecarImageVersion
 	sidecarFullImage := fmt.Sprintf("%s:%s", sidecarImageName, sidecarImageVersion)
 
 	namedPolicies := map[string]string{}
@@ -54,21 +57,21 @@ func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster
 
 	dr := &deployerResolver{
 		wellKnown: map[string]string{
-			app.ListenerARNParameter:          ecsCluster.ListenerArn,
-			app.HostHeaderParameter:           hostHeader,
-			app.ECSClusterParameter:           ecsCluster.EcsClusterName,
-			app.ECSRepoParameter:              ecsCluster.EcsRepo,
-			app.ECSTaskExecutionRoleParameter: ecsCluster.EcsTaskExecutionRole,
-			app.EnvNameParameter:              environment.FullName,
-			app.ClusterNameParameter:          cluster.Name,
-			app.VPCParameter:                  ecsCluster.VpcId,
-			app.MetaDeployAssumeRoleParameter: strings.Join(ecsCluster.O5DeployerGrantRoles, ","),
-			app.JWKSParameter:                 strings.Join(environment.TrustJwks, ","),
-			app.SNSPrefixParameter:            fmt.Sprintf("arn:aws:sns:%s:%s:%s", ecsCluster.AwsRegion, ecsCluster.AwsAccount, environment.FullName),
-			app.S3BucketNamespaceParameter:    ecsCluster.GlobalNamespace,
-			app.O5SidecarImageParameter:       sidecarFullImage,
-			app.CORSOriginParameter:           strings.Join(environment.CorsOrigins, ","),
-			app.EventBusARNParameter:          ecsCluster.EventBusArn,
+			appbuilder.ListenerARNParameter:          ecsCluster.AlbIngress.ListenerArn,
+			appbuilder.HostHeaderParameter:           hostHeader,
+			appbuilder.ECSClusterParameter:           ecsCluster.EcsCluster.ClusterName,
+			appbuilder.ECSRepoParameter:              ecsCluster.EcsCluster.DefaultRegistry,
+			appbuilder.ECSTaskExecutionRoleParameter: ecsCluster.EcsCluster.TaskExecutionRole,
+			appbuilder.EnvNameParameter:              environment.FullName,
+			appbuilder.ClusterNameParameter:          cluster.Name,
+			appbuilder.VPCParameter:                  ecsCluster.VpcId,
+			appbuilder.MetaDeployAssumeRoleParameter: ecsCluster.O5Deployer.AssumeRole,
+			appbuilder.JWKSParameter:                 strings.Join(environment.TrustJwks, ","),
+			appbuilder.SNSPrefixParameter:            fmt.Sprintf("arn:aws:sns:%s:%s:%s", ecsCluster.AwsRegion, ecsCluster.AwsAccount, environment.FullName),
+			appbuilder.S3BucketNamespaceParameter:    ecsCluster.GlobalNamespace,
+			appbuilder.O5SidecarImageParameter:       sidecarFullImage,
+			appbuilder.CORSOriginParameter:           strings.Join(environment.CorsOrigins, ","),
+			appbuilder.EventBusARNParameter:          ecsCluster.EventBridge.EventBusArn,
 		},
 		custom:        environment.Vars,
 		crossEnvs:     crossEnvs,

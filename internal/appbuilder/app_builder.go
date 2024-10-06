@@ -1,4 +1,4 @@
-package app
+package appbuilder
 
 import (
 	"fmt"
@@ -6,17 +6,46 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/cf"
 )
 
-func BuildApplication(app *application_pb.Application, versionTag string) (*BuiltApplication, error) {
+type AppInput struct {
+	Application *application_pb.Application
 
-	bb, resourceBuilder, err := NewBuilder(app, versionTag)
+	RDSHosts   RDSHostLookup
+	VersionTag string
+}
+
+type RDSHostMap map[string]*RDSHost
+
+type RDSHostLookup interface {
+	FindRDSHost(string) (*RDSHost, bool)
+}
+
+func (r RDSHostMap) FindRDSHost(serverGroup string) (*RDSHost, bool) {
+	host, ok := r[serverGroup]
+	return host, ok
+}
+
+type RDSAuthType int
+
+const (
+	RDSAuthTypeIAM = iota
+	RDSAuthTypeSecretsManager
+)
+
+type RDSHost struct {
+	AuthType environment_pb.RDSAuthTypeKey
+}
+
+func BuildApplication(spec AppInput) (*BuiltApplication, error) {
+	app := spec.Application
+
+	bb, resourceBuilder, err := NewBuilder(spec)
 	if err != nil {
 		return nil, err
 	}
-
-	addGlobalParameters(bb, versionTag)
 
 	err = mapResources(bb, resourceBuilder, app)
 	if err != nil {
@@ -98,54 +127,56 @@ type Builder struct {
 	Globals
 	Template *cf.TemplateBuilder
 
-	built *awsdeployer_pb.BuiltApplication
+	dbs []*awsdeployer_pb.PostgresDatabaseResource
+
+	input AppInput
 }
 
-func NewBuilder(spec *application_pb.Application, versionTag string) (*Builder, resourceBuilder, error) {
+func NewBuilder(input AppInput) (*Builder, resourceBuilder, error) {
 
 	template := cf.NewTemplateBuilder()
 
-	builtApp := &awsdeployer_pb.BuiltApplication{
-		Name:    spec.Name,
-		Version: versionTag,
-	}
-
-	if spec.DeploymentConfig != nil {
-		if spec.DeploymentConfig.QuickMode {
-			builtApp.QuickMode = true
-		}
-	}
-
 	global := &globals{
-		spec: spec,
+		spec:     input.Application,
+		rdsHosts: input.RDSHosts,
 
 		databases: map[string]DatabaseReference{},
 		secrets:   map[string]*secretInfo{},
 		buckets:   map[string]*bucketInfo{},
 	}
 
-	return &Builder{
+	bb := &Builder{
 		Globals:  global,
 		Template: template,
-		built:    builtApp,
-	}, global, nil
+		input:    input,
+	}
+
+	addGlobalParameters(bb, input.VersionTag)
+
+	return bb, global, nil
 }
 
 func (bb *Builder) AddPostgresResource(pg *awsdeployer_pb.PostgresDatabaseResource) {
-	bb.built.PostgresDatabases = append(bb.built.PostgresDatabases, pg)
+	bb.dbs = append(bb.dbs, pg)
 }
 
 type BuiltApplication struct {
-	Template *cloudformation.Template
-	*awsdeployer_pb.BuiltApplication
+	Template   *cloudformation.Template
+	Parameters []*awsdeployer_pb.Parameter
+
+	Databases []*awsdeployer_pb.PostgresDatabaseResource
+	Name      string
+	Version   string
 }
 
 func (bb *Builder) Export() *BuiltApplication {
 	template := bb.Template.Build()
-	built := bb.built
-	built.Parameters = template.Parameters
 	return &BuiltApplication{
-		Template:         template.Template,
-		BuiltApplication: built,
+		Template:   template.Template,
+		Parameters: template.Parameters,
+		Databases:  bb.dbs,
+
+		Name:    bb.input.Application.Name,
+		Version: bb.input.VersionTag,
 	}
 }

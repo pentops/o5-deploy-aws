@@ -7,6 +7,7 @@ import (
 	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/states/plan/planbuild"
 	"github.com/pentops/o5-messaging/o5msg"
@@ -320,70 +321,87 @@ func stepToSideEffect(step *awsdeployer_pb.DeploymentStep, keys *awsdeployer_pb.
 
 	case *awsdeployer_pb.StepRequestType_PgUpsert:
 		src := st.PgUpsert.Spec
-		spec := &awsdeployer_pb.PostgresCreationSpec{
-			DbName:            src.DbName,
-			RootSecretName:    src.RootSecretName,
-			DbExtensions:      src.DbExtensions,
-			RotateCredentials: st.PgUpsert.RotateCredentials,
-		}
 
 		outputs, err := getStackOutputs(dependencies, st.PgUpsert.InfraOutputStepId)
 		if err != nil {
 			return nil, err
 		}
-		secretARN, ok := outputs.Find(src.SecretOutputName)
-		if !ok {
-			return nil, fmt.Errorf("stack output missing %s for database %s", src.SecretOutputName, src.DbName)
+		appSpec := &awsinfra_pb.RDSAppSpecType{}
+		switch conn := src.AppConnection.Get().(type) {
+		case *awsdeployer_pb.PostgresConnectionType_Aurora:
+			appSpec.Set(&awsinfra_pb.RDSAppSpecType_Aurora{
+				Conn: conn.Conn,
+			})
+
+		case *awsdeployer_pb.PostgresConnectionType_SecretsManager:
+			secretARN, ok := outputs.Find(conn.AppSecretOutputName)
+			if !ok {
+				return nil, fmt.Errorf("stack output missing %s for database %s", conn.AppSecretOutputName, src.DbName)
+			}
+
+			appSpec.Set(&awsinfra_pb.RDSAppSpecType_SecretsManager{
+				AppSecretArn:      secretARN,
+				RotateCredentials: st.PgUpsert.RotateCredentials,
+			})
+
+		default:
+			return nil, fmt.Errorf("unknown RDS spec type: %T", src.AppConnection.Get())
 		}
-		spec.SecretArn = secretARN
 
 		return &awsinfra_tpb.UpsertPostgresDatabaseMessage{
 			Request:     requestMetadata,
 			MigrationId: step.Id,
-			Spec:        spec,
+			AdminHost:   src.AdminConnection,
+			AppAccess:   appSpec,
+			Spec: &awsinfra_pb.RDSCreateSpec{
+				DbExtensions: src.DbExtensions,
+				DbName:       src.DbName,
+			},
 		}, nil
 
 	case *awsdeployer_pb.StepRequestType_PgMigrate:
 		src := st.PgMigrate.Spec
-		spec := &awsdeployer_pb.PostgresMigrationSpec{
+		msg := &awsinfra_tpb.MigratePostgresDatabaseMessage{
+			Request:        requestMetadata,
+			MigrationId:    step.Id,
 			EcsClusterName: st.PgMigrate.EcsClusterName,
+
+			// Explicitly Default
+			MigrationTaskArn: "",
+			SecretArn:        "",
 		}
+
 		outputs, err := getStackOutputs(dependencies, st.PgMigrate.InfraOutputStepId)
 		if err != nil {
 			return nil, err
 		}
 
-		for _, output := range outputs {
-			if *src.MigrationTaskOutputName == output.Name {
-				spec.MigrationTaskArn = output.Value
+		if src.MigrationTaskOutputName != nil {
+			migrationTaskARN, ok := outputs.Find(*src.MigrationTaskOutputName)
+			if !ok {
+				return nil, fmt.Errorf("stack output missing %s for database %s", *src.MigrationTaskOutputName, src.DbName)
 			}
-			if src.SecretOutputName == output.Name {
-				spec.SecretArn = output.Value
-			}
-		}
-		if spec.MigrationTaskArn == "" {
-			return nil, fmt.Errorf("stack output missing %s for database %s", *src.MigrationTaskOutputName, src.DbName)
-		}
-		if spec.SecretArn == "" {
-			return nil, fmt.Errorf("stack output missing %s for database %s", src.SecretOutputName, src.DbName)
+			msg.MigrationTaskArn = migrationTaskARN
 		}
 
-		return &awsinfra_tpb.MigratePostgresDatabaseMessage{
-			Request:     requestMetadata,
-			MigrationId: step.Id,
-			Spec:        spec,
-		}, nil
+		if smSpec := src.AppConnection.GetSecretsManager(); smSpec != nil {
+			secretARN, ok := outputs.Find(smSpec.AppSecretOutputName)
+			if !ok {
+				return nil, fmt.Errorf("stack output missing %s for database %s", smSpec.AppSecretOutputName, src.DbName)
+			}
+			msg.SecretArn = secretARN
+		}
+
+		return msg, nil
 
 	case *awsdeployer_pb.StepRequestType_PgCleanup:
 		src := st.PgCleanup.Spec
-		spec := &awsdeployer_pb.PostgresCleanupSpec{
-			DbName:         src.DbName,
-			RootSecretName: src.RootSecretName,
-		}
+
 		return &awsinfra_tpb.CleanupPostgresDatabaseMessage{
 			Request:     requestMetadata,
 			MigrationId: step.Id,
-			Spec:        spec,
+			DbName:      src.DbName,
+			AdminHost:   src.AdminConnection,
 		}, nil
 
 	default:

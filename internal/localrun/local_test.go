@@ -9,10 +9,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/google/uuid"
 	"github.com/pentops/flowtest"
+	"github.com/pentops/flowtest/prototest"
 	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/j5/gen/j5/state/v1/psm_j5pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"google.golang.org/protobuf/proto"
@@ -119,6 +121,17 @@ func TestLocalRun(t *testing.T) {
 			DeploymentConfig: &application_pb.DeploymentConfig{
 				QuickMode: false,
 			},
+			Runtimes: []*application_pb.Runtime{{
+				Name: "foo",
+				Containers: []*application_pb.Container{{
+					Name: "main",
+					Source: &application_pb.Container_Image_{
+						Image: &application_pb.Container_Image{
+							Name: "foo",
+						},
+					},
+				}},
+			}},
 			Databases: []*application_pb.Database{{
 				Name: "foo",
 				Engine: &application_pb.Database_Postgres_{
@@ -138,13 +151,34 @@ func TestLocalRun(t *testing.T) {
 		},
 		ClusterConfig: &environment_pb.Cluster{
 			Name: "cluster",
-			Provider: &environment_pb.Cluster_EcsCluster{
-				EcsCluster: &environment_pb.ECSCluster{
-					EcsClusterName: "ecs-cluster",
-					ListenerArn:    "arn:listener",
+			Provider: &environment_pb.Cluster_Aws{
+				Aws: &environment_pb.AWSCluster{
+					O5Sidecar: &environment_pb.O5Sidecar{
+						ImageVersion: "version",
+					},
+					EventBridge: &environment_pb.EventBridge{
+						EventBusArn: "arn:bus",
+					},
+					EcsCluster: &environment_pb.ECSCluster{
+						ClusterName: "ecs-cluster",
+					},
+					O5Deployer: &environment_pb.O5Deployer{
+						AssumeRole: "arn:role",
+					},
+					AlbIngress: &environment_pb.ALBIngress{
+						ListenerArn: "arn:listener",
+					},
 					RdsHosts: []*environment_pb.RDSHost{{
-						ServerGroup: "default",
-						SecretName:  "secret",
+						ServerGroupName: "default",
+						Endpoint:        "endpoint",
+						Port:            5432,
+						Auth: &environment_pb.RDSAuthType{
+							Type: &environment_pb.RDSAuthType_SecretsManager_{
+								SecretsManager: &environment_pb.RDSAuthType_SecretsManager{
+									SecretArn: "arn:secret",
+								},
+							},
+						},
 					}},
 				},
 			},
@@ -217,7 +251,21 @@ func TestLocalRun(t *testing.T) {
 			t.Fatalf("expected UpsertPostgresDatabaseMessage")
 		}
 
-		t.Equal("arn:secret", msg.Spec.SecretArn)
+		prototest.AssertEqualProto(t, msg.AppAccess, &awsinfra_pb.RDSAppSpecType{
+			Type: &awsinfra_pb.RDSAppSpecType_AppSecret{
+				AppSecret: &awsinfra_pb.RDSAppSpecType_SecretsManager{
+					AppSecretArn: "arn:secret",
+				},
+			},
+		})
+
+		prototest.AssertEqualProto(t, msg.AdminHost, &awsinfra_pb.RDSHostType{
+			Type: &awsinfra_pb.RDSHostType_SecretsManager_{
+				SecretsManager: &awsinfra_pb.RDSHostType_SecretsManager{
+					SecretArn: "arn:secret",
+				},
+			},
+		})
 
 		infra.StepResult(msg.Request, &awsdeployer_pb.DeploymentEventType_StepResult{
 			Status: awsdeployer_pb.StepStatus_DONE,
@@ -231,9 +279,8 @@ func TestLocalRun(t *testing.T) {
 			t.Fatalf("expected MigratePostgresDatabaseMessage")
 		}
 
-		t.Equal("ecs-cluster", msg.Spec.EcsClusterName)
-		t.Equal("arn:secret", msg.Spec.SecretArn)
-		t.Equal("arn:taskdef", msg.Spec.MigrationTaskArn)
+		t.Equal("ecs-cluster", msg.EcsClusterName)
+		t.Equal("arn:secret", msg.SecretArn)
 
 		infra.StepResult(msg.Request, &awsdeployer_pb.DeploymentEventType_StepResult{
 			Status: awsdeployer_pb.StepStatus_DONE,

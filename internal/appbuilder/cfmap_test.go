@@ -1,4 +1,4 @@
-package app
+package appbuilder
 
 import (
 	"encoding/base64"
@@ -13,31 +13,24 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/internal/cf"
-	"github.com/pentops/o5-deploy-aws/internal/cf/cftest"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestBasicMap(t *testing.T) {
-	app := &application_pb.Application{
-		Name: "app1",
-		Runtimes: []*application_pb.Runtime{{
+	tb := NewTestBuilder()
+	tb.AddRuntime(&application_pb.Runtime{
+		Name: "main",
+		Containers: []*application_pb.Container{{
 			Name: "main",
-			Containers: []*application_pb.Container{{
-				Name: "main",
-				Source: &application_pb.Container_Image_{
-					Image: &application_pb.Container_Image{
-						Tag:  cf.String("latest"),
-						Name: "foobar",
-					},
+			Source: &application_pb.Container_Image_{
+				Image: &application_pb.Container_Image{
+					Tag:  cf.String("latest"),
+					Name: "foobar",
 				},
-			}},
+			},
 		}},
-	}
-
-	out, err := BuildApplication(app, "version1")
-	if err != nil {
-		t.Fatal(err.Error())
-	}
+	})
+	out := tb.Build(t)
 
 	template := out.Template
 	yy, err := template.YAML()
@@ -49,30 +42,27 @@ func TestBasicMap(t *testing.T) {
 }
 
 func TestDirectPortAccess(t *testing.T) {
-	app := &application_pb.Application{
-		Name: "app1",
-		Runtimes: []*application_pb.Runtime{{
-			Name: "main",
-			Routes: []*application_pb.Route{{
-				Prefix:          "/test",
-				BypassIngress:   true,
-				TargetContainer: "main",
-				Port:            1234,
-				Protocol:        application_pb.RouteProtocol_GRPC,
-			}},
-			Containers: []*application_pb.Container{{
-				Name: "main",
-				Source: &application_pb.Container_Image_{
-					Image: &application_pb.Container_Image{
-						Tag:  cf.String("latest"),
-						Name: "foobar",
-					},
-				},
-			}},
+	tb := NewTestBuilder()
+	tb.AddRuntime(&application_pb.Runtime{
+		Name: "main",
+		Routes: []*application_pb.Route{{
+			Prefix:          "/test",
+			BypassIngress:   true,
+			TargetContainer: "main",
+			Port:            1234,
+			Protocol:        application_pb.RouteProtocol_GRPC,
 		}},
-	}
-
-	aa := testbuild(t, app)
+		Containers: []*application_pb.Container{{
+			Name: "main",
+			Source: &application_pb.Container_Image_{
+				Image: &application_pb.Container_Image{
+					Tag:  cf.String("latest"),
+					Name: "foobar",
+				},
+			},
+		}},
+	})
+	aa := tb.BuildAndAssert(t)
 
 	taskDef := &ecs.TaskDefinition{}
 	aa.GetResource(t, "main", taskDef)
@@ -83,42 +73,29 @@ func TestDirectPortAccess(t *testing.T) {
 	t.Logf("ports: %v", taskDef.ContainerDefinitions[0].PortMappings)
 }
 
-func testbuild(t *testing.T, app *application_pb.Application) *cftest.TemplateAsserter {
-	out, err := BuildApplication(app, "version1")
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-	return cftest.NewTemplateAsserter(&cf.BuiltTemplate{
-		Template:   out.Template,
-		Parameters: out.Parameters,
-	})
-}
-
 func TestIndirectPortAccess(t *testing.T) {
-	app := &application_pb.Application{
-		Name: "app1",
-		Runtimes: []*application_pb.Runtime{{
-			Name: "main",
-			Routes: []*application_pb.Route{{
-				Prefix:          "/test",
-				BypassIngress:   false,
-				TargetContainer: "main",
-				Port:            1234,
-				Protocol:        application_pb.RouteProtocol_GRPC,
-			}},
-			Containers: []*application_pb.Container{{
-				Name: "main",
-				Source: &application_pb.Container_Image_{
-					Image: &application_pb.Container_Image{
-						Tag:  cf.String("latest"),
-						Name: "foobar",
-					},
-				},
-			}},
+	tb := NewTestBuilder()
+	tb.AddRuntime(&application_pb.Runtime{
+		Name: "main",
+		Routes: []*application_pb.Route{{
+			Prefix:          "/test",
+			BypassIngress:   false,
+			TargetContainer: "main",
+			Port:            1234,
+			Protocol:        application_pb.RouteProtocol_GRPC,
 		}},
-	}
+		Containers: []*application_pb.Container{{
+			Name: "main",
+			Source: &application_pb.Container_Image_{
+				Image: &application_pb.Container_Image{
+					Tag:  cf.String("latest"),
+					Name: "foobar",
+				},
+			},
+		}},
+	})
 
-	aa := testbuild(t, app)
+	aa := tb.BuildAndAssert(t)
 
 	taskDef := &ecs.TaskDefinition{}
 	aa.GetResource(t, "main", taskDef)
@@ -264,39 +241,35 @@ func TestBlobstore(t *testing.T) {
 
 	run := func(t *testing.T, def *application_pb.Blobstore) result {
 		t.Helper()
-		app := &application_pb.Application{
-			Name:       "app1",
-			Blobstores: []*application_pb.Blobstore{def},
-			Runtimes: []*application_pb.Runtime{{
+
+		tb := NewTestBuilder()
+		tb.AddBlobstore(def)
+		tb.AddRuntime(&application_pb.Runtime{
+			Name: "main",
+			Containers: []*application_pb.Container{{
 				Name: "main",
-				Containers: []*application_pb.Container{{
-					Name: "main",
-					Source: &application_pb.Container_Image_{
-						Image: &application_pb.Container_Image{
-							Tag:  cf.String("latest"),
-							Name: "foobar",
-						},
+				Source: &application_pb.Container_Image_{
+					Image: &application_pb.Container_Image{
+						Tag:  cf.String("latest"),
+						Name: "foobar",
 					},
-					EnvVars: []*application_pb.EnvironmentVariable{{
-						Name: "BUCKET",
-						Spec: &application_pb.EnvironmentVariable_Blobstore{
-							Blobstore: &application_pb.BlobstoreEnvVar{
-								Name:    "bucket",
-								SubPath: cf.String("subpath"),
-								Format: &application_pb.BlobstoreEnvVar_S3Direct{
-									S3Direct: true,
-								},
+				},
+				EnvVars: []*application_pb.EnvironmentVariable{{
+					Name: "BUCKET",
+					Spec: &application_pb.EnvironmentVariable_Blobstore{
+						Blobstore: &application_pb.BlobstoreEnvVar{
+							Name:    "bucket",
+							SubPath: cf.String("subpath"),
+							Format: &application_pb.BlobstoreEnvVar_S3Direct{
+								S3Direct: true,
 							},
 						},
-					}},
+					},
 				}},
 			}},
-		}
+		})
 
-		out, err := BuildApplication(app, "version1")
-		if err != nil {
-			t.Fatal(err.Error())
-		}
+		out := tb.Build(t)
 
 		rr := result{}
 
@@ -411,7 +384,7 @@ func TestBlobstore(t *testing.T) {
 
 }
 
-func assertFunctionEqual(t testing.TB, want, got string) {
+func assertFunctionEqual(t testing.TB, want, got string, messageAndArgs ...any) {
 	t.Helper()
 	if want == got {
 		return
@@ -422,7 +395,7 @@ func assertFunctionEqual(t testing.TB, want, got string) {
 
 	diff := cmp.Diff(wantAny, gotAny)
 	if diff != "" {
-		t.Fatalf("values differ: %s", diff)
+		assert.FailNow(t, diff, messageAndArgs...)
 	}
 }
 

@@ -1,1 +1,59 @@
+syntax = "proto3";
 
+package o5.aws.infra.v1;
+
+option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb";
+
+message RDSCreateSpec {
+  repeated string db_extensions = 2;
+  string db_name = 3;
+}
+
+message RDSAppSpecType {
+  oneof type {
+    SecretsManager app_secret = 3;
+    Aurora app_conn = 4;
+  }
+  message SecretsManager {
+    string app_secret_arn = 2;
+    bool rotate_credentials = 5;
+  }
+  message Aurora {
+    AuroraConnection conn = 1;
+  }
+}
+
+message RDSHostType {
+  oneof type {
+    Aurora aurora = 1;
+    SecretsManager secrets_manager = 2;
+  }
+
+  message Aurora {
+    AuroraConnection conn = 1;
+  }
+
+  message SecretsManager {
+    string secret_arn = 1;
+  }
+}
+
+message AuroraConnection {
+  // AWS API: 'Endpoint' - hostname without port.
+  // Used for connection and authentication tokens.
+  string endpoint = 1;
+
+  // AWS API: 'Port'
+  // The port that the database engine is listening on.
+  int32 port = 2;
+
+  // A username to use getting the token, which then also matches the user
+  // implementation of the engine.
+  // For root access, this could be the master_user but it only needs to be a
+  // user with the correct permissions.
+  string db_user = 3;
+
+  // defaults to the user's name. Used when accessing, not required for the
+  // token.
+  string db_name = 4;
+}

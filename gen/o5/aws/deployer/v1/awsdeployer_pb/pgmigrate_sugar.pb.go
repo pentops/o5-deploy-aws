@@ -2,4 +2,53 @@
 
 package awsdeployer_pb
 
-type IsPostgresAuth_Auth = isPostgresAuth_Auth
+// PostgresConnectionType is a oneof wrapper
+type PostgresConnectionTypeKey string
+
+const (
+	PostgresConnection_Aurora         PostgresConnectionTypeKey = "aurora"
+	PostgresConnection_SecretsManager PostgresConnectionTypeKey = "secretsManager"
+)
+
+func (x *PostgresConnectionType) TypeKey() (PostgresConnectionTypeKey, bool) {
+	switch x.Type.(type) {
+	case *PostgresConnectionType_Aurora_:
+		return PostgresConnection_Aurora, true
+	case *PostgresConnectionType_SecretsManager_:
+		return PostgresConnection_SecretsManager, true
+	default:
+		return "", false
+	}
+}
+
+type IsPostgresConnectionTypeWrappedType interface {
+	TypeKey() PostgresConnectionTypeKey
+}
+
+func (x *PostgresConnectionType) Set(val IsPostgresConnectionTypeWrappedType) {
+	switch v := val.(type) {
+	case *PostgresConnectionType_Aurora:
+		x.Type = &PostgresConnectionType_Aurora_{Aurora: v}
+	case *PostgresConnectionType_SecretsManager:
+		x.Type = &PostgresConnectionType_SecretsManager_{SecretsManager: v}
+	}
+}
+func (x *PostgresConnectionType) Get() IsPostgresConnectionTypeWrappedType {
+	switch v := x.Type.(type) {
+	case *PostgresConnectionType_Aurora_:
+		return v.Aurora
+	case *PostgresConnectionType_SecretsManager_:
+		return v.SecretsManager
+	default:
+		return nil
+	}
+}
+func (x *PostgresConnectionType_Aurora) TypeKey() PostgresConnectionTypeKey {
+	return PostgresConnection_Aurora
+}
+func (x *PostgresConnectionType_SecretsManager) TypeKey() PostgresConnectionTypeKey {
+	return PostgresConnection_SecretsManager
+}
+
+type IsPostgresConnectionType_Type = isPostgresConnectionType_Type
+type IsPostgresDatabaseResource_Connection = isPostgresDatabaseResource_Connection

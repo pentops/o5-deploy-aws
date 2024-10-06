@@ -19,8 +19,9 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
+	"github.com/pentops/o5-deploy-aws/internal/aws/aws_postgres"
 	"github.com/pentops/o5-deploy-aws/internal/awsinfra"
-	"github.com/pentops/o5-deploy-aws/internal/cf/app"
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
 	"github.com/pentops/o5-deploy-aws/internal/github"
 	"github.com/pentops/o5-deploy-aws/internal/localrun"
@@ -135,9 +136,9 @@ func runServe(ctx context.Context, cfg struct {
 
 	rawWorker := awsinfra.NewRawMessageWorker(awsInfraRunner, ecsWorker)
 
-	dbMigrator := awsinfra.NewDBMigrator(secretsmanager.NewFromConfig(awsConfig))
+	dbMigrator := aws_postgres.NewDBMigrator(secretsmanager.NewFromConfig(awsConfig))
 
-	pgMigrateRunner := awsinfra.NewPostgresMigrateWorker(infraStore, dbMigrator)
+	pgMigrateRunner := aws_postgres.NewPostgresMigrateWorker(infraStore, dbMigrator)
 
 	specBuilder, err := deployer.NewSpecBuilder(templateStore)
 	if err != nil {
@@ -205,7 +206,11 @@ func runTemplate(ctx context.Context, cfg struct {
 		return err
 	}
 
-	built, err := app.BuildApplication(appConfig, cfg.Version)
+	built, err := appbuilder.BuildApplication(appbuilder.AppInput{
+		Application: appConfig,
+		VersionTag:  cfg.Version,
+		// TODO: RDS Hosts
+	})
 	if err != nil {
 		return err
 	}
@@ -216,12 +221,6 @@ func runTemplate(ctx context.Context, cfg struct {
 		return err
 	}
 	fmt.Println(string(yaml))
-
-	fmt.Println("-----")
-
-	for _, target := range built.SnsTopics {
-		fmt.Printf("SNS Topic: %s\n", target)
-	}
 
 	return nil
 }
@@ -236,9 +235,9 @@ func getCluster(ctx context.Context, clusterFilename string, envName string) (*e
 		Name: clusterFile.Name,
 	}
 	switch et := clusterFile.Provider.(type) {
-	case *environment_pb.CombinedConfig_EcsCluster:
-		cluster.Provider = &environment_pb.Cluster_EcsCluster{
-			EcsCluster: et.EcsCluster,
+	case *environment_pb.CombinedConfig_Aws:
+		cluster.Provider = &environment_pb.Cluster_Aws{
+			Aws: et.Aws,
 		}
 	default:
 		return nil, nil, fmt.Errorf("unsupported provider %T", clusterFile.Provider)
@@ -304,9 +303,9 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		return err
 	}
 
-	ecsCluster := cluster.GetEcsCluster()
+	ecsCluster := cluster.GetAws()
 	if cfg.SidecarVersion != "" {
-		ecsCluster.SidecarImageVersion = cfg.SidecarVersion
+		ecsCluster.O5Sidecar.ImageVersion = cfg.SidecarVersion
 	}
 
 	awsTarget := env.GetAws()

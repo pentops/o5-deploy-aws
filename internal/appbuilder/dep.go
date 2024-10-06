@@ -1,4 +1,4 @@
-package app
+package appbuilder
 
 import (
 	"fmt"
@@ -14,6 +14,7 @@ import (
 
 type Globals interface {
 	AppName() string
+	FindRDSHost(string) (*RDSHost, bool)
 
 	Bucket(string) (BucketRef, bool)
 	Secret(string) (SecretRef, bool)
@@ -27,11 +28,18 @@ type resourceBuilder interface {
 }
 
 type globals struct {
-	spec *application_pb.Application
+	// input
+	spec     *application_pb.Application
+	rdsHosts RDSHostLookup
 
+	// built
 	databases map[string]DatabaseReference
 	secrets   map[string]*secretInfo
 	buckets   map[string]*bucketInfo
+}
+
+func (gg globals) FindRDSHost(serverGroup string) (*RDSHost, bool) {
+	return gg.rdsHosts.FindRDSHost(serverGroup)
 }
 
 func (gg globals) AppName() string {

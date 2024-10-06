@@ -1,4 +1,4 @@
-package awsinfra
+package aws_postgres
 
 import (
 	"context"
@@ -15,9 +15,16 @@ import (
 	sq "github.com/elgris/sqrl"
 	_ "github.com/lib/pq"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/sqrlx.go/sqrlx"
 )
+
+type SecretsManagerAPI interface {
+	GetSecretValue(ctx context.Context, params *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)
+	UpdateSecret(ctx context.Context, params *secretsmanager.UpdateSecretInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.UpdateSecretOutput, error)
+	DescribeSecret(ctx context.Context, params *secretsmanager.DescribeSecretInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.DescribeSecretOutput, error)
+}
 
 type DBMigrator struct {
 	secretsManager SecretsManagerAPI
@@ -29,22 +36,38 @@ func NewDBMigrator(client SecretsManagerAPI) *DBMigrator {
 	}
 }
 
-func (d *DBMigrator) UpsertPostgresDatabase(ctx context.Context, migrationID string, msg *awsdeployer_pb.PostgresCreationSpec) error {
-	if err := d.upsertPostgresDatabase(ctx, msg); err != nil {
+func (d *DBMigrator) UpsertPostgresDatabase(ctx context.Context, migrationID string, msg *awsinfra_tpb.UpsertPostgresDatabaseMessage) error {
+
+	connSpec, err := d.buildSpec(ctx, msg.AdminHost)
+	if err != nil {
 		return err
 	}
 
-	if err := d.fixPostgresOwnership(ctx, &awsdeployer_pb.PostgresCleanupSpec{
-		DbName:         msg.DbName,
-		RootSecretName: msg.RootSecretName,
-	}); err != nil {
+	didCreate, err := d.upsertPostgresDatabase(ctx, connSpec, msg.Spec)
+	if err != nil {
+		return err
+	}
+
+	if appSecret := msg.AppAccess.GetAppSecret(); appSecret != nil {
+		if didCreate || appSecret.RotateCredentials {
+			if err := d.buildSecretsUser(ctx, connSpec, msg.Spec.DbName, appSecret); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := d.fixPostgresOwnership(ctx, connSpec, msg.Spec.DbName); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (d *DBMigrator) CleanupPostgresDatabase(ctx context.Context, migrationID string, msg *awsdeployer_pb.PostgresCleanupSpec) error {
-	return d.fixPostgresOwnership(ctx, msg)
+func (d *DBMigrator) CleanupPostgresDatabase(ctx context.Context, migrationID string, msg *awsinfra_tpb.CleanupPostgresDatabaseMessage) error {
+	connSpec, err := d.buildSpec(ctx, msg.AdminHost)
+	if err != nil {
+		return err
+	}
+	return d.fixPostgresOwnership(ctx, connSpec, msg.DbName)
 }
 
 type DBSecret struct {
@@ -77,27 +100,97 @@ func (d *DBMigrator) rootPostgresCredentials(ctx context.Context, rootSecretName
 	return secretVal, nil
 }
 
-func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *awsdeployer_pb.PostgresCleanupSpec) error {
+type DBSpec interface {
+	OpenRoot(context.Context) (*sql.DB, error)
+	OpenDBAsRoot(ctx context.Context, dbName string) (*sql.DB, error)
 
-	log.Info(ctx, "Fix object ownership")
-	dbName := msg.DbName
+	// NewAppSecret creates the APP side secret for either root connection type.
+	NewAppSecret(dbName string) DBSecret
+}
+
+type secretsSpec struct {
+	rootSecret DBSecret
+}
+
+func (s *secretsSpec) OpenRoot(ctx context.Context) (*sql.DB, error) {
+	log.WithFields(ctx, map[string]interface{}{
+		"hostname": s.rootSecret.Hostname,
+		"dbName":   s.rootSecret.DBName,
+	}).Debug("Connecting to RDS root db as root user")
+
+	return openDB(ctx, s.rootSecret.URL)
+}
+
+func (s *secretsSpec) OpenDBAsRoot(ctx context.Context, dbName string) (*sql.DB, error) {
+	log.WithFields(ctx, map[string]interface{}{
+		"hostname": s.rootSecret.Hostname,
+		"dbName":   s.rootSecret.DBName,
+	}).Debug("Connecting to RDS app db as root user")
+
+	return openDB(ctx, s.rootSecret.buildURLForDB(dbName))
+}
+
+func (s *secretsSpec) SecretsManagerSpec() (*DBSecret, bool) {
+	return &s.rootSecret, true
+}
+
+func (s *secretsSpec) NewAppSecret(dbName string) DBSecret {
+	newSecret := DBSecret{
+		DBName:   dbName,
+		Hostname: s.rootSecret.Hostname,
+		Username: fmt.Sprintf("%s_%d", dbName, time.Now().Unix()),
+	}
+	return newSecret
+}
+
+func (d *DBMigrator) buildSpec(ctx context.Context, spec *awsinfra_pb.RDSHostType) (DBSpec, error) {
+	switch spec := spec.Get().(type) {
+	case *awsinfra_pb.RDSHostType_Aurora:
+		return nil, fmt.Errorf("Aurora not supported")
+	case *awsinfra_pb.RDSHostType_SecretsManager:
+
+		secret, err := d.rootPostgresCredentials(ctx, spec.SecretArn)
+		if err != nil {
+			return nil, err
+		}
+
+		return &secretsSpec{
+			rootSecret: *secret,
+		}, nil
+
+	default:
+		return nil, fmt.Errorf("unknown spec type %T", spec)
+	}
+}
+
+func openDB(ctx context.Context, url string) (*sql.DB, error) {
+	conn, err := sql.Open("postgres", url)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := conn.PingContext(ctx); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	conn.SetMaxOpenConns(1)
+	if _, err := conn.ExecContext(ctx, "SET application_name TO 'o5-deployer'"); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	return conn, nil
+}
+
+func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, spec DBSpec, dbName string) error {
 	ownerName := dbName
 
-	rootSecret, err := d.rootPostgresCredentials(ctx, msg.RootSecretName)
+	log.Info(ctx, "Fix object ownership")
+	rootConn, err := spec.OpenDBAsRoot(ctx, dbName)
 	if err != nil {
 		return err
 	}
-
-	log.WithFields(ctx, map[string]interface{}{
-		"hostname": rootSecret.Hostname,
-		"dbName":   dbName,
-	}).Debug("Connecting to RDS for db as root user")
-
-	rootConn, err := openDB(ctx, rootSecret.buildURLForDB(dbName))
-	if err != nil {
-		return err
-	}
-
 	defer rootConn.Close()
 
 	_, err = rootConn.ExecContext(ctx, fmt.Sprintf(`GRANT USAGE, CREATE ON SCHEMA public TO %s`, ownerName))
@@ -188,52 +281,20 @@ func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, msg *awsdeployer_
 	}
 
 	return nil
+
 }
 
-func openDB(ctx context.Context, url string) (*sql.DB, error) {
-	conn, err := sql.Open("postgres", url)
+func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, connSpec DBSpec, spec *awsinfra_pb.RDSCreateSpec) (bool, error) {
+	dbName := spec.DbName
+
+	rootConn, err := connSpec.OpenRoot(ctx)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-
-	if err := conn.PingContext(ctx); err != nil {
-		conn.Close()
-		return nil, err
-	}
-
-	conn.SetMaxOpenConns(1)
-	if _, err := conn.ExecContext(ctx, "SET application_name TO 'o5-deployer'"); err != nil {
-		conn.Close()
-		return nil, err
-	}
-
-	return conn, nil
-}
-
-func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *awsdeployer_pb.PostgresCreationSpec) error {
-
-	// spec *awsdeployer_pb.PostgresDatabase, secretARN string, rotateExisting bool) error {
-	//.Database, msg.SecretArn, msg.RotateCredentials); err != nil {
-
-	dbName := msg.DbName
-	rootSecret, err := d.rootPostgresCredentials(ctx, msg.RootSecretName)
-	if err != nil {
-		return err
-	}
-
-	log.WithFields(ctx, map[string]interface{}{
-		"hostname": rootSecret.Hostname,
-	}).Debug("Connecting to RDS server as root user")
-
-	rootConn, err := openDB(ctx, rootSecret.URL)
-	if err != nil {
-		return err
-	}
-	defer rootConn.Close()
 
 	db, err := sqrlx.NewWithCommander(rootConn, sq.Dollar)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	var count int
@@ -244,51 +305,48 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *awsdeploye
 		Where("datname = ?", dbName),
 	).Scan(&count)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	log.WithFields(ctx, map[string]interface{}{
 		"count": count,
 	}).Debug("Found DBs")
 
-	if count > 1 {
-		return fmt.Errorf("more than one DB matched %s:%s", msg.RootSecretName, dbName)
-	} else if count == 0 {
-		_, err = db.ExecRaw(ctx, fmt.Sprintf(`CREATE ROLE %s`, dbName))
-		if err != nil {
-			return err
-		}
-
-		_, err = db.ExecRaw(ctx, fmt.Sprintf(`GRANT %s TO current_user`, dbName))
-		if err != nil {
-			return err
-		}
-
-		_, err = db.ExecRaw(ctx, fmt.Sprintf(`CREATE DATABASE %s OWNER %s`, dbName, dbName))
-		if err != nil {
-			return err
-		}
+	if count == 1 {
+		return false, nil
+	} else if count > 1 {
+		return false, fmt.Errorf("more than one DB matched %q", dbName)
 	}
 
-	if count == 1 && !msg.RotateCredentials {
-		return nil
+	_, err = db.ExecRaw(ctx, fmt.Sprintf(`CREATE ROLE %s`, dbName))
+	if err != nil {
+		return true, err
 	}
 
-	if len(msg.DbExtensions) > 0 {
+	_, err = db.ExecRaw(ctx, fmt.Sprintf(`GRANT %s TO current_user`, dbName))
+	if err != nil {
+		return true, err
+	}
+
+	_, err = db.ExecRaw(ctx, fmt.Sprintf(`CREATE DATABASE %s OWNER %s`, dbName, dbName))
+	if err != nil {
+		return true, err
+	}
+
+	if len(spec.DbExtensions) > 0 {
 		log.WithFields(ctx, map[string]interface{}{
-			"count": len(msg.DbExtensions),
+			"count": len(spec.DbExtensions),
 		}).Debug("Adding Extensions")
 		if err := func() error {
 			// Note this connects to the database name, not the wider 'postgres'
 			// namespace, so is different to the outer rootConn
-			superuserURL := rootSecret.buildURLForDB(dbName)
-			superuserConn, err := openDB(ctx, superuserURL)
+			superuserConn, err := connSpec.OpenDBAsRoot(ctx, dbName)
 			if err != nil {
 				return err
 			}
 			defer superuserConn.Close()
 
-			for _, ext := range msg.DbExtensions {
+			for _, ext := range spec.DbExtensions {
 				if !reSafeExtensionName.MatchString(ext) {
 					return fmt.Errorf("unsafe extension name: %s", ext)
 				}
@@ -301,15 +359,19 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *awsdeploye
 
 			return nil
 		}(); err != nil {
-			return err
+			return true, err
 		}
 	}
 
-	newSecret := DBSecret{
-		DBName:   dbName,
-		Hostname: rootSecret.Hostname,
-		Username: fmt.Sprintf("%s_%d", dbName, time.Now().Unix()),
-	}
+	return true, nil
+
+}
+
+// buildSecretsUser creates a new user alias in the database and stores the credentials in Secrets Manager.
+func (d *DBMigrator) buildSecretsUser(ctx context.Context, connSpec DBSpec, dbName string, msg *awsinfra_pb.RDSAppSpecType_SecretsManager) error {
+	var err error
+
+	newSecret := connSpec.NewAppSecret(dbName)
 
 	log.WithFields(ctx, map[string]interface{}{
 		"newUsername": newSecret.Username,
@@ -321,6 +383,12 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *awsdeploye
 	}
 
 	newSecret.URL = newSecret.buildURLForDB(dbName)
+
+	rootConn, err := connSpec.OpenRoot(ctx)
+	if err != nil {
+		return err
+	}
+	defer rootConn.Close()
 
 	// CREATE USER == CREATE ROLE WITH LOGIN
 	// Note the driver can't take these as parameters apparently.
@@ -336,16 +404,16 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, msg *awsdeploye
 
 	log.WithFields(ctx, map[string]interface{}{
 		"newUsername": newSecret.Username,
-		"secretARN":   msg.SecretArn,
+		"secretARN":   msg.AppSecretArn,
 	}).Debug("Storing New User Credentials")
 
 	_, err = d.secretsManager.UpdateSecret(ctx, &secretsmanager.UpdateSecretInput{
 		// ARN or Name
-		SecretId:     aws.String(msg.SecretArn),
+		SecretId:     aws.String(msg.AppSecretArn),
 		SecretString: aws.String(string(jsonBytes)),
 	})
 	if err != nil {
-		return fmt.Errorf("Storing new secret value (%s) failed. The user was still created: %w", msg.SecretArn, err)
+		return fmt.Errorf("Storing new secret value (%s) failed. The user was still created: %w", msg.AppSecretArn, err)
 	}
 
 	return nil

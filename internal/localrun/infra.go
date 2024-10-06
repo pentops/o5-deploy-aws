@@ -14,6 +14,7 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
+	"github.com/pentops/o5-deploy-aws/internal/aws/aws_postgres"
 	"github.com/pentops/o5-deploy-aws/internal/awsinfra"
 	"github.com/pentops/o5-deploy-aws/internal/service"
 	"google.golang.org/protobuf/proto"
@@ -21,13 +22,13 @@ import (
 
 type InfraAdapter struct {
 	cfClient  *awsinfra.CFClient
-	dbClient  *awsinfra.DBMigrator
+	dbClient  *aws_postgres.DBMigrator
 	ecsClient *ecsRunner
 }
 
 func NewInfraAdapter(ctx context.Context, cl *awsinfra.DeployerClients) (*InfraAdapter, error) {
 	cfClient := awsinfra.NewCFAdapter(cl, []string{})
-	dbMigrator := awsinfra.NewDBMigrator(cl.SecretsManager)
+	dbMigrator := aws_postgres.NewDBMigrator(cl.SecretsManager)
 	ecsClient := &ecsRunner{
 		ecsClient: cl.ECS,
 	}
@@ -45,7 +46,7 @@ func NewInfraAdapterFromConfig(ctx context.Context, config aws.Config) (*InfraAd
 		return nil, err
 	}
 
-	dbMigrator := awsinfra.NewDBMigrator(secretsmanager.NewFromConfig(config))
+	dbMigrator := aws_postgres.NewDBMigrator(secretsmanager.NewFromConfig(config))
 	ecsClient := &ecsRunner{
 		ecsClient: ecs.NewFromConfig(config),
 	}
@@ -324,19 +325,19 @@ func (cf *InfraAdapter) runPostgresCallback(ctx context.Context, msg pgRequest, 
 func (cf *InfraAdapter) MigratePostgresDatabase(ctx context.Context, msg *awsinfra_tpb.MigratePostgresDatabaseMessage) (*awsinfra_tpb.PostgresDatabaseStatusMessage, error) {
 
 	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context) error {
-		return cf.ecsClient.runMigrationTask(ctx, msg.MigrationId, msg.Spec)
+		return cf.ecsClient.runMigrationTask(ctx, msg.MigrationId, msg)
 	})
 }
 
 func (cf *InfraAdapter) UpsertPostgresDatabase(ctx context.Context, msg *awsinfra_tpb.UpsertPostgresDatabaseMessage) (*awsinfra_tpb.PostgresDatabaseStatusMessage, error) {
 	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context) error {
-		return cf.dbClient.UpsertPostgresDatabase(ctx, msg.MigrationId, msg.Spec)
+		return cf.dbClient.UpsertPostgresDatabase(ctx, msg.MigrationId, msg)
 	})
 }
 
 func (cf *InfraAdapter) CleanupPostgresDatabase(ctx context.Context, msg *awsinfra_tpb.CleanupPostgresDatabaseMessage) (*awsinfra_tpb.PostgresDatabaseStatusMessage, error) {
 	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context) error {
-		return cf.dbClient.CleanupPostgresDatabase(ctx, msg.MigrationId, msg.Spec)
+		return cf.dbClient.CleanupPostgresDatabase(ctx, msg.MigrationId, msg)
 	})
 }
 

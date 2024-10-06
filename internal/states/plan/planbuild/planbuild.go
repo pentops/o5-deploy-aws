@@ -173,7 +173,6 @@ func (plan *DeploymentPlan) MigrateDatabases(ctx context.Context, infraReadyStep
 
 		ctx = log.WithFields(ctx, map[string]interface{}{
 			"database": db.DbName,
-			"root":     db.RootSecretName,
 		})
 		log.Debug(ctx, "Upsert Database")
 

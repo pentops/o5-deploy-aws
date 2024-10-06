@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/pentops/go-grpc-helpers/protovalidatemw"
 	"github.com/pentops/log.go/grpc_log"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/realms/j5auth"
@@ -11,5 +12,6 @@ func GRPCMiddleware() []grpc.UnaryServerInterceptor {
 	return []grpc.UnaryServerInterceptor{
 		grpc_log.UnaryServerInterceptor(log.DefaultContext, log.DefaultTrace, log.DefaultLogger),
 		j5auth.GRPCMiddleware,
+		protovalidatemw.UnaryServerInterceptor(protovalidatemw.WithReply()),
 	}
 }

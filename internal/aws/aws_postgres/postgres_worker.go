@@ -1,4 +1,4 @@
-package awsinfra
+package aws_postgres
 
 import (
 	"context"
@@ -8,11 +8,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
+	"github.com/pentops/o5-messaging/o5msg"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
+
+type DBLite interface {
+	PublishEvent(context.Context, o5msg.Message) error
+	RequestToClientToken(context.Context, *messaging_j5pb.RequestMetadata) (string, error)
+	ClientTokenToRequest(context.Context, string) (*messaging_j5pb.RequestMetadata, error)
+}
 
 type PostgresMigrateWorker struct {
 	awsinfra_tpb.UnimplementedPostgresRequestTopicServer
@@ -30,8 +36,8 @@ func NewPostgresMigrateWorker(db DBLite, migrator IDBMigrator) *PostgresMigrateW
 }
 
 type IDBMigrator interface {
-	UpsertPostgresDatabase(ctx context.Context, migrationID string, msg *awsdeployer_pb.PostgresCreationSpec) error
-	CleanupPostgresDatabase(ctx context.Context, migrationID string, msg *awsdeployer_pb.PostgresCleanupSpec) error
+	UpsertPostgresDatabase(ctx context.Context, migrationID string, msg *awsinfra_tpb.UpsertPostgresDatabaseMessage) error
+	CleanupPostgresDatabase(ctx context.Context, migrationID string, msg *awsinfra_tpb.CleanupPostgresDatabaseMessage) error
 }
 
 type pgRequest interface {
@@ -89,13 +95,13 @@ func (d *PostgresMigrateWorker) runCallback(ctx context.Context, msg pgRequest, 
 
 func (d *PostgresMigrateWorker) UpsertPostgresDatabase(ctx context.Context, msg *awsinfra_tpb.UpsertPostgresDatabaseMessage) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, d.runCallback(ctx, msg, "upsert", func(ctx context.Context) error {
-		return d.migrator.UpsertPostgresDatabase(ctx, msg.MigrationId, msg.Spec)
+		return d.migrator.UpsertPostgresDatabase(ctx, msg.MigrationId, msg)
 	})
 }
 
 func (d *PostgresMigrateWorker) CleanupPostgresDatabase(ctx context.Context, msg *awsinfra_tpb.CleanupPostgresDatabaseMessage) (*emptypb.Empty, error) {
 	return &emptypb.Empty{}, d.runCallback(ctx, msg, "cleanup", func(ctx context.Context) error {
-		return d.migrator.CleanupPostgresDatabase(ctx, msg.MigrationId, msg.Spec)
+		return d.migrator.CleanupPostgresDatabase(ctx, msg.MigrationId, msg)
 	})
 }
 
@@ -115,7 +121,7 @@ func (d *PostgresMigrateWorker) MigratePostgresDatabase(ctx context.Context, msg
 		return nil, err
 	}
 
-	taskContext := &awsdeployer_pb.MigrationTaskContext{
+	taskContext := &awsinfra_tpb.MigrationTaskContext{
 		Upstream:    msg.Request,
 		MigrationId: msg.MigrationId,
 	}
@@ -129,8 +135,8 @@ func (d *PostgresMigrateWorker) MigratePostgresDatabase(ctx context.Context, msg
 			Context: taskContextBytes,
 			ReplyTo: "deployer",
 		},
-		TaskDefinition: msg.Spec.MigrationTaskArn,
-		Cluster:        msg.Spec.EcsClusterName,
+		TaskDefinition: msg.MigrationTaskArn,
+		Cluster:        msg.EcsClusterName,
 		Count:          1,
 	}); err != nil {
 		return nil, err
@@ -140,7 +146,7 @@ func (d *PostgresMigrateWorker) MigratePostgresDatabase(ctx context.Context, msg
 
 func (d *PostgresMigrateWorker) ECSTaskStatus(ctx context.Context, msg *awsinfra_tpb.ECSTaskStatusMessage) (*emptypb.Empty, error) {
 
-	taskContext := &awsdeployer_pb.MigrationTaskContext{}
+	taskContext := &awsinfra_tpb.MigrationTaskContext{}
 	if err := proto.Unmarshal(msg.Request.Context, taskContext); err != nil {
 		return nil, err
 	}
