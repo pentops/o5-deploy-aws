@@ -2,11 +2,13 @@ package deployer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
 )
@@ -19,7 +21,7 @@ type ParameterResolver interface {
 	ResolveParameter(param *awsdeployer_pb.Parameter) (*awsdeployer_pb.CloudFormationStackParameter, error)
 }
 
-func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster, environment *environment_pb.Environment) (*deployerResolver, error) {
+func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster, environment *environment_pb.Environment, pgSpecs []*awsdeployer_pb.PostgresSpec) (*deployerResolver, error) {
 
 	awsEnv := environment.GetAws()
 	if awsEnv == nil {
@@ -55,6 +57,14 @@ func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster
 		namedPolicies[policy.Name] = policy.PolicyArn
 	}
 
+	auroraHosts := map[string]*awsinfra_pb.AuroraConnection{}
+	for _, rdsHost := range pgSpecs {
+		aurora := rdsHost.AppConnection.GetAurora()
+		if aurora != nil {
+			auroraHosts[rdsHost.DbName] = aurora.Conn
+		}
+	}
+
 	dr := &deployerResolver{
 		wellKnown: map[string]string{
 			appbuilder.ListenerARNParameter:          ecsCluster.AlbIngress.ListenerArn,
@@ -76,6 +86,8 @@ func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster
 		custom:        environment.Vars,
 		crossEnvs:     crossEnvs,
 		namedPolicies: namedPolicies,
+
+		auroraHosts: auroraHosts,
 	}
 	return dr, nil
 }
@@ -85,6 +97,7 @@ type deployerResolver struct {
 	namedPolicies map[string]string
 	custom        []*environment_pb.CustomVariable
 	crossEnvs     map[string]*environment_pb.AWSLink
+	auroraHosts   map[string]*awsinfra_pb.AuroraConnection
 }
 
 func (rr *deployerResolver) ResolveParameter(param *awsdeployer_pb.Parameter) (*awsdeployer_pb.CloudFormationStackParameter, error) {
@@ -154,6 +167,26 @@ func (rr *deployerResolver) ResolveParameter(param *awsdeployer_pb.Parameter) (*
 		}
 		value = arn
 
+	case *awsdeployer_pb.ParameterSourceType_AuroraEndpoint_:
+		host, ok := rr.auroraHosts[ps.AuroraEndpoint.DbName]
+		if !ok {
+			return nil, fmt.Errorf("unknown aurora server server group: %s", ps.AuroraEndpoint.ServerGroup)
+		}
+
+		if host.Port == 0 {
+			host.Port = 5432
+		}
+		jsonValue, err := json.Marshal(&AuroraIAMParameterValue{
+			Endpoint: fmt.Sprintf("%s:%d", host.Endpoint, host.Port),
+			DbName:   host.DbName,
+			DbUser:   host.DbUser,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		value = string(jsonValue)
+
 	default:
 		return nil, fmt.Errorf("unknown parameter source (%v) %s", param.Source, param.Name)
 	}
@@ -165,6 +198,12 @@ func (rr *deployerResolver) ResolveParameter(param *awsdeployer_pb.Parameter) (*
 		},
 	}, nil
 
+}
+
+type AuroraIAMParameterValue struct {
+	Endpoint string `json:"endpoint"` // Address and Port
+	DbName   string `json:"dbName"`
+	DbUser   string `json:"dbUser"`
 }
 
 func (dr *deployerResolver) CustomEnvVar(name string) (string, bool) {

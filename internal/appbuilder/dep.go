@@ -24,7 +24,7 @@ type Globals interface {
 type resourceBuilder interface {
 	addBucket(*bucketInfo)
 	addSecret(*secretInfo)
-	addDatabase(*DatabaseReference)
+	addDatabase(DatabaseRef)
 }
 
 type globals struct {
@@ -33,7 +33,7 @@ type globals struct {
 	rdsHosts RDSHostLookup
 
 	// built
-	databases map[string]DatabaseReference
+	databases map[string]DatabaseRef
 	secrets   map[string]*secretInfo
 	buckets   map[string]*bucketInfo
 }
@@ -78,8 +78,8 @@ func (gg globals) addSecret(summary *secretInfo) {
 	gg.secrets[summary.refName] = summary
 }
 
-func (gg globals) addDatabase(summary *DatabaseReference) {
-	gg.databases[summary.refName] = *summary
+func (gg globals) addDatabase(summary DatabaseRef) {
+	gg.databases[summary.Name()] = summary
 }
 
 type SecretRef interface {

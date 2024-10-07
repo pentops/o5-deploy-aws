@@ -6,11 +6,8 @@ import (
 	"fmt"
 	"net"
 
-	realaws "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/bufbuild/protovalidate-go"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pentops/log.go/log"
@@ -49,9 +46,10 @@ func main() {
 
 func runMigrate(ctx context.Context, config struct {
 	MigrationsDir string `env:"MIGRATIONS_DIR" default:"./ext/db"`
+	DBConfig
 }) error {
 
-	db, err := service.OpenDatabase(ctx)
+	db, err := config.OpenDatabase(ctx)
 	if err != nil {
 		return err
 	}
@@ -66,6 +64,8 @@ func runServe(ctx context.Context, cfg struct {
 	CFTemplates        string `env:"CF_TEMPLATES"`
 	CallbackARN        string `env:"CALLBACK_ARN"`
 	GithubAppsJSON     string `env:"GITHUB_APPS"`
+
+	DBConfig
 }) error {
 
 	log.WithField(ctx, "PORT", cfg.GRPCPort).Info("Boot")
@@ -75,90 +75,66 @@ func runServe(ctx context.Context, cfg struct {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	if cfg.DeployerAssumeRole != "" {
-		stsClient := sts.NewFromConfig(awsConfig)
-		provider := stscreds.NewAssumeRoleProvider(stsClient, cfg.DeployerAssumeRole)
-		creds := realaws.NewCredentialsCache(provider)
-
-		assumeRoleConfig, err := config.LoadDefaultConfig(ctx,
-			config.WithCredentialsProvider(creds),
-		)
-		if err != nil {
-			return fmt.Errorf("failed to load config: %w", err)
-		}
-
-		awsConfig = assumeRoleConfig
-	}
-
-	{
-		stsClient := sts.NewFromConfig(awsConfig)
-		identity, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
-		if err != nil {
-			return fmt.Errorf("failed to get caller identity: %w", err)
-		}
-		log.WithFields(ctx, map[string]interface{}{
-			"account":     realaws.ToString(identity.Account),
-			"arn":         realaws.ToString(identity.Arn),
-			"user":        realaws.ToString(identity.UserId),
-			"assumedRole": cfg.DeployerAssumeRole,
-		}).Info("Running With AWS Identity")
-	}
-
+	// NOTE: This config does not participate in 'assume role' (if any).
+	// The O5 deployer *service* should have write access to the bucket on its own behalf.
+	// The AWS adaptor should be able to read the configs with the assumed role
 	s3Client := s3.NewFromConfig(awsConfig)
 
-	dbConn, err := service.OpenDatabase(ctx)
+	dbConn, err := cfg.OpenDatabase(ctx)
 	if err != nil {
 		return err
 	}
-
-	templateStore, err := deployer.NewS3TemplateStore(ctx, s3Client, cfg.CFTemplates)
-	if err != nil {
-		return err
-	}
-
 	db := sqrlx.NewPostgres(dbConn)
-
-	specBuilder, err := deployer.NewSpecBuilder(templateStore)
-	if err != nil {
-		return err
-	}
-
-	githubApps := []github.AppConfig{}
-	if err := json.Unmarshal([]byte(cfg.GithubAppsJSON), &githubApps); err != nil {
-		return fmt.Errorf("GITHUB_APPS env var: %w", err)
-	}
-	githubClient, err := github.NewMultiOrgClientFromConfigs(githubApps...)
-	if err != nil {
-		return err
-	}
-
-	serviceApp, err := service.NewApp(service.AppDeps{
-		DB:           db,
-		GithubClient: githubClient,
-		SpecBuilder:  specBuilder,
-	})
-	if err != nil {
-		return err
-	}
 
 	middleware := service.GRPCMiddleware()
 	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(middleware...)),
 	)
 
-	serviceApp.RegisterGRPC(grpcServer)
+	{
+		clients, err := awsapi.LoadFromConfig(ctx, awsConfig, awsapi.WithAssumeRole(cfg.DeployerAssumeRole))
+		if err != nil {
+			return err
+		}
 
-	clients, err := awsapi.NewDeployerClientsFromConfig(ctx, awsConfig)
-	if err != nil {
-		return err
+		infraApp, err := aws.NewApp(db, clients, []string{cfg.CallbackARN})
+		if err != nil {
+			return err
+		}
+		infraApp.RegisterGRPC(grpcServer)
 	}
 
-	infraApp, err := aws.NewApp(db, clients, []string{cfg.CallbackARN})
-	if err != nil {
-		return err
+	{
+		templateStore, err := deployer.NewS3TemplateStore(ctx, s3Client, cfg.CFTemplates)
+		if err != nil {
+			return err
+		}
+
+		specBuilder, err := deployer.NewSpecBuilder(templateStore)
+		if err != nil {
+			return err
+		}
+
+		githubApps := []github.AppConfig{}
+		if err := json.Unmarshal([]byte(cfg.GithubAppsJSON), &githubApps); err != nil {
+			return fmt.Errorf("GITHUB_APPS env var: %w", err)
+		}
+		githubClient, err := github.NewMultiOrgClientFromConfigs(githubApps...)
+		if err != nil {
+			return err
+		}
+
+		serviceApp, err := service.NewApp(service.AppDeps{
+			DB:           db,
+			GithubClient: githubClient,
+			SpecBuilder:  specBuilder,
+		})
+		if err != nil {
+			return err
+		}
+		serviceApp.RegisterGRPC(grpcServer)
 	}
 
-	infraApp.RegisterGRPC(grpcServer)
 	reflection.Register(grpcServer)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
@@ -177,6 +153,8 @@ func runServe(ctx context.Context, cfg struct {
 func runTemplate(ctx context.Context, cfg struct {
 	AppFilename string `flag:"app" description:"application file"`
 	Version     string `flag:"version" default:"VERSION" description:"version tag"`
+	RDSIAM      bool   `flag:"rds-iam" description:"make all RDS hosts Aurora-IAM style"`
+	JSON        bool   `flag:"json" description:"output as JSON"`
 }) error {
 
 	if cfg.AppFilename == "" {
@@ -188,16 +166,29 @@ func runTemplate(ctx context.Context, cfg struct {
 		return err
 	}
 
+	hostType := environment_pb.RDSAuth_SecretsManager
+	if cfg.RDSIAM {
+		hostType = environment_pb.RDSAuth_Iam
+	}
 	built, err := appbuilder.BuildApplication(appbuilder.AppInput{
 		Application: appConfig,
 		VersionTag:  cfg.Version,
-		RDSHosts:    fakeHosts(environment_pb.RDSAuth_SecretsManager),
+		RDSHosts:    fakeHosts(hostType),
 	})
 	if err != nil {
 		return err
 	}
 
 	tpl := built.Template
+	if cfg.JSON {
+		json, err := tpl.JSON()
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(json))
+
+		return nil
+	}
 	yaml, err := tpl.YAML()
 	if err != nil {
 		return err
@@ -347,7 +338,12 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 		return err
 	}
 
-	infra, err := localrun.NewInfraAdapterFromConfig(ctx, awsConfig)
+	clients, err := awsapi.LoadFromConfig(ctx, awsConfig)
+	if err != nil {
+		return err
+	}
+
+	infra, err := localrun.NewInfraAdapter(ctx, clients)
 	if err != nil {
 		return err
 	}

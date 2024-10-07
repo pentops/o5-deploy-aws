@@ -36,7 +36,7 @@ func pascalKey(key string) string {
 	return strcase.ToCamel(key)
 }
 
-func (ua *UniverseAsserter) afterEach(ctx context.Context) {
+func (ua *UniverseAsserter) afterEach(_ context.Context) {
 	ua.Helper()
 	hadMessages := false
 	suggestions := []string{}

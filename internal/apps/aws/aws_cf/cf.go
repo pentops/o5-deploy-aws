@@ -43,14 +43,6 @@ func NewCFAdapter(clients *awsapi.DeployerClients, callbackARNs []string) *CFCli
 	}
 }
 
-func NewCFAdapterFromConfig(ctx context.Context, config aws.Config, callbackARNs []string) (*CFClient, error) {
-	clients, err := awsapi.NewDeployerClientsFromConfig(ctx, config)
-	if err != nil {
-		return nil, err
-	}
-	return NewCFAdapter(clients, callbackARNs), nil
-}
-
 func templateURL(tpl *awsdeployer_pb.S3Template) string {
 	return fmt.Sprintf("https://s3.%s.amazonaws.com/%s/%s", tpl.Region, tpl.Bucket, tpl.Key)
 }

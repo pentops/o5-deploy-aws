@@ -2,13 +2,11 @@ package appbuilder
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	elbv2 "github.com/awslabs/goformation/v7/cloudformation/elasticloadbalancingv2"
 	"github.com/awslabs/goformation/v7/cloudformation/events"
-	"github.com/awslabs/goformation/v7/cloudformation/iam"
 	"github.com/awslabs/goformation/v7/cloudformation/sns"
 	"github.com/awslabs/goformation/v7/cloudformation/sqs"
 	"github.com/awslabs/goformation/v7/cloudformation/tags"
@@ -29,13 +27,9 @@ type RuntimeService struct {
 
 	Policy *PolicyBuilder
 
-	AdapterContainer *ecs.TaskDefinition_ContainerDefinition
-
-	ingressEndpoints map[string]struct{}
+	Sidecar *SidecarBuilder
 
 	spec *application_pb.Runtime
-
-	outboxDatabases []DatabaseRef
 }
 
 func NewRuntimeService(globals Globals, runtime *application_pb.Runtime) (*RuntimeService, error) {
@@ -43,13 +37,9 @@ func NewRuntimeService(globals Globals, runtime *application_pb.Runtime) (*Runti
 	policy := NewPolicyBuilder()
 
 	defs := []*ContainerDefinition{}
-	serviceLinks := []string{}
 
 	needsDockerVolume := false
 	for _, def := range runtime.Containers {
-
-		serviceLinks = append(serviceLinks, fmt.Sprintf("%s:%s", def.Name, def.Name))
-
 		container, err := buildContainer(globals, policy, def)
 		if err != nil {
 			return nil, fmt.Errorf("building service container %s: %w", def.Name, err)
@@ -61,57 +51,14 @@ func NewRuntimeService(globals Globals, runtime *application_pb.Runtime) (*Runti
 		defs = append(defs, container)
 	}
 
-	runtimeSidecar := &ecs.TaskDefinition_ContainerDefinition{
-		Name:      O5SidecarContainerName,
-		Essential: cflib.Bool(true),
-		Image:     cloudformation.Ref(O5SidecarImageParameter),
-		Cpu:       cflib.Int(128),
-		Memory:    cflib.Int(128),
-		PortMappings: []ecs.TaskDefinition_PortMapping{{
-			ContainerPort: cflib.Int(8080),
-		}},
-		Links: serviceLinks,
-		Environment: []ecs.TaskDefinition_KeyValuePair{{
-			Name:  cflib.String("EVENTBRIDGE_ARN"),
-			Value: cflib.String(cloudformation.Ref(EventBusARNParameter)),
-		}, {
-			Name:  cflib.String("APP_NAME"),
-			Value: cflib.String(globals.AppName()),
-		}, {
-			Name:  cflib.String("ENVIRONMENT_NAME"),
-			Value: cflib.String(cloudformation.Ref(EnvNameParameter)),
-		}, {
-			Name:  cflib.String("AWS_REGION"),
-			Value: cflib.String(cloudformation.Ref(AWSRegionParameter)),
-		}, {
-			Name:  cflib.String("CORS_ORIGINS"),
-			Value: cflib.String(cloudformation.Ref(CORSOriginParameter)),
-		}},
-	}
+	sidecar := NewSidecarBuilder(globals.AppName())
 
 	if runtime.WorkerConfig != nil {
 		cfg := runtime.WorkerConfig
-		if cfg.DeadletterChance > 0 {
-			runtimeSidecar.Environment = append(runtimeSidecar.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  cflib.String("DEADLETTER_CHANCE"),
-				Value: cflib.String(fmt.Sprintf("%v", cfg.DeadletterChance)),
-			})
-		}
-		if cfg.ReplayChance > 0 {
-			runtimeSidecar.Environment = append(runtimeSidecar.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  cflib.String("RESEND_CHANCE"),
-				Value: cflib.String(fmt.Sprintf("%v", cfg.ReplayChance)),
-			})
-		}
-		if cfg.NoDeadletters {
-			runtimeSidecar.Environment = append(runtimeSidecar.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  cflib.String("NO_DEADLETTERS"),
-				Value: cflib.String("true"),
-			})
+		if err := sidecar.SetWorkerConfig(cfg); err != nil {
+			return nil, fmt.Errorf("setting sidecar worker config: %w", err)
 		}
 	}
-
-	addLogs(runtimeSidecar, globals.AppName())
 
 	taskDefinition := cflib.NewResource(runtime.Name, &ecs.TaskDefinition{
 		Family:                  cflib.String(fmt.Sprintf("%s_%s", globals.AppName(), runtime.Name)),
@@ -149,34 +96,16 @@ func NewRuntimeService(globals Globals, runtime *application_pb.Runtime) (*Runti
 	}
 
 	return &RuntimeService{
-		spec:             runtime,
-		Prefix:           globals.AppName(),
-		Name:             runtime.Name,
-		Containers:       defs,
-		TaskDefinition:   taskDefinition,
-		Service:          service,
-		Policy:           policy,
-		TargetGroups:     map[string]*cflib.Resource[*elbv2.TargetGroup]{},
-		ingressEndpoints: map[string]struct{}{},
-		AdapterContainer: runtimeSidecar,
+		spec:           runtime,
+		Prefix:         globals.AppName(),
+		Name:           runtime.Name,
+		Containers:     defs,
+		TaskDefinition: taskDefinition,
+		Service:        service,
+		Policy:         policy,
+		TargetGroups:   map[string]*cflib.Resource[*elbv2.TargetGroup]{},
+		Sidecar:        sidecar,
 	}, nil
-}
-
-func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
-	def.LogConfiguration = &ecs.TaskDefinition_LogConfiguration{
-		LogDriver: "awslogs",
-		Options: map[string]string{
-			"awslogs-group": cloudformation.Join("/", []string{
-				"ecs",
-				cloudformation.Ref(EnvNameParameter),
-				rsPrefix,
-			}),
-			"awslogs-create-group":  "true",
-			"awslogs-region":        cloudformation.Ref("AWS::Region"),
-			"awslogs-stream-prefix": def.Name,
-		},
-	}
-
 }
 
 func (rs *RuntimeService) AddTemplateResources(template *cflib.TemplateBuilder) error {
@@ -194,185 +123,43 @@ func (rs *RuntimeService) AddTemplateResources(template *cflib.TemplateBuilder) 
 
 	rs.Service.Override("DesiredCount", cloudformation.Ref(desiredCountParameter))
 
-	// capture beofore running subscriptions as that adds to this set
-	ingressNeedsPublicPort := len(rs.ingressEndpoints) > 0
-
-	needsAdapterSidecar := false
 	if len(rs.spec.Subscriptions) > 0 {
+		for _, sub := range rs.spec.Subscriptions {
 
-		needsAdapterSidecar = true
+			if sub.TargetContainer == "" {
+				sub.TargetContainer = rs.spec.Containers[0].Name
+			}
+			if sub.Port == 0 {
+				sub.Port = 8080
+			}
+
+			rs.Sidecar.AddAppEndpoint(sub.TargetContainer, sub.Port)
+		}
 
 		subscriptionPlan, err := buildSubscriptionPlan(rs.spec)
 		if err != nil {
 			return err
 		}
 
-		for endpoint := range subscriptionPlan.ingressEndpoints {
-			// TODO: This registers the whole endpoint for proto reflection, but isn't hard-linked to
-			// the queue or subscriptions.
-			// If multiple containers both subscribe to the same topic via the
-			// proto reflection, it's random which one will receive the message.
-			rs.ingressEndpoints[endpoint] = struct{}{}
-		}
-
-		queueResource := cflib.NewResource(rs.Name, &sqs.Queue{
-			QueueName: cloudformation.JoinPtr("-", []string{
-				cloudformation.Ref("AWS::StackName"),
-				rs.Name,
-			}),
-			SqsManagedSseEnabled: cflib.Bool(true),
-			Tags:                 sourceTags(),
-		})
-
-		template.AddResource(queueResource)
-
-		rs.Policy.AddSQSSubscribe(queueResource.GetAtt("Arn"))
-
-		rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  cflib.String("SQS_URL"),
-			Value: cflib.String(queueResource.Ref()),
-		})
-
-		for _, param := range subscriptionPlan.parameters {
-			template.AddParameter(param)
-		}
-
-		topicARNs := []string{}
-		for _, sub := range subscriptionPlan.snsSubscriptions {
-			subscription := cflib.NewResource(cflib.CleanParameterName(rs.Name, sub.name), &sns.Subscription{
-				TopicArn:           sub.topicARN,
-				Protocol:           "sqs",
-				RawMessageDelivery: cflib.Bool(false), // Always include the SNS header info for infra events.
-				Endpoint:           cflib.String(queueResource.GetAtt("Arn")),
-			})
-
-			// The topic is not added to the stack, it should already exist
-			// in this case.
-			template.AddResource(subscription)
-			topicARNs = append(topicARNs, sub.topicARN)
-		}
-
-		for _, sub := range subscriptionPlan.eventBusSubscriptions {
-			eventBusSubscription := &events.Rule{
-				Description:  cflib.String(fmt.Sprintf("Subscription for app %s %s", rs.Name, sub.name)),
-				EventBusName: cloudformation.RefPtr(EventBusARNParameter),
-				Targets: []events.Rule_Target{{
-					Arn: queueResource.GetAtt("Arn"),
-					Id:  "SQS",
-				}},
-				EventPattern: sub.eventPattern,
-			}
-			template.AddResource(cflib.NewResource(cflib.CleanParameterName(rs.Name, "subscription", sub.name), eventBusSubscription))
-		}
-
-		queuePolicyStatement := []interface{}{
-			map[string]interface{}{
-				"Effect": "Allow",
-				"Principal": map[string]interface{}{
-					"Service": "events.amazonaws.com",
-				},
-				"Action":   "sqs:SendMessage",
-				"Resource": queueResource.GetAtt("Arn"),
-			}}
-
-		if len(topicARNs) > 0 {
-			queuePolicyStatement = append(queuePolicyStatement, map[string]interface{}{
-				"Effect":    "Allow",
-				"Principal": "*",
-				"Action":    "sqs:SendMessage",
-				"Resource":  queueResource.GetAtt("Arn"),
-				"Condition": map[string]interface{}{
-					"ArnEquals": map[string]interface{}{
-						"aws:SourceArn": topicARNs,
-					},
-				},
-			})
-		}
-
-		// Allow SNS and EventBridge to publish to SQS...
-		// (The ARN distinguishes the source)
-		template.AddResource(cflib.NewResource(cflib.CleanParameterName(rs.Name), &sqs.QueuePolicy{
-			Queues: []string{queueResource.Ref()},
-			PolicyDocument: map[string]interface{}{
-				"Version":   "2012-10-17",
-				"Statement": queuePolicyStatement,
-			},
-		}))
-	}
-
-	if len(rs.ingressEndpoints) > 0 {
-		needsAdapterSidecar = true
-		ingressEndpoints := make([]string, 0, len(rs.ingressEndpoints))
-		for endpoint := range rs.ingressEndpoints {
-			ingressEndpoints = append(ingressEndpoints, endpoint)
-		}
-		rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  cflib.String("SERVICE_ENDPOINT"),
-			Value: cflib.String(strings.Join(ingressEndpoints, ",")),
-		}, ecs.TaskDefinition_KeyValuePair{
-			Name:  cflib.String("JWKS"),
-			Value: cflib.String(cloudformation.Ref(JWKSParameter)),
-		})
-		if ingressNeedsPublicPort {
-			rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  cflib.String("PUBLIC_ADDR"),
-				Value: cflib.String(":8080"),
-			})
+		if err := rs.applySubscriptionPlan(template, subscriptionPlan); err != nil {
+			return err
 		}
 	}
 
-	if len(rs.outboxDatabases) > 1 {
-		return fmt.Errorf("only one outbox DB supported")
-	}
-
-	for _, db := range rs.outboxDatabases {
-		needsAdapterSidecar = true
-		if db.IsProxy() {
-		} else {
-			secretVal, ok := db.SecretValueFrom()
-			if !ok {
-				return fmt.Errorf("outbox database %s is not a proxy and has no secret", db)
-			}
-			rs.AdapterContainer.Secrets = append(rs.AdapterContainer.Secrets, ecs.TaskDefinition_Secret{
-				Name:      "POSTGRES_OUTBOX",
-				ValueFrom: secretVal.Ref(),
-			})
-		}
-	}
-
-	needsAdapterPort := false
-
-	proxyDBs := map[string]DatabaseRef{}
-
-	// If the app has the endpoint of the adapter, we still need ingress
 	for _, container := range rs.Containers {
 		if container.AdapterEndpoint != nil {
-			needsAdapterPort = true
 			value := cflib.String(fmt.Sprintf("http://%s:%d", O5SidecarContainerName, O5SidecarInternalPort))
 			container.AdapterEndpoint.EnvVar.Value = value
+			rs.Sidecar.ServeAdapter()
 		}
 
 		for _, ref := range container.ProxyDBs {
-			envVarValue, err := ref.Database.ProxyEnvVal(O5SidecarContainerName)
+			envVarValue, err := rs.Sidecar.ProxyDB(ref.Database)
 			if err != nil {
-				return err
+				return fmt.Errorf("building proxy var for database %s: %w", ref.Database.Name(), err)
 			}
-
-			ref.EnvVar.Value = envVarValue
-			proxyDBs[ref.Database.Name()] = ref.Database
+			*ref.EnvVarVal = envVarValue
 		}
-	}
-
-	if needsAdapterPort {
-		needsAdapterSidecar = true
-		rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  cflib.String("ADAPTER_ADDR"),
-			Value: cflib.String(fmt.Sprintf(":%d", O5SidecarInternalPort)),
-		})
-	}
-
-	if !needsAdapterSidecar {
-		rs.AdapterContainer = nil
 	}
 
 	// Not sure who thought it would be a good idea to not use pointers here...
@@ -384,42 +171,122 @@ func (rs *RuntimeService) AddTemplateResources(template *cflib.TemplateBuilder) 
 		}
 	}
 
-	if rs.AdapterContainer != nil {
-		defs = append(defs, *rs.AdapterContainer)
+	if rs.Sidecar.IsRequired() {
+		def, err := rs.Sidecar.Build()
+		if err != nil {
+			return err
+		}
+		defs = append(defs, *def)
 	}
 
 	rs.TaskDefinition.Resource.ContainerDefinitions = defs
 
+	roleARN := rs.applyRole(template)
+	rs.TaskDefinition.Resource.TaskRoleArn = roleARN.RefPtr()
+
 	template.AddResource(rs.TaskDefinition)
 	template.AddResource(rs.Service)
 
-	rolePolicies := rs.Policy.Build(rs.Prefix, rs.Name)
-	role := cflib.NewResource(fmt.Sprintf("%sAssume", rs.Name), &iam.Role{
-		AssumeRolePolicyDocument: map[string]interface{}{
-			"Version": "2012-10-17",
-			"Statement": []interface{}{
-				map[string]interface{}{
-					"Effect": "Allow",
-					"Principal": map[string]interface{}{
-						"Service": "ecs-tasks.amazonaws.com",
-					},
-					"Action": "sts:AssumeRole",
-				},
-			},
-		},
-		Description:       cflib.Stringf("Execution role for ecs in %s - %s", rs.Prefix, rs.Name),
-		ManagedPolicyArns: []string{},
-		Policies:          rolePolicies,
-		RoleName: cloudformation.JoinPtr("-", []string{
+	for _, targetGroup := range rs.TargetGroups {
+		template.AddResource(targetGroup)
+	}
+
+	return nil
+}
+
+func (rs *RuntimeService) applySubscriptionPlan(template *cflib.TemplateBuilder, subscriptionPlan *subscriptionPlan) error {
+	queueResource := cflib.NewResource(rs.Name, &sqs.Queue{
+		QueueName: cloudformation.JoinPtr("-", []string{
 			cloudformation.Ref("AWS::StackName"),
 			rs.Name,
-			"assume-role",
 		}),
+		SqsManagedSseEnabled: cflib.Bool(true),
+		Tags:                 sourceTags(),
 	})
 
+	template.AddResource(queueResource)
+
+	rs.Policy.AddSQSSubscribe(queueResource.GetAtt("Arn"))
+	if err := rs.Sidecar.SubscribeSQS(queueResource.Ref()); err != nil {
+		return err
+	}
+
+	for _, param := range subscriptionPlan.parameters {
+		template.AddParameter(param)
+	}
+
+	topicARNs := []string{}
+	for _, sub := range subscriptionPlan.snsSubscriptions {
+		subscription := cflib.NewResource(cflib.CleanParameterName(rs.Name, sub.name), &sns.Subscription{
+			TopicArn:           sub.topicARN,
+			Protocol:           "sqs",
+			RawMessageDelivery: cflib.Bool(false), // Always include the SNS header info for infra events.
+			Endpoint:           cflib.String(queueResource.GetAtt("Arn")),
+		})
+
+		// The topic is not added to the stack, it should already exist
+		// in this case.
+		template.AddResource(subscription)
+		topicARNs = append(topicARNs, sub.topicARN)
+	}
+
+	for _, sub := range subscriptionPlan.eventBusSubscriptions {
+		eventBusSubscription := &events.Rule{
+			Description:  cflib.String(fmt.Sprintf("Subscription for app %s %s", rs.Name, sub.name)),
+			EventBusName: cloudformation.RefPtr(EventBusARNParameter),
+			Targets: []events.Rule_Target{{
+				Arn: queueResource.GetAtt("Arn"),
+				Id:  "SQS",
+			}},
+			EventPattern: sub.eventPattern,
+		}
+		template.AddResource(cflib.NewResource(cflib.CleanParameterName(rs.Name, "subscription", sub.name), eventBusSubscription))
+	}
+
+	queuePolicyStatement := []interface{}{
+		map[string]interface{}{
+			"Effect": "Allow",
+			"Principal": map[string]interface{}{
+				"Service": "events.amazonaws.com",
+			},
+			"Action":   "sqs:SendMessage",
+			"Resource": queueResource.GetAtt("Arn"),
+		}}
+
+	if len(topicARNs) > 0 {
+		queuePolicyStatement = append(queuePolicyStatement, map[string]interface{}{
+			"Effect":    "Allow",
+			"Principal": "*",
+			"Action":    "sqs:SendMessage",
+			"Resource":  queueResource.GetAtt("Arn"),
+			"Condition": map[string]interface{}{
+				"ArnEquals": map[string]interface{}{
+					"aws:SourceArn": topicARNs,
+				},
+			},
+		})
+	}
+
+	// Allow SNS and EventBridge to publish to SQS...
+	// (The ARN distinguishes the source)
+	template.AddResource(cflib.NewResource(cflib.CleanParameterName(rs.Name), &sqs.QueuePolicy{
+		Queues: []string{queueResource.Ref()},
+		PolicyDocument: map[string]interface{}{
+			"Version":   "2012-10-17",
+			"Statement": queuePolicyStatement,
+		},
+	}))
+
+	return nil
+}
+
+func (rs *RuntimeService) applyRole(template *cflib.TemplateBuilder) TemplateRef {
+	builtRole := rs.Policy.BuildRole(rs.Prefix, rs.Name)
+
+	roleResource := cflib.NewResource(fmt.Sprintf("%sAssume", rs.Name), builtRole)
 	for _, policy := range rs.spec.NamedEnvPolicies {
 		policyARN := cflib.CleanParameterName("Named IAM Policy", rs.Name, policy)
-		role.AddParameter(&awsdeployer_pb.Parameter{
+		roleResource.AddParameter(&awsdeployer_pb.Parameter{
 			Name:        policyARN,
 			Type:        "String",
 			Description: fmt.Sprintf("ARN of the env-named IAM policy %s", policy),
@@ -431,18 +298,10 @@ func (rs *RuntimeService) AddTemplateResources(template *cflib.TemplateBuilder) 
 				},
 			},
 		})
-		role.Resource.ManagedPolicyArns = append(role.Resource.ManagedPolicyArns, cloudformation.Ref(policyARN))
+		roleResource.Resource.ManagedPolicyArns = append(roleResource.Resource.ManagedPolicyArns, cloudformation.Ref(policyARN))
 	}
-
-	rs.TaskDefinition.Resource.TaskRoleArn = cflib.String(role.GetAtt("Arn"))
-
-	template.AddResource(role)
-
-	for _, targetGroup := range rs.TargetGroups {
-		template.AddResource(targetGroup)
-	}
-
-	return nil
+	template.AddResource(roleResource)
+	return TemplateRef(roleResource.GetAtt("Arn"))
 }
 
 func (rs *RuntimeService) AddRoutes(ingress *ListenerRuleSet) error {
@@ -458,8 +317,11 @@ func (rs *RuntimeService) AddRoutes(ingress *ListenerRuleSet) error {
 
 		if route.BypassIngress {
 			targetContainer = route.TargetContainer
+			if err := rs.exposeContainerPort(targetContainer, int(port)); err != nil {
+				return err
+			}
 		} else {
-			rs.ingressEndpoints[fmt.Sprintf("%s:%d", route.TargetContainer, port)] = struct{}{}
+			rs.Sidecar.AddAppEndpoint(route.TargetContainer, port)
 		}
 		targetGroup, err := rs.LazyTargetGroup(route.Protocol, targetContainer, int(port))
 		if err != nil {
@@ -482,24 +344,6 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 	existing, ok := rs.TargetGroups[lookupKey]
 	if ok {
 		return existing, nil
-	}
-
-	var container *ecs.TaskDefinition_ContainerDefinition
-
-	if targetContainer == O5SidecarContainerName {
-		container = rs.AdapterContainer
-	} else {
-
-		for _, search := range rs.Containers {
-			if search.Container.Name == targetContainer {
-				container = search.Container
-				break
-			}
-		}
-	}
-
-	if container == nil {
-		return nil, fmt.Errorf("container %s not found in service %s", targetContainer, rs.Name)
 	}
 
 	var targetGroupDefinition *elbv2.TargetGroup
@@ -556,18 +400,27 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 		TargetGroupArn: cflib.String(targetGroupResource.Ref()),
 	})
 
-	found := false
-	for _, portMap := range container.PortMappings {
-		if *portMap.ContainerPort == port {
-			found = true
-			break
-		}
-	}
-	if !found {
-		container.PortMappings = append(container.PortMappings, ecs.TaskDefinition_PortMapping{
-			ContainerPort: cflib.Int(port),
-		})
-	}
-
 	return targetGroupResource, nil
+}
+
+func (rs *RuntimeService) exposeContainerPort(containerName string, port int) error {
+	for _, container := range rs.Containers {
+		if container.Container.Name != containerName {
+			continue
+		}
+		found := false
+		for _, portMap := range container.Container.PortMappings {
+			if *portMap.ContainerPort == port {
+				found = true
+				break
+			}
+		}
+		if !found {
+			container.Container.PortMappings = append(container.Container.PortMappings, ecs.TaskDefinition_PortMapping{
+				ContainerPort: cflib.Int(port),
+			})
+		}
+		return nil
+	}
+	return fmt.Errorf("container %s not found in service %s", containerName, rs.Name)
 }

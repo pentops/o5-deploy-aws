@@ -1,11 +1,15 @@
 package service
 
 import (
+	"github.com/pentops/go-grpc-helpers/protovalidatemw"
+	"github.com/pentops/log.go/grpc_log"
+	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/apps/service/internal/states"
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
+	"github.com/pentops/realms/j5auth"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc"
 )
@@ -59,4 +63,13 @@ func (app *App) RegisterGRPC(server *grpc.Server) {
 	awsdeployer_tpb.RegisterDeploymentRequestTopicServer(server, app.DeployerWorker)
 	awsinfra_tpb.RegisterCloudFormationReplyTopicServer(server, app.DeployerWorker)
 	awsinfra_tpb.RegisterPostgresReplyTopicServer(server, app.DeployerWorker)
+
+}
+
+func GRPCMiddleware() []grpc.UnaryServerInterceptor {
+	return []grpc.UnaryServerInterceptor{
+		grpc_log.UnaryServerInterceptor(log.DefaultContext, log.DefaultTrace, log.DefaultLogger),
+		j5auth.GRPCMiddleware,
+		protovalidatemw.UnaryServerInterceptor(protovalidatemw.WithReply()),
+	}
 }

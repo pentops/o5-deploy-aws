@@ -77,7 +77,17 @@ func (ca *containerAssert) GetEnv(name string) *ecs.TaskDefinition_KeyValuePair 
 	return nil
 }
 
+func (ca *containerAssert) MustNotHaveEnvOrSecret(t testing.TB, name string) {
+	if ca.GetEnv(name) != nil {
+		t.Fatalf("unexpected env %s", name)
+	}
+
+	if ca.GetSecret(name) != nil {
+		t.Fatalf("unexpected secret %s", name)
+	}
+}
 func (ca *containerAssert) MustGetEnv(t testing.TB, name string) *ecs.TaskDefinition_KeyValuePair {
+	t.Helper()
 	e := ca.GetEnv(name)
 	if e == nil {
 		t.Fatalf("env %s not found", name)
@@ -95,8 +105,15 @@ func (ca *containerAssert) GetSecret(name string) *ecs.TaskDefinition_Secret {
 }
 
 func (ca *containerAssert) MustGetSecret(t testing.TB, name string) *ecs.TaskDefinition_Secret {
+	t.Helper()
 	s := ca.GetSecret(name)
 	if s == nil {
+		for _, s := range ca.container.Secrets {
+			t.Logf("secret: %s", s.Name)
+		}
+		for _, e := range ca.container.Environment {
+			t.Logf("env: %s", *e.Name)
+		}
 		t.Fatalf("secret %s not found", name)
 	}
 	return s
@@ -197,6 +214,7 @@ func TestDatabaseCases(t *testing.T) {
 		wantOutbox bool
 	}
 	assertSecretCase := func(t *testing.T, tc *pgTestCase, sc *wantSecret) {
+		t.Helper()
 		rr := runPGTestCase(t, tc)
 
 		wantSecretRef := tSecretRef(cflib.CleanParameterName("Database", sc.dbName), "dburl")
@@ -220,10 +238,53 @@ func TestDatabaseCases(t *testing.T) {
 			t.Fatalf("expected sidecar container")
 		}
 
-		outbox := rr.sidecar.MustGetSecret(t, "POSTGRES_OUTBOX")
-		assert.NotEmpty(t, outbox.ValueFrom, "Expected outbox secret value to be set")
+		creds := rr.sidecar.MustGetSecret(t, "DB_CREDS_DB_1")
+		assert.NotEmpty(t, creds.ValueFrom, "Expected outbox secret value to be set")
+		assertFunctionEqual(t, wantSecretRef, creds.ValueFrom, "Sidecar Outbox secret")
 
-		assertFunctionEqual(t, wantSecretRef, outbox.ValueFrom, "Sidecar Outbox secret")
+		outbox := rr.sidecar.MustGetEnv(t, "POSTGRES_OUTBOX")
+		assert.Equal(t, "DB_1", *outbox.Value, "Expected outbox env var to be set to the name of the DB")
+
+		rr.sidecar.MustNotHaveEnvOrSecret(t, "POSTGRES_IAM_PROXY")
+	}
+
+	assertIAMCase := func(t *testing.T, tc *pgTestCase, want *wantSecret) {
+		t.Helper()
+		rr := runPGTestCase(t, tc)
+
+		env := rr.main.GetEnv("DATABASE_URL")
+		secret := rr.main.GetSecret("DATABASE_URL")
+		if env == nil && secret == nil {
+			t.Errorf("DATABASE_URL not set for main container")
+		} else if secret != nil && env == nil {
+			t.Errorf("expected DATABASE_URL to be an env var, was secret")
+		} else if secret != nil && env != nil {
+			t.Errorf("expected DATABASE_URL to be an env var, got both")
+		}
+
+		if env.Value == nil {
+			t.Errorf("expected DATABASE_URL to have a value, was nil")
+		}
+
+		if rr.sidecar == nil {
+			t.Fatal("Sidecar expected in all IAM cases (for proxy)")
+		}
+
+		proxy := rr.sidecar.MustGetEnv(t, "POSTGRES_IAM_PROXY")
+		assert.Equal(t, "DB_1", *proxy.Value, "Expected proxy env var to be set to the name of the DB")
+
+		if want.wantOutbox {
+			outbox := rr.sidecar.MustGetEnv(t, "POSTGRES_OUTBOX")
+			assert.Equal(t, "DB_1", *outbox.Value, "Expected outbox env var to be set to the name of the DB")
+		} else {
+			rr.sidecar.MustNotHaveEnvOrSecret(t, "POSTGRES_OUTBOX")
+		}
+
+		creds := rr.sidecar.MustGetEnv(t, "DB_CREDS_DB_1")
+		assert.NotEmpty(t, creds.Value, "Expected outbox env value to be set")
+
+		wantEndpointRef := cloudformation.Ref("DatabaseParam" + cflib.CleanParameterName("db1"))
+		assertFunctionEqual(t, wantEndpointRef, *creds.Value, "IAM Proxy secret")
 	}
 
 	t.Run("SimplestSecret", func(t *testing.T) {
@@ -240,6 +301,27 @@ func TestDatabaseCases(t *testing.T) {
 		tc.pg.RunOutbox = true
 
 		assertSecretCase(t, tc, &wantSecret{
+			dbName:     "db1",
+			wantOutbox: true,
+		})
+	})
+
+	t.Run("SimpleProxy", func(t *testing.T) {
+		tc := newPGTestCase()
+		tc.rdsHost.AuthType = environment_pb.RDSAuth_Iam
+
+		assertIAMCase(t, tc, &wantSecret{
+			dbName:     "db1",
+			wantOutbox: false,
+		})
+	})
+
+	t.Run("OutboxProxy", func(t *testing.T) {
+		tc := newPGTestCase()
+		tc.rdsHost.AuthType = environment_pb.RDSAuth_Iam
+		tc.pg.RunOutbox = true
+
+		assertIAMCase(t, tc, &wantSecret{
 			dbName:     "db1",
 			wantOutbox: true,
 		})

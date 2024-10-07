@@ -35,6 +35,7 @@ func assertCodeError(t *testing.T, err error, code codes.Code) {
 }
 
 func TestConfiguration(t *testing.T) {
+	// TODO: Merge this with integration.TestConfigFlow
 
 	stateMachines, err := states.NewStateMachines()
 	if err != nil {

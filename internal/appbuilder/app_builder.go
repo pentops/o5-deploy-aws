@@ -123,7 +123,11 @@ func BuildApplication(spec AppInput) (*BuiltApplication, error) {
 			// panic because this is a logic issue in the code, not a user error
 			panic(fmt.Sprintf("database %s not found for outbox, but was defined in spec", dbSpec.Name))
 		}
-		firstRuntime.outboxDatabases = append(firstRuntime.outboxDatabases, dbRef)
+
+		// TODO: Assign to the first runtime which references the DB.
+		if err := firstRuntime.Sidecar.RunOutbox(dbRef); err != nil {
+			return nil, err
+		}
 	}
 
 	for _, runtime := range ecsServices {
@@ -158,7 +162,7 @@ func NewBuilder(input AppInput) (*Builder, resourceBuilder, error) {
 		spec:     input.Application,
 		rdsHosts: input.RDSHosts,
 
-		databases: map[string]DatabaseReference{},
+		databases: map[string]DatabaseRef{},
 		secrets:   map[string]*secretInfo{},
 		buckets:   map[string]*bucketInfo{},
 	}

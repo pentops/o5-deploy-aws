@@ -75,7 +75,9 @@ func (rr *Runner) RunDeployment(ctx context.Context, deployment *awsdeployer_pb.
 	}
 
 	if stackStatus != nil {
-
+		fmt.Printf("Existing Stack: %s\n", stackStatus.StackName)
+		fmt.Printf("  Status: %s\n", stackStatus.Status)
+		fmt.Printf("  Lifecycle: %s\n", stackStatus.Lifecycle.ShortString())
 		switch stackStatus.Lifecycle {
 		case awsdeployer_pb.CFLifecycle_COMPLETE,
 			awsdeployer_pb.CFLifecycle_ROLLED_BACK:
@@ -140,7 +142,6 @@ func (rr *Runner) runSteps(ctx context.Context, steps []*awsdeployer_pb.Deployme
 				for _, step := range steps {
 					if step.Id == evt.StepId {
 						step.Status = awsdeployer_pb.StepStatus_ACTIVE
-						fmt.Printf("Running Step: %s\n", step.Name)
 						found = true
 						break
 					}
@@ -158,13 +159,16 @@ func (rr *Runner) runSteps(ctx context.Context, steps []*awsdeployer_pb.Deployme
 				if err != nil {
 					return err
 				}
+
 				resultStepEvent, ok := result.Event.(*awsdeployer_pb.DeploymentEventType_StepResult)
 				if !ok {
 					return fmt.Errorf("unexpected result type: %T", result)
 				}
+
 				if err := plan.UpdateDeploymentStep(steps, resultStepEvent); err != nil {
 					return err
 				}
+
 				continue
 
 			case *awsdeployer_pb.DeploymentEventType_Error:
@@ -176,7 +180,6 @@ func (rr *Runner) runSteps(ctx context.Context, steps []*awsdeployer_pb.Deployme
 			default:
 				return fmt.Errorf("unknown event type: %T", evt)
 			}
-
 		}
 	}
 

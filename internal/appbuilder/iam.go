@@ -3,6 +3,7 @@ package appbuilder
 import (
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/iam"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
 )
 
 type PolicyBuilder struct {
@@ -72,6 +73,33 @@ type StatementEntry struct {
 	Action []string `json:"Action"`
 	// Resource is the list of resources the statement applies to
 	Resource []string `json:"Resource"`
+}
+
+func (pb *PolicyBuilder) BuildRole(appName string, runtimeName string) *iam.Role {
+	rolePolicies := pb.Build(appName, runtimeName)
+	role := &iam.Role{
+		AssumeRolePolicyDocument: map[string]interface{}{
+			"Version": "2012-10-17",
+			"Statement": []interface{}{
+				map[string]interface{}{
+					"Effect": "Allow",
+					"Principal": map[string]interface{}{
+						"Service": "ecs-tasks.amazonaws.com",
+					},
+					"Action": "sts:AssumeRole",
+				},
+			},
+		},
+		Description:       cflib.Stringf("Execution role for ecs in %s - %s", appName, runtimeName),
+		ManagedPolicyArns: []string{}, // Will be set later
+		Policies:          rolePolicies,
+		RoleName: cloudformation.JoinPtr("-", []string{
+			cloudformation.Ref("AWS::StackName"),
+			runtimeName,
+			"assume-role",
+		}),
+	}
+	return role
 }
 
 func (pb *PolicyBuilder) Build(appName string, runtimeName string) []iam.Role_Policy {

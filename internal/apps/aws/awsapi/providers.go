@@ -2,17 +2,13 @@ package awsapi
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sns"
-	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 type CloudFormationAPI interface {
@@ -52,17 +48,6 @@ type S3API interface {
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 }
 
-type RDSAuthProvider interface {
-	BuildAuthToken(ctx context.Context, dbEndpoint, dbUser string) (string, error)
-}
-
-func NewRDSAuthProviderFromConfig(config aws.Config) RDSAuthProvider {
-	return rdsAuthProvider{
-		region: config.Region,
-		creds:  config.Credentials,
-	}
-}
-
 type DeployerClients struct {
 	CloudFormation  CloudFormationAPI
 	SNS             SNSAPI
@@ -73,45 +58,4 @@ type DeployerClients struct {
 	RDSAuthProvider RDSAuthProvider
 	Region          string
 	AccountID       string
-}
-
-func NewDeployerClientsFromConfig(ctx context.Context, config aws.Config) (*DeployerClients, error) {
-
-	region := config.Region
-
-	stsClient := sts.NewFromConfig(config)
-	callerIdentity, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
-	if err != nil {
-		return nil, err
-	}
-
-	return &DeployerClients{
-		CloudFormation: cloudformation.NewFromConfig(config),
-		SNS:            sns.NewFromConfig(config),
-		ELB:            elbv2.NewFromConfig(config),
-		SecretsManager: secretsmanager.NewFromConfig(config),
-		ECS:            ecs.NewFromConfig(config),
-		S3:             s3.NewFromConfig(config),
-		Region:         region,
-		AccountID:      *callerIdentity.Account,
-		RDSAuthProvider: rdsAuthProvider{
-			region: region,
-			creds:  config.Credentials,
-		},
-	}, nil
-
-}
-
-type rdsAuthProvider struct {
-	region string
-	creds  aws.CredentialsProvider
-}
-
-func (rds rdsAuthProvider) BuildAuthToken(ctx context.Context, dbEndpoint, dbUser string) (string, error) {
-	authenticationToken, err := auth.BuildAuthToken(
-		ctx, dbEndpoint, rds.region, dbUser, rds.creds)
-	if err != nil {
-		return "", fmt.Errorf("failed to create authentication token: %w", err)
-	}
-	return authenticationToken, nil
 }

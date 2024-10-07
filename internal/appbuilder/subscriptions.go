@@ -11,7 +11,7 @@ import (
 )
 
 type subscriptionPlan struct {
-	ingressEndpoints map[string]struct{}
+	targetContainers map[string]struct{}
 
 	parameters []*awsdeployer_pb.Parameter
 
@@ -62,7 +62,7 @@ type singlePattern struct {
 func buildSubscriptionPlan(spec *application_pb.Runtime) (*subscriptionPlan, error) {
 
 	plan := &subscriptionPlan{
-		ingressEndpoints: make(map[string]struct{}),
+		targetContainers: make(map[string]struct{}),
 	}
 
 	rulesByEnv := map[string]*eventBusRules{}
@@ -73,15 +73,6 @@ func buildSubscriptionPlan(spec *application_pb.Runtime) (*subscriptionPlan, err
 	rulesByEnv[""] = localEnvRules
 
 	for _, sub := range spec.Subscriptions {
-
-		if sub.TargetContainer == "" {
-			sub.TargetContainer = spec.Containers[0].Name
-		}
-		if sub.Port == 0 {
-			sub.Port = 8080
-		}
-
-		plan.ingressEndpoints[fmt.Sprintf("%s:%d", sub.TargetContainer, sub.Port)] = struct{}{}
 
 		if strings.HasPrefix(sub.Name, "o5-infra/") {
 			topicName := sub.Name[len("o5-infra/"):]

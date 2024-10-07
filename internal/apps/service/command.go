@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pentops/envconf.go/envconf"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
@@ -25,36 +24,6 @@ import (
 
 type GithubClient interface {
 	PullO5Configs(ctx context.Context, owner, repo, commit string) ([]*application_pb.Application, error)
-}
-
-func OpenDatabase(ctx context.Context) (*sql.DB, error) {
-	var config = struct {
-		PostgresURL string `env:"POSTGRES_URL"`
-	}{}
-
-	if err := envconf.Parse(&config); err != nil {
-		return nil, fmt.Errorf("failed to parse config: %w", err)
-	}
-
-	db, err := sql.Open("postgres", config.PostgresURL)
-	if err != nil {
-		return nil, err
-	}
-
-	// Default is unlimited connections, use a cap to prevent hammering the database if it's the bottleneck.
-	// 10 was selected as a conservative number and will likely be revised later.
-	db.SetMaxOpenConns(10)
-
-	for {
-		if err := db.Ping(); err != nil {
-			log.WithError(ctx, err).Error("pinging PG")
-			time.Sleep(time.Second)
-			continue
-		}
-		break
-	}
-
-	return db, nil
 }
 
 type CommandService struct {

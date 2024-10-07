@@ -3,7 +3,6 @@ package deployer
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"unicode"
@@ -185,39 +184,6 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 				},
 			})
 
-			paramName := db.GetParameterName()
-			if paramName == "" {
-				panic(fmt.Sprintf("no parameter name found for database %s", db.DbName))
-			}
-
-			var param *awsdeployer_pb.Parameter
-			for _, p := range app.Parameters {
-				if p.Name == paramName {
-					param = p
-					break
-				}
-			}
-			if param == nil {
-				panic(fmt.Sprintf("no parameter found for database %s", db.DbName))
-			}
-			jsonValue, err := json.Marshal(&DBSecret{
-				Username: fullName,
-				Password: paramName,
-				Hostname: host.Endpoint,
-				DBName:   fullName,
-				URL:      fmt.Sprintf("postgres://%s:%s@%s:%d/%s", fullName, paramName, host.Endpoint, host.Port, fullName),
-			})
-			if err != nil {
-				return nil, err
-			}
-			param.Source = &awsdeployer_pb.ParameterSourceType{
-				Type: &awsdeployer_pb.ParameterSourceType_Static_{
-					Static: &awsdeployer_pb.ParameterSourceType_Static{
-						Value: string(jsonValue),
-					},
-				},
-			}
-
 		}
 
 		dbSpec := &awsdeployer_pb.PostgresSpec{
@@ -231,7 +197,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 		dbSpecs[idx] = dbSpec
 	}
 
-	deployerResolver, err := BuildParameterResolver(ctx, cluster, environment)
+	deployerResolver, err := BuildParameterResolver(ctx, cluster, environment, dbSpecs)
 	if err != nil {
 		return nil, err
 	}

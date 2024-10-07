@@ -5,10 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
-	"github.com/aws/aws-sdk-go-v2/service/ecs"
-	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/google/uuid"
 	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/log.go/log"
@@ -40,25 +37,6 @@ func NewInfraAdapter(ctx context.Context, cl *awsapi.DeployerClients) (*InfraAda
 		ecsClient: ecsClient,
 	}, nil
 }
-
-func NewInfraAdapterFromConfig(ctx context.Context, config aws.Config) (*InfraAdapter, error) {
-	cfClient, err := aws_cf.NewCFAdapterFromConfig(ctx, config, []string{})
-	if err != nil {
-		return nil, err
-	}
-
-	dbMigrator := aws_postgres.NewDBMigrator(secretsmanager.NewFromConfig(config), awsapi.NewRDSAuthProviderFromConfig(config))
-	ecsClient := &ecsRunner{
-		ecsClient: ecs.NewFromConfig(config),
-	}
-
-	return &InfraAdapter{
-		cfClient:  cfClient,
-		dbClient:  dbMigrator,
-		ecsClient: ecsClient,
-	}, nil
-}
-
 func newToken() string {
 	return fmt.Sprintf("local-%d", time.Now().UnixNano())
 }

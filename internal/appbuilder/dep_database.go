@@ -1,7 +1,6 @@
 package appbuilder
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
@@ -15,83 +14,73 @@ import (
 )
 
 type DatabaseRef interface {
+	// Name as specified in the application o5 file
+	Name() string
+
 	IsProxy() bool
 	SecretValueFrom() (TemplateRef, bool)
-	ProxyEnvVal(proxyHost string) (*string, error)
-	Name() string
+	EndpointParameter() (TemplateRef, bool)
 }
 
 // DatabaseReference is used to look up parameters ECS Task Definitions
-type DatabaseReference struct {
-	refName        string
-	Definition     *application_pb.Database
-	SecretResource *cflib.Resource[*secretsmanager.Secret]
+
+type iamDatabaseRef struct {
+	refName  string
+	paramRef TemplateRef
 }
 
-func (dbDef DatabaseReference) Name() string {
+func (dbDef iamDatabaseRef) Name() string {
 	return dbDef.refName
 }
 
-func (dbDef DatabaseReference) SecretValueFrom() (TemplateRef, bool) {
-	if dbDef.SecretResource == nil {
-		return "", false
-	}
+func (dbDef iamDatabaseRef) EndpointParameter() (TemplateRef, bool) {
+	return dbDef.paramRef, true
+}
+
+func (dbDef iamDatabaseRef) SecretValueFrom() (TemplateRef, bool) {
+	return "", false
+}
+
+func (dbDef iamDatabaseRef) IsProxy() bool {
+	return true
+}
+
+type secretsDatabaseRef struct {
+	refName        string
+	secretResource *cflib.Resource[*secretsmanager.Secret]
+}
+
+func (dbDef secretsDatabaseRef) Name() string {
+	return dbDef.refName
+}
+
+func (dbDef secretsDatabaseRef) IsProxy() bool {
+	return false
+}
+
+func (dbDef secretsDatabaseRef) EndpointParameter() (TemplateRef, bool) {
+	return "", false
+}
+
+func (dbDef secretsDatabaseRef) SecretValueFrom() (TemplateRef, bool) {
 	jsonKey := "dburl"
 	versionStage := ""
 	versionID := ""
 	return TemplateRef(cloudformation.Join(":", []string{
-		dbDef.SecretResource.Ref(),
+		dbDef.secretResource.Ref(),
 		jsonKey,
 		versionStage,
 		versionID,
 	})), true
 }
 
-type DBEnvVar struct {
-	Username string `json:"dbuser"`
-	Password string `json:"dbpass"`
-	Hostname string `json:"dbhost"`
-	DBName   string `json:"dbname"`
-	URL      string `json:"dburl"`
-}
-
-func (dbDef DatabaseReference) ProxyEnvVal(proxyHost string) (*string, error) {
-	if dbDef.SecretResource != nil {
-		panic("SecretResource is not nil calling ProxyEnvVal")
-	}
-
-	data := DBEnvVar{
-		Username: dbDef.Definition.Name,
-		Password: "proxy",
-		Hostname: proxyHost,
-		DBName:   dbDef.Definition.Name,
-	}
-	data.URL = fmt.Sprintf("postgres://%s:%s@%s/%s", data.Username, data.Password, data.Hostname, data.DBName)
-
-	jsonBytes, err := json.Marshal(data)
-	if err != nil {
-		return nil, fmt.Errorf("marshaling DBEnvVar: %w", err)
-	}
-
-	str := string(jsonBytes)
-	return &str, nil
-}
-
-func (dbDef DatabaseReference) IsProxy() bool {
-	return dbDef.SecretResource == nil
-}
-
-func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (*DatabaseReference, *awsdeployer_pb.PostgresDatabaseResource, error) {
+func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (DatabaseRef, *awsdeployer_pb.PostgresDatabaseResource, error) {
 
 	dbType := database.GetPostgres()
 
 	dbHost, ok := builder.Globals.FindRDSHost(dbType.ServerGroup)
 	if !ok {
 		return nil, nil, fmt.Errorf("no RDS host %q for database %s", dbType.ServerGroup, database.Name)
-	}
-	ref := DatabaseReference{
-		refName:    database.Name,
-		Definition: database,
 	}
 
 	def := &awsdeployer_pb.PostgresDatabaseResource{
@@ -104,7 +93,9 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (*
 		def.DbName = dbType.DbName
 	}
 
-	if dbHost.AuthType == environment_pb.RDSAuth_SecretsManager {
+	var ref DatabaseRef
+	switch dbHost.AuthType {
+	case environment_pb.RDSAuth_SecretsManager:
 		secret := cflib.NewResource(cflib.CleanParameterName("Database", database.Name), &secretsmanager.Secret{
 			AWSCloudFormationDeletionPolicy: policies.DeletionPolicy("Retain"),
 			Name: cloudformation.JoinPtr("/", []string{
@@ -124,24 +115,41 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (*
 			Value: secret.Ref(),
 		})
 
-		ref.SecretResource = secret
 		def.Connection = &awsdeployer_pb.PostgresDatabaseResource_SecretOutputName{
 			SecretOutputName: secretName,
 		}
+		ref = &secretsDatabaseRef{
+			refName:        database.Name,
+			secretResource: secret,
+		}
 
-	} else {
+	case environment_pb.RDSAuth_Iam:
 		paramName := fmt.Sprintf("DatabaseParam%s", cflib.CleanParameterName(database.Name))
 		builder.Template.AddParameter(&awsdeployer_pb.Parameter{
 			Name:        paramName,
 			Type:        "String",
 			Description: fmt.Sprintf("Parameter for IAM Postgres database %s in app %s", database.Name, builder.AppName()),
+			Source: &awsdeployer_pb.ParameterSourceType{
+				Type: &awsdeployer_pb.ParameterSourceType_AuroraEndpoint_{
+					AuroraEndpoint: &awsdeployer_pb.ParameterSourceType_AuroraEndpoint{
+						ServerGroup: dbType.ServerGroup,
+						DbName:      def.DbName, // Matching the resource def
+					},
+				},
+			},
 		})
 		def.Connection = &awsdeployer_pb.PostgresDatabaseResource_ParameterName{
 			ParameterName: paramName,
 		}
+		ref = &iamDatabaseRef{
+			refName:  database.Name, // Matching the passed in reference name for lookup
+			paramRef: TemplateRef(cloudformation.Ref(paramName)),
+		}
+	default:
+		return nil, nil, fmt.Errorf("unknown auth type %q for database %s", dbHost.AuthType, database.Name)
 	}
 
-	return &ref, def, nil
+	return ref, def, nil
 }
 
 func mapPostgresMigration(builder *Builder, resource *awsdeployer_pb.PostgresDatabaseResource, spec *application_pb.Container) error {

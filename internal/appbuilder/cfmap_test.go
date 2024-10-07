@@ -180,11 +180,16 @@ func TestSidecarConfigRuntime(t *testing.T) {
 		t.Fatalf("expected 1 container definition, got %d", len(rs.Containers))
 	}
 	sidecarConfigBits := 0
-	for i := range rs.AdapterContainer.Environment {
-		if *rs.AdapterContainer.Environment[i].Name == "RESEND_CHANCE" && *rs.AdapterContainer.Environment[i].Value == "1" {
+	sidecar, err := rs.Sidecar.Build()
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	for _, ev := range sidecar.Environment {
+		if *ev.Name == "RESEND_CHANCE" && *ev.Value == "1" {
 			sidecarConfigBits += 1
 		}
-		if *rs.AdapterContainer.Environment[i].Name == "DEADLETTER_CHANCE" && *rs.AdapterContainer.Environment[i].Value == "2" {
+		if *ev.Name == "DEADLETTER_CHANCE" && *ev.Value == "2" {
 			sidecarConfigBits += 1
 		}
 	}
@@ -218,11 +223,16 @@ func TestSidecarConfigNotPresentRuntime(t *testing.T) {
 		t.Fatalf("expected 1 container definition, got %d", len(rs.Containers))
 	}
 	sidecarConfigBits := 0
-	for i := range rs.AdapterContainer.Environment {
-		if *rs.AdapterContainer.Environment[i].Name == "RESEND_CHANCE" && *rs.AdapterContainer.Environment[i].Value == "1" {
+	sidecar, err := rs.Sidecar.Build()
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	for _, ev := range sidecar.Environment {
+		if *ev.Name == "RESEND_CHANCE" && *ev.Value == "1" {
 			sidecarConfigBits += 1
 		}
-		if *rs.AdapterContainer.Environment[i].Name == "DEADLETTER_CHANCE" && *rs.AdapterContainer.Environment[i].Value == "2" {
+		if *ev.Name == "DEADLETTER_CHANCE" && *ev.Value == "2" {
 			sidecarConfigBits += 1
 		}
 	}
