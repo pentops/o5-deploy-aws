@@ -26,13 +26,19 @@ type SecretsManagerAPI interface {
 	DescribeSecret(ctx context.Context, params *secretsmanager.DescribeSecretInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.DescribeSecretOutput, error)
 }
 
-type DBMigrator struct {
-	secretsManager SecretsManagerAPI
+type RDSAuthProvider interface {
+	BuildAuthToken(ctx context.Context, dbEndpoint, dbUser string) (string, error)
 }
 
-func NewDBMigrator(client SecretsManagerAPI) *DBMigrator {
+type DBMigrator struct {
+	secretsManager SecretsManagerAPI
+	creds          RDSAuthProvider
+}
+
+func NewDBMigrator(client SecretsManagerAPI, creds RDSAuthProvider) *DBMigrator {
 	return &DBMigrator{
 		secretsManager: client,
+		creds:          creds,
 	}
 }
 
