@@ -9,7 +9,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
-	"github.com/pentops/o5-deploy-aws/internal/states/plan"
+	"github.com/pentops/o5-deploy-aws/internal/deployer/plan"
 	"github.com/pentops/protostate/psm"
 	"google.golang.org/protobuf/proto"
 )
