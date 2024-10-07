@@ -143,10 +143,63 @@ func (s *secretsSpec) NewAppSecret(dbName string) DBSecret {
 	return newSecret
 }
 
+type auroraSpec struct {
+	dbEndpoint string
+	dbPort     int32
+	dbUser     string
+	dbName     string
+	token      string
+}
+
+func (a *auroraSpec) buildDSN(dbName string) string {
+	return fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s",
+		a.dbEndpoint, a.dbPort, a.dbUser, a.token, dbName,
+	)
+}
+
+func (a *auroraSpec) OpenRoot(ctx context.Context) (*sql.DB, error) {
+	dsn := a.buildDSN(a.dbName)
+	return openDB(ctx, dsn)
+}
+
+func (a *auroraSpec) OpenDBAsRoot(ctx context.Context, dbName string) (*sql.DB, error) {
+	dsn := a.buildDSN(dbName)
+	return openDB(ctx, dsn)
+}
+
+func (a *auroraSpec) NewAppSecret(dbName string) DBSecret {
+	newSecret := DBSecret{
+		DBName:   dbName,
+		Hostname: a.dbEndpoint,
+		Username: fmt.Sprintf("%s_%d", dbName, time.Now().Unix()),
+	}
+	return newSecret
+}
+
 func (d *DBMigrator) buildSpec(ctx context.Context, spec *awsinfra_pb.RDSHostType) (DBSpec, error) {
 	switch spec := spec.Get().(type) {
 	case *awsinfra_pb.RDSHostType_Aurora:
-		return nil, fmt.Errorf("Aurora not supported")
+		dbEndpoint := spec.Conn.Endpoint
+		dbPort := spec.Conn.Port
+		dbUser := spec.Conn.DbUser
+		dbName := spec.Conn.DbName
+		if dbName == "" {
+			dbName = dbUser
+		}
+
+		authenticationToken, err := d.creds.BuildAuthToken(ctx, dbEndpoint, dbUser)
+		if err != nil {
+			return nil, err
+		}
+
+		return &auroraSpec{
+			dbEndpoint: dbEndpoint,
+			dbPort:     dbPort,
+			dbUser:     dbUser,
+			dbName:     dbName,
+			token:      authenticationToken,
+		}, nil
+
 	case *awsinfra_pb.RDSHostType_SecretsManager:
 
 		secret, err := d.rootPostgresCredentials(ctx, spec.SecretName)
