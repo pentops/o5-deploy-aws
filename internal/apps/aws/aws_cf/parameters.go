@@ -12,16 +12,17 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/awsapi"
 )
 
 type DeferredParameterResolver struct {
 	desiredCount    int32
 	listenerARN     string
 	takenPriorities map[int]bool
-	elbClient       ELBV2API
+	elbClient       awsapi.ELBV2API
 }
 
-func NewDeferredParameterResolver(elbClient ELBV2API, listenerARN string, desiredCount int32) (*DeferredParameterResolver, error) {
+func NewDeferredParameterResolver(elbClient awsapi.ELBV2API, listenerARN string, desiredCount int32) (*DeferredParameterResolver, error) {
 	return &DeferredParameterResolver{
 		listenerARN:  listenerARN,
 		desiredCount: desiredCount,

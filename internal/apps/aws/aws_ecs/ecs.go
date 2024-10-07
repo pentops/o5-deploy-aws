@@ -1,4 +1,4 @@
-package aws_cf
+package aws_ecs
 
 import (
 	"context"
@@ -10,17 +10,19 @@ import (
 	ecs_types "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/awsapi"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/tokenstore"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type ECSWorker struct {
 	awsinfra_tpb.UnimplementedECSRequestTopicServer
 
-	db  DBLite
-	ecs ECSAPI
+	db  tokenstore.DBLite
+	ecs awsapi.ECSAPI
 }
 
-func NewECSWorker(db DBLite, ecsClient ECSAPI) (*ECSWorker, error) {
+func NewECSWorker(db tokenstore.DBLite, ecsClient awsapi.ECSAPI) (*ECSWorker, error) {
 	return &ECSWorker{
 		db:  db,
 		ecs: ecsClient,

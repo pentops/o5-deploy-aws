@@ -7,11 +7,11 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_cf"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/awsapi"
 )
 
 type S3 struct {
-	aws_cf.S3API
+	awsapi.S3API
 	files map[string][]byte
 }
 

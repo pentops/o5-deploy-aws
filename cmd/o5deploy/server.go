@@ -22,7 +22,10 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
 	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_cf"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_ecs"
 	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_postgres"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/awsapi"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/awsraw"
 	"github.com/pentops/o5-deploy-aws/internal/apps/aws/tokenstore"
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
 	"github.com/pentops/o5-deploy-aws/internal/github"
@@ -132,14 +135,17 @@ func runServe(ctx context.Context, cfg struct {
 
 	awsInfraRunner := aws_cf.NewInfraWorker(infraStore, cfAdapter)
 
-	ecsWorker, err := aws_cf.NewECSWorker(infraStore, ecs.NewFromConfig(awsConfig))
+	ecsWorker, err := aws_ecs.NewECSWorker(infraStore, ecs.NewFromConfig(awsConfig))
 	if err != nil {
 		return err
 	}
 
-	rawWorker := aws_cf.NewRawMessageWorker(awsInfraRunner, ecsWorker)
+	rawWorker := awsraw.NewRawMessageWorker(awsInfraRunner, ecsWorker)
 
-	dbMigrator := aws_postgres.NewDBMigrator(secretsmanager.NewFromConfig(awsConfig))
+	dbMigrator := aws_postgres.NewDBMigrator(
+		secretsmanager.NewFromConfig(awsConfig),
+		awsapi.NewRDSAuthProviderFromConfig(awsConfig),
+	)
 
 	pgMigrateRunner := aws_postgres.NewPostgresMigrateWorker(infraStore, dbMigrator)
 

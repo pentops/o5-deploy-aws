@@ -16,20 +16,21 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/awsapi"
 )
 
 type CFClient struct {
-	cfClient             CloudFormationAPI
-	elbClient            ELBV2API
-	snsClient            SNSAPI
-	s3Client             S3API
-	secretsManagerClient SecretsManagerAPI
+	cfClient             awsapi.CloudFormationAPI
+	elbClient            awsapi.ELBV2API
+	snsClient            awsapi.SNSAPI
+	s3Client             awsapi.S3API
+	secretsManagerClient awsapi.SecretsManagerAPI
 	region               string
 	accountID            string
 	CallbackARNs         []string
 }
 
-func NewCFAdapter(clients *DeployerClients, callbackARNs []string) *CFClient {
+func NewCFAdapter(clients *awsapi.DeployerClients, callbackARNs []string) *CFClient {
 	return &CFClient{
 		cfClient:             clients.CloudFormation,
 		elbClient:            clients.ELB,
@@ -43,7 +44,7 @@ func NewCFAdapter(clients *DeployerClients, callbackARNs []string) *CFClient {
 }
 
 func NewCFAdapterFromConfig(ctx context.Context, config aws.Config, callbackARNs []string) (*CFClient, error) {
-	clients, err := NewDeployerClientsFromConfig(ctx, config)
+	clients, err := awsapi.NewDeployerClientsFromConfig(ctx, config)
 	if err != nil {
 		return nil, err
 	}

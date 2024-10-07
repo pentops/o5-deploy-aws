@@ -1,4 +1,4 @@
-package aws_cf
+package awsraw
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/pentops/log.go/log"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_ecs"
 	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_tpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -16,7 +17,7 @@ type RawWorkerCFHandler interface {
 }
 
 type RawWorkerECSHandler interface {
-	HandleECSTaskEvent(ctx context.Context, eventID string, event *ECSTaskStateChangeEvent) error
+	HandleECSTaskEvent(ctx context.Context, eventID string, event *aws_ecs.ECSTaskStateChangeEvent) error
 }
 
 type RawMessageWorker struct {
@@ -120,7 +121,7 @@ func (ie *InfraEvent) Valid() bool {
 
 func (worker *RawMessageWorker) handleAWSInfraEvent(ctx context.Context, infraEvent *InfraEvent) error {
 	if infraEvent.Source == "aws.ecs" && infraEvent.DetailType == "ECS Task State Change" {
-		taskEvent := &ECSTaskStateChangeEvent{}
+		taskEvent := &aws_ecs.ECSTaskStateChangeEvent{}
 		if err := json.Unmarshal(infraEvent.Detail, taskEvent); err != nil {
 			return err
 		}

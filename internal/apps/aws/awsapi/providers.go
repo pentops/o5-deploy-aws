@@ -1,9 +1,11 @@
-package aws_cf
+package awsapi
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	elbv2 "github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
@@ -48,18 +50,29 @@ type SNSAPI interface {
 type S3API interface {
 	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
-	GetBucketLocation(ctx context.Context, params *s3.GetBucketLocationInput, optFns ...func(*s3.Options)) (*s3.GetBucketLocationOutput, error)
+}
+
+type RDSAuthProvider interface {
+	BuildAuthToken(ctx context.Context, dbEndpoint, dbUser string) (string, error)
+}
+
+func NewRDSAuthProviderFromConfig(config aws.Config) RDSAuthProvider {
+	return rdsAuthProvider{
+		region: config.Region,
+		creds:  config.Credentials,
+	}
 }
 
 type DeployerClients struct {
-	CloudFormation CloudFormationAPI
-	SNS            SNSAPI
-	ELB            ELBV2API
-	SecretsManager SecretsManagerAPI
-	ECS            ECSAPI
-	S3             S3API
-	Region         string
-	AccountID      string
+	CloudFormation  CloudFormationAPI
+	SNS             SNSAPI
+	ELB             ELBV2API
+	SecretsManager  SecretsManagerAPI
+	ECS             ECSAPI
+	S3              S3API
+	RDSAuthProvider RDSAuthProvider
+	Region          string
+	AccountID       string
 }
 
 func NewDeployerClientsFromConfig(ctx context.Context, config aws.Config) (*DeployerClients, error) {
@@ -81,6 +94,24 @@ func NewDeployerClientsFromConfig(ctx context.Context, config aws.Config) (*Depl
 		S3:             s3.NewFromConfig(config),
 		Region:         region,
 		AccountID:      *callerIdentity.Account,
+		RDSAuthProvider: rdsAuthProvider{
+			region: region,
+			creds:  config.Credentials,
+		},
 	}, nil
 
+}
+
+type rdsAuthProvider struct {
+	region string
+	creds  aws.CredentialsProvider
+}
+
+func (rds rdsAuthProvider) BuildAuthToken(ctx context.Context, dbEndpoint, dbUser string) (string, error) {
+	authenticationToken, err := auth.BuildAuthToken(
+		ctx, dbEndpoint, rds.region, dbUser, rds.creds)
+	if err != nil {
+		return "", fmt.Errorf("failed to create authentication token: %w", err)
+	}
+	return authenticationToken, nil
 }

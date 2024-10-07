@@ -16,6 +16,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_cf"
 	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_postgres"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/awsapi"
 	"github.com/pentops/o5-deploy-aws/internal/service"
 	"google.golang.org/protobuf/proto"
 )
@@ -26,9 +27,9 @@ type InfraAdapter struct {
 	ecsClient *ecsRunner
 }
 
-func NewInfraAdapter(ctx context.Context, cl *aws_cf.DeployerClients) (*InfraAdapter, error) {
+func NewInfraAdapter(ctx context.Context, cl *awsapi.DeployerClients) (*InfraAdapter, error) {
 	cfClient := aws_cf.NewCFAdapter(cl, []string{})
-	dbMigrator := aws_postgres.NewDBMigrator(cl.SecretsManager)
+	dbMigrator := aws_postgres.NewDBMigrator(cl.SecretsManager, cl.RDSAuthProvider)
 	ecsClient := &ecsRunner{
 		ecsClient: cl.ECS,
 	}
@@ -46,7 +47,7 @@ func NewInfraAdapterFromConfig(ctx context.Context, config aws.Config) (*InfraAd
 		return nil, err
 	}
 
-	dbMigrator := aws_postgres.NewDBMigrator(secretsmanager.NewFromConfig(config))
+	dbMigrator := aws_postgres.NewDBMigrator(secretsmanager.NewFromConfig(config), awsapi.NewRDSAuthProviderFromConfig(config))
 	ecsClient := &ecsRunner{
 		ecsClient: ecs.NewFromConfig(config),
 	}
@@ -367,7 +368,7 @@ func (cf *InfraAdapter) PollStack(
 func (cf *InfraAdapter) pollStack(
 	ctx context.Context,
 	stackName string,
-	reqToken string,
+	_ string,
 	request *messaging_j5pb.RequestMetadata,
 ) (*awsinfra_tpb.StackStatusChangedMessage, error) {
 

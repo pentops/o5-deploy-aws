@@ -14,6 +14,12 @@ import (
 	"github.com/pentops/sqrlx.go/sqrlx"
 )
 
+type DBLite interface {
+	PublishEvent(context.Context, o5msg.Message) error
+	RequestToClientToken(context.Context, *messaging_j5pb.RequestMetadata) (string, error)
+	ClientTokenToRequest(context.Context, string) (*messaging_j5pb.RequestMetadata, error)
+}
+
 var RequestTokenNotFound = errors.New("request token not found")
 
 type Storage struct {

@@ -1,4 +1,4 @@
-package aws_cf
+package awsraw
 
 import (
 	"encoding/base64"

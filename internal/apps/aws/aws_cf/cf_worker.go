@@ -15,20 +15,14 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type DBLite interface {
-	PublishEvent(context.Context, o5msg.Message) error
-	RequestToClientToken(context.Context, *messaging_j5pb.RequestMetadata) (string, error)
-	ClientTokenToRequest(context.Context, string) (*messaging_j5pb.RequestMetadata, error)
-}
-
 type InfraWorker struct {
 	awsinfra_tpb.UnimplementedCloudFormationRequestTopicServer
 
-	db DBLite
+	db tokenstore.DBLite
 	*CFClient
 }
 
-func NewInfraWorker(db DBLite, adapter *CFClient) *InfraWorker {
+func NewInfraWorker(db tokenstore.DBLite, adapter *CFClient) *InfraWorker {
 	return &InfraWorker{
 		CFClient: adapter,
 		db:       db,

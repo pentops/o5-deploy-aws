@@ -17,20 +17,24 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
-	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_cf"
 )
 
 type TemplateStore interface {
 	PutTemplate(ctx context.Context, envName, appName, deploymentID string, template []byte) (*awsdeployer_pb.S3Template, error)
 }
 
+type S3API interface {
+	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	GetBucketLocation(ctx context.Context, params *s3.GetBucketLocationInput, optFns ...func(*s3.Options)) (*s3.GetBucketLocationOutput, error)
+}
+
 type S3TemplateStore struct {
-	s3Client         aws_cf.S3API
+	s3Client         S3API
 	region           string
 	cfTemplateBucket string
 }
 
-func NewS3TemplateStore(ctx context.Context, s3Client aws_cf.S3API, cfTemplateBucket string) (*S3TemplateStore, error) {
+func NewS3TemplateStore(ctx context.Context, s3Client S3API, cfTemplateBucket string) (*S3TemplateStore, error) {
 	cfTemplateBucket = strings.TrimPrefix(cfTemplateBucket, "s3://")
 
 	regionRes, err := s3Client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
