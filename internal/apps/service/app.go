@@ -4,8 +4,8 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
+	"github.com/pentops/o5-deploy-aws/internal/apps/service/internal/states"
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
-	"github.com/pentops/o5-deploy-aws/internal/states"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc"
 )

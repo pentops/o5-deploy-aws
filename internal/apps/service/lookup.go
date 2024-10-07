@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/internal/states"
+	"github.com/pentops/o5-deploy-aws/internal/apps/service/internal/states"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

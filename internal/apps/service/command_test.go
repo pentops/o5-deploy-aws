@@ -10,8 +10,8 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
+	"github.com/pentops/o5-deploy-aws/internal/apps/service/internal/states"
 	"github.com/pentops/o5-deploy-aws/internal/integration/mocks"
-	"github.com/pentops/o5-deploy-aws/internal/states"
 	"github.com/pentops/o5-messaging/outbox/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
 	"github.com/pentops/realms/authtest"
@@ -44,7 +44,7 @@ func TestConfiguration(t *testing.T) {
 	githubMock := mocks.NewGithub()
 
 	conn := pgtest.GetTestDB(t,
-		pgtest.WithDir("../../ext/db"),
+		pgtest.WithDir("../../../ext/db"),
 		pgtest.WithSchemaName("testservice"),
 	)
 	//outbox := outboxtest.NewOutboxAsserter(t, conn)
@@ -126,7 +126,7 @@ func TestTriggerDeployment(t *testing.T) {
 	githubMock := mocks.NewGithub()
 
 	conn := pgtest.GetTestDB(t,
-		pgtest.WithDir("../../ext/db"),
+		pgtest.WithDir("../../../ext/db"),
 		pgtest.WithSchemaName("testservice"),
 	)
 	outbox := outboxtest.NewOutboxAsserter(t, conn)
