@@ -8,7 +8,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/policies"
 	"github.com/awslabs/goformation/v7/cloudformation/s3"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
-	"github.com/pentops/o5-deploy-aws/internal/cf"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
 )
 
 type BucketRef interface {
@@ -86,7 +86,7 @@ func mapBlobstore(bb *Builder, blobstoreDef *application_pb.Blobstore) (*bucketI
 			cloudformation.Ref(AWSRegionParameter),
 			cloudformation.Ref(S3BucketNamespaceParameter),
 		})
-		bucket := cf.NewResource(blobstoreDef.Name, &s3.Bucket{
+		bucket := cflib.NewResource(blobstoreDef.Name, &s3.Bucket{
 			AWSCloudFormationDeletionPolicy: policies.DeletionPolicy("Retain"),
 			BucketName:                      cloudformation.String(bucketName),
 		})

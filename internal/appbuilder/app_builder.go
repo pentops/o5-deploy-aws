@@ -7,7 +7,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
-	"github.com/pentops/o5-deploy-aws/internal/cf"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
 	"github.com/pkg/errors"
 )
 
@@ -139,7 +139,7 @@ func BuildApplication(spec AppInput) (*BuiltApplication, error) {
 
 type Builder struct {
 	Globals
-	Template *cf.TemplateBuilder
+	Template *cflib.TemplateBuilder
 
 	dbs []*awsdeployer_pb.PostgresDatabaseResource
 
@@ -152,7 +152,7 @@ func NewBuilder(input AppInput) (*Builder, resourceBuilder, error) {
 		return nil, nil, errors.WithStack(fmt.Errorf("AppInput invalid: %w", err))
 	}
 
-	template := cf.NewTemplateBuilder()
+	template := cflib.NewTemplateBuilder()
 
 	global := &globals{
 		spec:     input.Application,

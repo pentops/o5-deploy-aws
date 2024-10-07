@@ -6,14 +6,14 @@ import (
 
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/pentops/flowtest/jsontest"
-	"github.com/pentops/o5-deploy-aws/internal/cf"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
 )
 
 type TemplateAsserter struct {
-	built *cf.BuiltTemplate
+	built *cflib.BuiltTemplate
 }
 
-func NewTemplateAsserter(tpl *cf.BuiltTemplate) *TemplateAsserter {
+func NewTemplateAsserter(tpl *cflib.BuiltTemplate) *TemplateAsserter {
 	return &TemplateAsserter{
 		built: tpl,
 	}
@@ -22,7 +22,7 @@ func NewTemplateAsserter(tpl *cf.BuiltTemplate) *TemplateAsserter {
 func (ta *TemplateAsserter) getResourceJSON(t testing.TB, name string, into cloudformation.Resource) []byte {
 	t.Helper()
 
-	fullName := cf.ResourceName(name, into)
+	fullName := cflib.ResourceName(name, into)
 	raw, ok := ta.built.Template.Resources[fullName]
 	if !ok {
 

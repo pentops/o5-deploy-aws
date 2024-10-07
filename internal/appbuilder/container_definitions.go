@@ -7,7 +7,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/internal/cf"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
 )
 
 type ContainerDefinition struct {
@@ -42,12 +42,12 @@ func ensureEnvVar(envVars *[]ecs.TaskDefinition_KeyValuePair, name string, value
 func buildContainer(globals Globals, iamPolicy *PolicyBuilder, def *application_pb.Container) (*ContainerDefinition, error) {
 	container := &ecs.TaskDefinition_ContainerDefinition{
 		Name:      def.Name,
-		Essential: cf.Bool(true),
+		Essential: cflib.Bool(true),
 
 		// TODO: Make these a Parameter for each size, for the environment to
 		// set
-		Cpu:               cf.Int(128),
-		MemoryReservation: cf.Int(256),
+		Cpu:               cflib.Int(128),
+		MemoryReservation: cflib.Int(256),
 	}
 	ensureEnvVar(&container.Environment, "AWS_REGION", cloudformation.RefPtr("AWS::Region"))
 
@@ -92,8 +92,8 @@ func buildContainer(globals Globals, iamPolicy *PolicyBuilder, def *application_
 		switch varType := envVar.Spec.(type) {
 		case *application_pb.EnvironmentVariable_Value:
 			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  cf.String(envVar.Name),
-				Value: cf.String(varType.Value),
+				Name:  cflib.String(envVar.Name),
+				Value: cflib.String(varType.Value),
 			})
 
 		case *application_pb.EnvironmentVariable_Blobstore:
@@ -108,7 +108,7 @@ func buildContainer(globals Globals, iamPolicy *PolicyBuilder, def *application_
 			}
 
 			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  cf.String(envVar.Name),
+				Name:  cflib.String(envVar.Name),
 				Value: bucket.S3URL(varType.Blobstore.SubPath).RefPtr(),
 			})
 
@@ -146,7 +146,7 @@ func buildContainer(globals Globals, iamPolicy *PolicyBuilder, def *application_
 			isProxy := dbDef.IsProxy()
 			if isProxy {
 				envVar := ecs.TaskDefinition_KeyValuePair{
-					Name:  cf.String(envVar.Name),
+					Name:  cflib.String(envVar.Name),
 					Value: nil, // dbDef.RefToProxy(host),
 				}
 				container.Environment = append(container.Environment, envVar)
@@ -172,7 +172,7 @@ func buildContainer(globals Globals, iamPolicy *PolicyBuilder, def *application_
 
 		case *application_pb.EnvironmentVariable_FromEnv:
 			varName := varType.FromEnv.Name
-			paramName := fmt.Sprintf("EnvVar%s", cf.CleanParameterName(varName))
+			paramName := fmt.Sprintf("EnvVar%s", cflib.CleanParameterName(varName))
 			containerDef.Parameters[paramName] = &awsdeployer_pb.Parameter{
 				Name: paramName,
 				Type: "String",
@@ -186,7 +186,7 @@ func buildContainer(globals Globals, iamPolicy *PolicyBuilder, def *application_
 			}
 
 			container.Environment = append(container.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  cf.String(envVar.Name),
+				Name:  cflib.String(envVar.Name),
 				Value: cloudformation.RefPtr(paramName),
 			})
 
@@ -194,7 +194,7 @@ func buildContainer(globals Globals, iamPolicy *PolicyBuilder, def *application_
 
 		case *application_pb.EnvironmentVariable_O5:
 			envVar := ecs.TaskDefinition_KeyValuePair{
-				Name:  cf.String(envVar.Name),
+				Name:  cflib.String(envVar.Name),
 				Value: nil,
 			}
 			container.Environment = append(container.Environment, envVar)
@@ -216,8 +216,8 @@ func buildContainer(globals Globals, iamPolicy *PolicyBuilder, def *application_
 
 	if def.MountDockerSocket {
 		containerDef.Container.MountPoints = append(containerDef.Container.MountPoints, ecs.TaskDefinition_MountPoint{
-			ContainerPath: cf.String("/var/run/docker.sock"),
-			SourceVolume:  cf.String("docker-socket"),
+			ContainerPath: cflib.String("/var/run/docker.sock"),
+			SourceVolume:  cflib.String("docker-socket"),
 		})
 	}
 	return containerDef, nil

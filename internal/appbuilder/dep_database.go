@@ -11,7 +11,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
-	"github.com/pentops/o5-deploy-aws/internal/cf"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
 )
 
 type DatabaseRef interface {
@@ -25,7 +25,7 @@ type DatabaseRef interface {
 type DatabaseReference struct {
 	refName        string
 	Definition     *application_pb.Database
-	SecretResource *cf.Resource[*secretsmanager.Secret]
+	SecretResource *cflib.Resource[*secretsmanager.Secret]
 }
 
 func (dbDef DatabaseReference) Name() string {
@@ -105,7 +105,7 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (*
 	}
 
 	if dbHost.AuthType == environment_pb.RDSAuth_SecretsManager {
-		secret := cf.NewResource(cf.CleanParameterName("Database", database.Name), &secretsmanager.Secret{
+		secret := cflib.NewResource(cflib.CleanParameterName("Database", database.Name), &secretsmanager.Secret{
 			AWSCloudFormationDeletionPolicy: policies.DeletionPolicy("Retain"),
 			Name: cloudformation.JoinPtr("/", []string{
 				"", // Leading /
@@ -114,12 +114,12 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (*
 				"postgres",
 				database.Name,
 			}),
-			Description: cf.Stringf("Secret for Postgres database %s in app %s", database.Name, builder.AppName()),
+			Description: cflib.Stringf("Secret for Postgres database %s in app %s", database.Name, builder.AppName()),
 		})
 
 		builder.Template.AddResource(secret)
-		secretName := fmt.Sprintf("DatabaseSecret%s", cf.CleanParameterName(database.Name))
-		builder.Template.AddOutput(&cf.Output{
+		secretName := fmt.Sprintf("DatabaseSecret%s", cflib.CleanParameterName(database.Name))
+		builder.Template.AddOutput(&cflib.Output{
 			Name:  secretName,
 			Value: secret.Ref(),
 		})
@@ -130,7 +130,7 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (*
 		}
 
 	} else {
-		paramName := fmt.Sprintf("DatabaseParam%s", cf.CleanParameterName(database.Name))
+		paramName := fmt.Sprintf("DatabaseParam%s", cflib.CleanParameterName(database.Name))
 		builder.Template.AddParameter(&awsdeployer_pb.Parameter{
 			Name:        paramName,
 			Type:        "String",
@@ -155,22 +155,22 @@ func mapPostgresMigration(builder *Builder, resource *awsdeployer_pb.PostgresDat
 		return fmt.Errorf("building migration container for %s: %w", resource.DbName, err)
 	}
 	addLogs(migrationContainer.Container, fmt.Sprintf("%s/migrate", builder.AppName()))
-	name := fmt.Sprintf("MigrationTaskDefinition%s", cf.CleanParameterName(resource.DbName))
+	name := fmt.Sprintf("MigrationTaskDefinition%s", cflib.CleanParameterName(resource.DbName))
 
-	migrationTaskDefinition := cf.NewResource(name, &ecs.TaskDefinition{
+	migrationTaskDefinition := cflib.NewResource(name, &ecs.TaskDefinition{
 		ContainerDefinitions: []ecs.TaskDefinition_ContainerDefinition{
 			*migrationContainer.Container,
 		},
-		Family:                  cf.String(fmt.Sprintf("%s_migrate_%s", builder.AppName(), resource.DbName)),
+		Family:                  cflib.String(fmt.Sprintf("%s_migrate_%s", builder.AppName(), resource.DbName)),
 		ExecutionRoleArn:        cloudformation.RefPtr(ECSTaskExecutionRoleParameter),
 		RequiresCompatibilities: []string{"EC2"},
 	})
 
 	builder.Template.AddResource(migrationTaskDefinition)
 
-	resource.MigrationTaskOutputName = cf.String(name)
+	resource.MigrationTaskOutputName = cflib.String(name)
 
-	builder.Template.AddOutput(&cf.Output{
+	builder.Template.AddOutput(&cflib.Output{
 		Name:  name,
 		Value: migrationTaskDefinition.Ref(),
 	})

@@ -7,8 +7,8 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
-	"github.com/pentops/o5-deploy-aws/internal/cf"
-	"github.com/pentops/o5-deploy-aws/internal/cf/cftest"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib/cftest"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -58,7 +58,7 @@ func (tb *testBuilder) ClusterRDSHost(name string, host *RDSHost) {
 
 func (tb *testBuilder) BuildAndAssert(t *testing.T) *cftest.TemplateAsserter {
 	out := tb.Build(t)
-	return cftest.NewTemplateAsserter(&cf.BuiltTemplate{
+	return cftest.NewTemplateAsserter(&cflib.BuiltTemplate{
 		Template:   out.Template,
 		Parameters: out.Parameters,
 	})
@@ -199,7 +199,7 @@ func TestDatabaseCases(t *testing.T) {
 	assertSecretCase := func(t *testing.T, tc *pgTestCase, sc *wantSecret) {
 		rr := runPGTestCase(t, tc)
 
-		wantSecretRef := tSecretRef(cf.CleanParameterName("Database", sc.dbName), "dburl")
+		wantSecretRef := tSecretRef(cflib.CleanParameterName("Database", sc.dbName), "dburl")
 
 		env := rr.main.GetEnv("DATABASE_URL")
 		if env != nil {

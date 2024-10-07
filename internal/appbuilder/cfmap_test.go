@@ -12,7 +12,7 @@ import (
 	"github.com/awslabs/goformation/v7/intrinsics"
 	"github.com/google/go-cmp/cmp"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
-	"github.com/pentops/o5-deploy-aws/internal/cf"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,7 +24,7 @@ func TestBasicMap(t *testing.T) {
 			Name: "main",
 			Source: &application_pb.Container_Image_{
 				Image: &application_pb.Container_Image{
-					Tag:  cf.String("latest"),
+					Tag:  cflib.String("latest"),
 					Name: "foobar",
 				},
 			},
@@ -56,7 +56,7 @@ func TestDirectPortAccess(t *testing.T) {
 			Name: "main",
 			Source: &application_pb.Container_Image_{
 				Image: &application_pb.Container_Image{
-					Tag:  cf.String("latest"),
+					Tag:  cflib.String("latest"),
 					Name: "foobar",
 				},
 			},
@@ -88,7 +88,7 @@ func TestIndirectPortAccess(t *testing.T) {
 			Name: "main",
 			Source: &application_pb.Container_Image_{
 				Image: &application_pb.Container_Image{
-					Tag:  cf.String("latest"),
+					Tag:  cflib.String("latest"),
 					Name: "foobar",
 				},
 			},
@@ -122,7 +122,7 @@ func TestRuntime(t *testing.T) {
 			Name: "main",
 			Source: &application_pb.Container_Image_{
 				Image: &application_pb.Container_Image{
-					Tag:  cf.String("latest"),
+					Tag:  cflib.String("latest"),
 					Name: "foobar",
 				},
 			},
@@ -166,7 +166,7 @@ func TestSidecarConfigRuntime(t *testing.T) {
 			Name: "main",
 			Source: &application_pb.Container_Image_{
 				Image: &application_pb.Container_Image{
-					Tag:  cf.String("latest"),
+					Tag:  cflib.String("latest"),
 					Name: "foobar",
 				},
 			},
@@ -204,7 +204,7 @@ func TestSidecarConfigNotPresentRuntime(t *testing.T) {
 			Name: "main",
 			Source: &application_pb.Container_Image_{
 				Image: &application_pb.Container_Image{
-					Tag:  cf.String("latest"),
+					Tag:  cflib.String("latest"),
 					Name: "foobar",
 				},
 			},
@@ -234,8 +234,8 @@ func TestSidecarConfigNotPresentRuntime(t *testing.T) {
 func TestBlobstore(t *testing.T) {
 
 	type result struct {
-		bucket *cf.Resource[*s3.Bucket]
-		role   *cf.Resource[*iam.Role]
+		bucket *cflib.Resource[*s3.Bucket]
+		role   *cflib.Resource[*iam.Role]
 		envVar *ecs.TaskDefinition_KeyValuePair
 	}
 
@@ -250,7 +250,7 @@ func TestBlobstore(t *testing.T) {
 				Name: "main",
 				Source: &application_pb.Container_Image_{
 					Image: &application_pb.Container_Image{
-						Tag:  cf.String("latest"),
+						Tag:  cflib.String("latest"),
 						Name: "foobar",
 					},
 				},
@@ -259,7 +259,7 @@ func TestBlobstore(t *testing.T) {
 					Spec: &application_pb.EnvironmentVariable_Blobstore{
 						Blobstore: &application_pb.BlobstoreEnvVar{
 							Name:    "bucket",
-							SubPath: cf.String("subpath"),
+							SubPath: cflib.String("subpath"),
 							Format: &application_pb.BlobstoreEnvVar_S3Direct{
 								S3Direct: true,
 							},
@@ -273,19 +273,19 @@ func TestBlobstore(t *testing.T) {
 
 		rr := result{}
 
-		bucketResource, ok := out.Template.Resources["S3BucketBucket"].(*cf.Resource[*s3.Bucket])
+		bucketResource, ok := out.Template.Resources["S3BucketBucket"].(*cflib.Resource[*s3.Bucket])
 		if ok {
 			rr.bucket = bucketResource
 		}
 
-		roleResource, ok := out.Template.Resources["IAMRoleMainAssume"].(*cf.Resource[*iam.Role])
+		roleResource, ok := out.Template.Resources["IAMRoleMainAssume"].(*cflib.Resource[*iam.Role])
 		if !ok || roleResource == nil {
 			t.Fatalf("role resource not found")
 		}
 
 		rr.role = roleResource
 
-		taskDef, ok := out.Template.Resources["ECSTaskDefinitionMain"].(*cf.Resource[*ecs.TaskDefinition])
+		taskDef, ok := out.Template.Resources["ECSTaskDefinitionMain"].(*cflib.Resource[*ecs.TaskDefinition])
 		if !ok || taskDef == nil {
 			t.Fatalf("task definition not found")
 		}

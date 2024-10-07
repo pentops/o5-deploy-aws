@@ -7,7 +7,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/policies"
 	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
-	"github.com/pentops/o5-deploy-aws/internal/cf"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -120,14 +120,14 @@ func mapResources(bb *Builder, resources resourceBuilder, app *application_pb.Ap
 
 	for _, secretDef := range app.Secrets {
 		parameterName := fmt.Sprintf("AppSecret%s", cases.Title(language.English).String(secretDef.Name))
-		secret := cf.NewResource(parameterName, &secretsmanager.Secret{
+		secret := cflib.NewResource(parameterName, &secretsmanager.Secret{
 			Name: cloudformation.JoinPtr("/", []string{
 				"", // Leading /
 				cloudformation.Ref(EnvNameParameter),
 				app.Name,
 				secretDef.Name,
 			}),
-			Description:                     cf.Stringf("Application Level Secret for %s:%s - value must be set manually", app.Name, secretDef.Name),
+			Description:                     cflib.Stringf("Application Level Secret for %s:%s - value must be set manually", app.Name, secretDef.Name),
 			AWSCloudFormationDeletionPolicy: policies.DeletionPolicy("Retain"),
 		})
 		bb.Template.AddResource(secret)

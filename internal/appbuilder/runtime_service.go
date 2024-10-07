@@ -14,18 +14,18 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation/tags"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/internal/cf"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
 )
 
 type RuntimeService struct {
 	Prefix string
 	Name   string
 
-	TaskDefinition *cf.Resource[*ecs.TaskDefinition]
+	TaskDefinition *cflib.Resource[*ecs.TaskDefinition]
 	Containers     []*ContainerDefinition
-	Service        *cf.Resource[*ecs.Service]
+	Service        *cflib.Resource[*ecs.Service]
 
-	TargetGroups map[string]*cf.Resource[*elbv2.TargetGroup]
+	TargetGroups map[string]*cflib.Resource[*elbv2.TargetGroup]
 
 	Policy *PolicyBuilder
 
@@ -63,29 +63,29 @@ func NewRuntimeService(globals Globals, runtime *application_pb.Runtime) (*Runti
 
 	runtimeSidecar := &ecs.TaskDefinition_ContainerDefinition{
 		Name:      O5SidecarContainerName,
-		Essential: cf.Bool(true),
+		Essential: cflib.Bool(true),
 		Image:     cloudformation.Ref(O5SidecarImageParameter),
-		Cpu:       cf.Int(128),
-		Memory:    cf.Int(128),
+		Cpu:       cflib.Int(128),
+		Memory:    cflib.Int(128),
 		PortMappings: []ecs.TaskDefinition_PortMapping{{
-			ContainerPort: cf.Int(8080),
+			ContainerPort: cflib.Int(8080),
 		}},
 		Links: serviceLinks,
 		Environment: []ecs.TaskDefinition_KeyValuePair{{
-			Name:  cf.String("EVENTBRIDGE_ARN"),
-			Value: cf.String(cloudformation.Ref(EventBusARNParameter)),
+			Name:  cflib.String("EVENTBRIDGE_ARN"),
+			Value: cflib.String(cloudformation.Ref(EventBusARNParameter)),
 		}, {
-			Name:  cf.String("APP_NAME"),
-			Value: cf.String(globals.AppName()),
+			Name:  cflib.String("APP_NAME"),
+			Value: cflib.String(globals.AppName()),
 		}, {
-			Name:  cf.String("ENVIRONMENT_NAME"),
-			Value: cf.String(cloudformation.Ref(EnvNameParameter)),
+			Name:  cflib.String("ENVIRONMENT_NAME"),
+			Value: cflib.String(cloudformation.Ref(EnvNameParameter)),
 		}, {
-			Name:  cf.String("AWS_REGION"),
-			Value: cf.String(cloudformation.Ref(AWSRegionParameter)),
+			Name:  cflib.String("AWS_REGION"),
+			Value: cflib.String(cloudformation.Ref(AWSRegionParameter)),
 		}, {
-			Name:  cf.String("CORS_ORIGINS"),
-			Value: cf.String(cloudformation.Ref(CORSOriginParameter)),
+			Name:  cflib.String("CORS_ORIGINS"),
+			Value: cflib.String(cloudformation.Ref(CORSOriginParameter)),
 		}},
 	}
 
@@ -93,28 +93,28 @@ func NewRuntimeService(globals Globals, runtime *application_pb.Runtime) (*Runti
 		cfg := runtime.WorkerConfig
 		if cfg.DeadletterChance > 0 {
 			runtimeSidecar.Environment = append(runtimeSidecar.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  cf.String("DEADLETTER_CHANCE"),
-				Value: cf.String(fmt.Sprintf("%v", cfg.DeadletterChance)),
+				Name:  cflib.String("DEADLETTER_CHANCE"),
+				Value: cflib.String(fmt.Sprintf("%v", cfg.DeadletterChance)),
 			})
 		}
 		if cfg.ReplayChance > 0 {
 			runtimeSidecar.Environment = append(runtimeSidecar.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  cf.String("RESEND_CHANCE"),
-				Value: cf.String(fmt.Sprintf("%v", cfg.ReplayChance)),
+				Name:  cflib.String("RESEND_CHANCE"),
+				Value: cflib.String(fmt.Sprintf("%v", cfg.ReplayChance)),
 			})
 		}
 		if cfg.NoDeadletters {
 			runtimeSidecar.Environment = append(runtimeSidecar.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  cf.String("NO_DEADLETTERS"),
-				Value: cf.String("true"),
+				Name:  cflib.String("NO_DEADLETTERS"),
+				Value: cflib.String("true"),
 			})
 		}
 	}
 
 	addLogs(runtimeSidecar, globals.AppName())
 
-	taskDefinition := cf.NewResource(runtime.Name, &ecs.TaskDefinition{
-		Family:                  cf.String(fmt.Sprintf("%s_%s", globals.AppName(), runtime.Name)),
+	taskDefinition := cflib.NewResource(runtime.Name, &ecs.TaskDefinition{
+		Family:                  cflib.String(fmt.Sprintf("%s_%s", globals.AppName(), runtime.Name)),
 		ExecutionRoleArn:        cloudformation.RefPtr(ECSTaskExecutionRoleParameter),
 		RequiresCompatibilities: []string{"EC2"},
 		//TaskRoleArn:  Set on Apply
@@ -124,25 +124,25 @@ func NewRuntimeService(globals Globals, runtime *application_pb.Runtime) (*Runti
 		}),
 	})
 
-	service := cf.NewResource(cf.CleanParameterName(runtime.Name), &ecs.Service{
-		Cluster:        cf.String(cloudformation.Ref(ECSClusterParameter)),
-		TaskDefinition: cf.String(taskDefinition.Ref()),
+	service := cflib.NewResource(cflib.CleanParameterName(runtime.Name), &ecs.Service{
+		Cluster:        cflib.String(cloudformation.Ref(ECSClusterParameter)),
+		TaskDefinition: cflib.String(taskDefinition.Ref()),
 		//	DesiredCount:  Set on Apply
 		DeploymentConfiguration: &ecs.Service_DeploymentConfiguration{
 			DeploymentCircuitBreaker: &ecs.Service_DeploymentCircuitBreaker{
 				Enable:   true,
 				Rollback: true,
 			},
-			MinimumHealthyPercent: cf.Int(0),
+			MinimumHealthyPercent: cflib.Int(0),
 		},
-		PropagateTags: cf.String("TASK_DEFINITION"),
+		PropagateTags: cflib.String("TASK_DEFINITION"),
 	})
 
 	if needsDockerVolume {
 		taskDefinition.Resource.Volumes = []ecs.TaskDefinition_Volume{{
-			Name: cf.String("docker-socket"),
+			Name: cflib.String("docker-socket"),
 			Host: &ecs.TaskDefinition_HostVolumeProperties{
-				SourcePath: cf.String("/var/run/docker.sock"),
+				SourcePath: cflib.String("/var/run/docker.sock"),
 			},
 		}}
 		policy.AddECRPull()
@@ -156,7 +156,7 @@ func NewRuntimeService(globals Globals, runtime *application_pb.Runtime) (*Runti
 		TaskDefinition:   taskDefinition,
 		Service:          service,
 		Policy:           policy,
-		TargetGroups:     map[string]*cf.Resource[*elbv2.TargetGroup]{},
+		TargetGroups:     map[string]*cflib.Resource[*elbv2.TargetGroup]{},
 		ingressEndpoints: map[string]struct{}{},
 		AdapterContainer: runtimeSidecar,
 	}, nil
@@ -179,7 +179,7 @@ func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
 
 }
 
-func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) error {
+func (rs *RuntimeService) AddTemplateResources(template *cflib.TemplateBuilder) error {
 
 	desiredCountParameter := fmt.Sprintf("DesiredCount%s", rs.Name)
 	template.AddParameter(&awsdeployer_pb.Parameter{
@@ -215,12 +215,12 @@ func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) err
 			rs.ingressEndpoints[endpoint] = struct{}{}
 		}
 
-		queueResource := cf.NewResource(rs.Name, &sqs.Queue{
+		queueResource := cflib.NewResource(rs.Name, &sqs.Queue{
 			QueueName: cloudformation.JoinPtr("-", []string{
 				cloudformation.Ref("AWS::StackName"),
 				rs.Name,
 			}),
-			SqsManagedSseEnabled: cf.Bool(true),
+			SqsManagedSseEnabled: cflib.Bool(true),
 			Tags:                 sourceTags(),
 		})
 
@@ -229,8 +229,8 @@ func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) err
 		rs.Policy.AddSQSSubscribe(queueResource.GetAtt("Arn"))
 
 		rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  cf.String("SQS_URL"),
-			Value: cf.String(queueResource.Ref()),
+			Name:  cflib.String("SQS_URL"),
+			Value: cflib.String(queueResource.Ref()),
 		})
 
 		for _, param := range subscriptionPlan.parameters {
@@ -239,11 +239,11 @@ func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) err
 
 		topicARNs := []string{}
 		for _, sub := range subscriptionPlan.snsSubscriptions {
-			subscription := cf.NewResource(cf.CleanParameterName(rs.Name, sub.name), &sns.Subscription{
+			subscription := cflib.NewResource(cflib.CleanParameterName(rs.Name, sub.name), &sns.Subscription{
 				TopicArn:           sub.topicARN,
 				Protocol:           "sqs",
-				RawMessageDelivery: cf.Bool(false), // Always include the SNS header info for infra events.
-				Endpoint:           cf.String(queueResource.GetAtt("Arn")),
+				RawMessageDelivery: cflib.Bool(false), // Always include the SNS header info for infra events.
+				Endpoint:           cflib.String(queueResource.GetAtt("Arn")),
 			})
 
 			// The topic is not added to the stack, it should already exist
@@ -254,7 +254,7 @@ func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) err
 
 		for _, sub := range subscriptionPlan.eventBusSubscriptions {
 			eventBusSubscription := &events.Rule{
-				Description:  cf.String(fmt.Sprintf("Subscription for app %s %s", rs.Name, sub.name)),
+				Description:  cflib.String(fmt.Sprintf("Subscription for app %s %s", rs.Name, sub.name)),
 				EventBusName: cloudformation.RefPtr(EventBusARNParameter),
 				Targets: []events.Rule_Target{{
 					Arn: queueResource.GetAtt("Arn"),
@@ -262,7 +262,7 @@ func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) err
 				}},
 				EventPattern: sub.eventPattern,
 			}
-			template.AddResource(cf.NewResource(cf.CleanParameterName(rs.Name, "subscription", sub.name), eventBusSubscription))
+			template.AddResource(cflib.NewResource(cflib.CleanParameterName(rs.Name, "subscription", sub.name), eventBusSubscription))
 		}
 
 		queuePolicyStatement := []interface{}{
@@ -291,7 +291,7 @@ func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) err
 
 		// Allow SNS and EventBridge to publish to SQS...
 		// (The ARN distinguishes the source)
-		template.AddResource(cf.NewResource(cf.CleanParameterName(rs.Name), &sqs.QueuePolicy{
+		template.AddResource(cflib.NewResource(cflib.CleanParameterName(rs.Name), &sqs.QueuePolicy{
 			Queues: []string{queueResource.Ref()},
 			PolicyDocument: map[string]interface{}{
 				"Version":   "2012-10-17",
@@ -307,16 +307,16 @@ func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) err
 			ingressEndpoints = append(ingressEndpoints, endpoint)
 		}
 		rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  cf.String("SERVICE_ENDPOINT"),
-			Value: cf.String(strings.Join(ingressEndpoints, ",")),
+			Name:  cflib.String("SERVICE_ENDPOINT"),
+			Value: cflib.String(strings.Join(ingressEndpoints, ",")),
 		}, ecs.TaskDefinition_KeyValuePair{
-			Name:  cf.String("JWKS"),
-			Value: cf.String(cloudformation.Ref(JWKSParameter)),
+			Name:  cflib.String("JWKS"),
+			Value: cflib.String(cloudformation.Ref(JWKSParameter)),
 		})
 		if ingressNeedsPublicPort {
 			rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-				Name:  cf.String("PUBLIC_ADDR"),
-				Value: cf.String(":8080"),
+				Name:  cflib.String("PUBLIC_ADDR"),
+				Value: cflib.String(":8080"),
 			})
 		}
 	}
@@ -348,7 +348,7 @@ func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) err
 	for _, container := range rs.Containers {
 		if container.AdapterEndpoint != nil {
 			needsAdapterPort = true
-			value := cf.String(fmt.Sprintf("http://%s:%d", O5SidecarContainerName, O5SidecarInternalPort))
+			value := cflib.String(fmt.Sprintf("http://%s:%d", O5SidecarContainerName, O5SidecarInternalPort))
 			container.AdapterEndpoint.EnvVar.Value = value
 		}
 
@@ -366,8 +366,8 @@ func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) err
 	if needsAdapterPort {
 		needsAdapterSidecar = true
 		rs.AdapterContainer.Environment = append(rs.AdapterContainer.Environment, ecs.TaskDefinition_KeyValuePair{
-			Name:  cf.String("ADAPTER_ADDR"),
-			Value: cf.String(fmt.Sprintf(":%d", O5SidecarInternalPort)),
+			Name:  cflib.String("ADAPTER_ADDR"),
+			Value: cflib.String(fmt.Sprintf(":%d", O5SidecarInternalPort)),
 		})
 	}
 
@@ -394,7 +394,7 @@ func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) err
 	template.AddResource(rs.Service)
 
 	rolePolicies := rs.Policy.Build(rs.Prefix, rs.Name)
-	role := cf.NewResource(fmt.Sprintf("%sAssume", rs.Name), &iam.Role{
+	role := cflib.NewResource(fmt.Sprintf("%sAssume", rs.Name), &iam.Role{
 		AssumeRolePolicyDocument: map[string]interface{}{
 			"Version": "2012-10-17",
 			"Statement": []interface{}{
@@ -407,7 +407,7 @@ func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) err
 				},
 			},
 		},
-		Description:       cf.Stringf("Execution role for ecs in %s - %s", rs.Prefix, rs.Name),
+		Description:       cflib.Stringf("Execution role for ecs in %s - %s", rs.Prefix, rs.Name),
 		ManagedPolicyArns: []string{},
 		Policies:          rolePolicies,
 		RoleName: cloudformation.JoinPtr("-", []string{
@@ -418,7 +418,7 @@ func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) err
 	})
 
 	for _, policy := range rs.spec.NamedEnvPolicies {
-		policyARN := cf.CleanParameterName("Named IAM Policy", rs.Name, policy)
+		policyARN := cflib.CleanParameterName("Named IAM Policy", rs.Name, policy)
 		role.AddParameter(&awsdeployer_pb.Parameter{
 			Name:        policyARN,
 			Type:        "String",
@@ -434,7 +434,7 @@ func (rs *RuntimeService) AddTemplateResources(template *cf.TemplateBuilder) err
 		role.Resource.ManagedPolicyArns = append(role.Resource.ManagedPolicyArns, cloudformation.Ref(policyARN))
 	}
 
-	rs.TaskDefinition.Resource.TaskRoleArn = cf.String(role.GetAtt("Arn"))
+	rs.TaskDefinition.Resource.TaskRoleArn = cflib.String(role.GetAtt("Arn"))
 
 	template.AddResource(role)
 
@@ -477,7 +477,7 @@ func (rs *RuntimeService) AddRoutes(ingress *ListenerRuleSet) error {
 	return nil
 }
 
-func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol, targetContainer string, port int) (*cf.Resource[*elbv2.TargetGroup], error) {
+func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol, targetContainer string, port int) (*cflib.Resource[*elbv2.TargetGroup], error) {
 	lookupKey := fmt.Sprintf("%s%s", protocol, targetContainer)
 	existing, ok := rs.TargetGroups[lookupKey]
 	if ok {
@@ -507,33 +507,33 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 	switch protocol {
 	case application_pb.RouteProtocol_ROUTE_PROTOCOL_HTTP:
 		targetGroupDefinition = &elbv2.TargetGroup{
-			VpcId:                      cf.String(cloudformation.Ref(VPCParameter)),
-			Port:                       cf.Int(8080),
-			Protocol:                   cf.String("HTTP"),
-			HealthCheckEnabled:         cf.Bool(true),
-			HealthCheckPort:            cf.String("traffic-port"),
-			HealthCheckPath:            cf.String("/healthz"),
-			HealthyThresholdCount:      cf.Int(2),
-			HealthCheckIntervalSeconds: cf.Int(15),
+			VpcId:                      cflib.String(cloudformation.Ref(VPCParameter)),
+			Port:                       cflib.Int(8080),
+			Protocol:                   cflib.String("HTTP"),
+			HealthCheckEnabled:         cflib.Bool(true),
+			HealthCheckPort:            cflib.String("traffic-port"),
+			HealthCheckPath:            cflib.String("/healthz"),
+			HealthyThresholdCount:      cflib.Int(2),
+			HealthCheckIntervalSeconds: cflib.Int(15),
 			Matcher: &elbv2.TargetGroup_Matcher{
-				HttpCode: cf.String("200,401,404"),
+				HttpCode: cflib.String("200,401,404"),
 			},
 			Tags: sourceTags(),
 		}
 
 	case application_pb.RouteProtocol_ROUTE_PROTOCOL_GRPC:
 		targetGroupDefinition = &elbv2.TargetGroup{
-			VpcId:                      cf.String(cloudformation.Ref(VPCParameter)),
-			Port:                       cf.Int(8080),
-			Protocol:                   cf.String("HTTP"),
-			ProtocolVersion:            cf.String("GRPC"),
-			HealthCheckEnabled:         cf.Bool(true),
-			HealthCheckPort:            cf.String("traffic-port"),
-			HealthCheckPath:            cf.String("/AWS.ALB/healthcheck"),
-			HealthyThresholdCount:      cf.Int(2),
-			HealthCheckIntervalSeconds: cf.Int(15),
+			VpcId:                      cflib.String(cloudformation.Ref(VPCParameter)),
+			Port:                       cflib.Int(8080),
+			Protocol:                   cflib.String("HTTP"),
+			ProtocolVersion:            cflib.String("GRPC"),
+			HealthCheckEnabled:         cflib.Bool(true),
+			HealthCheckPort:            cflib.String("traffic-port"),
+			HealthCheckPath:            cflib.String("/AWS.ALB/healthcheck"),
+			HealthyThresholdCount:      cflib.Int(2),
+			HealthCheckIntervalSeconds: cflib.Int(15),
 			Matcher: &elbv2.TargetGroup_Matcher{
-				GrpcCode: cf.String("0-99"),
+				GrpcCode: cflib.String("0-99"),
 			},
 			Tags: sourceTags(),
 		}
@@ -542,18 +542,18 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 	}
 	// faster deregistration
 	a := elbv2.TargetGroup_TargetGroupAttribute{
-		Key:   cf.String("deregistration_delay.timeout_seconds"),
-		Value: cf.String("30"),
+		Key:   cflib.String("deregistration_delay.timeout_seconds"),
+		Value: cflib.String("30"),
 	}
 	targetGroupDefinition.TargetGroupAttributes = []elbv2.TargetGroup_TargetGroupAttribute{a}
 
-	targetGroupResource := cf.NewResource(lookupKey, targetGroupDefinition)
+	targetGroupResource := cflib.NewResource(lookupKey, targetGroupDefinition)
 	rs.TargetGroups[lookupKey] = targetGroupResource
 
 	rs.Service.Resource.LoadBalancers = append(rs.Service.Resource.LoadBalancers, ecs.Service_LoadBalancer{
-		ContainerName:  cf.String(targetContainer),
-		ContainerPort:  cf.Int(port),
-		TargetGroupArn: cf.String(targetGroupResource.Ref()),
+		ContainerName:  cflib.String(targetContainer),
+		ContainerPort:  cflib.Int(port),
+		TargetGroupArn: cflib.String(targetGroupResource.Ref()),
 	})
 
 	found := false
@@ -565,7 +565,7 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 	}
 	if !found {
 		container.PortMappings = append(container.PortMappings, ecs.TaskDefinition_PortMapping{
-			ContainerPort: cf.Int(port),
+			ContainerPort: cflib.Int(port),
 		})
 	}
 

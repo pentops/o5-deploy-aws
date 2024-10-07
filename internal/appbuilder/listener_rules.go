@@ -8,26 +8,26 @@ import (
 	elbv2 "github.com/awslabs/goformation/v7/cloudformation/elasticloadbalancingv2"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/internal/cf"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
 )
 
 type ListenerRuleSet struct {
-	Rules []*cf.Resource[*elbv2.ListenerRule]
+	Rules []*cflib.Resource[*elbv2.ListenerRule]
 }
 
 func NewListenerRuleSet() *ListenerRuleSet {
 	return &ListenerRuleSet{
-		Rules: []*cf.Resource[*elbv2.ListenerRule]{},
+		Rules: []*cflib.Resource[*elbv2.ListenerRule]{},
 	}
 }
 
-func (ll *ListenerRuleSet) AddTemplateResources(template *cf.TemplateBuilder) {
+func (ll *ListenerRuleSet) AddTemplateResources(template *cflib.TemplateBuilder) {
 	for _, listenerRule := range ll.Rules {
 		template.AddResource(listenerRule)
 	}
 }
 
-func (ll *ListenerRuleSet) AddRoute(targetGroup *cf.Resource[*elbv2.TargetGroup], route *application_pb.Route) (*cf.Resource[*elbv2.ListenerRule], error) {
+func (ll *ListenerRuleSet) AddRoute(targetGroup *cflib.Resource[*elbv2.TargetGroup], route *application_pb.Route) (*cflib.Resource[*elbv2.ListenerRule], error) {
 	hash := sha1.New()
 	hash.Write([]byte(route.Prefix))
 	pathClean := fmt.Sprintf("%x", hash.Sum(nil))
@@ -54,12 +54,12 @@ func (ll *ListenerRuleSet) AddRoute(targetGroup *cf.Resource[*elbv2.TargetGroup]
 			Type: "forward",
 			ForwardConfig: &elbv2.ListenerRule_ForwardConfig{
 				TargetGroups: []elbv2.ListenerRule_TargetGroupTuple{{
-					TargetGroupArn: cf.String(targetGroup.Ref()),
+					TargetGroupArn: cflib.String(targetGroup.Ref()),
 				}},
 			},
 		}},
 		Conditions: []elbv2.ListenerRule_RuleCondition{{
-			Field:  cf.String("path-pattern"),
+			Field:  cflib.String("path-pattern"),
 			Values: []string{fmt.Sprintf("%s*", route.Prefix)},
 		}},
 	}
@@ -71,7 +71,7 @@ func (ll *ListenerRuleSet) AddRoute(targetGroup *cf.Resource[*elbv2.TargetGroup]
 			return nil, fmt.Errorf("too many subdomains for route %s, max 3", route.Prefix)
 		}
 		condition := elbv2.ListenerRule_RuleCondition{
-			Field:  cf.String("host-header"),
+			Field:  cflib.String("host-header"),
 			Values: []string{},
 		}
 		for _, subdomain := range route.Subdomains {
@@ -81,12 +81,12 @@ func (ll *ListenerRuleSet) AddRoute(targetGroup *cf.Resource[*elbv2.TargetGroup]
 
 	} else {
 		rule.Conditions = append(rule.Conditions, elbv2.ListenerRule_RuleCondition{
-			Field:  cf.String("host-header"),
+			Field:  cflib.String("host-header"),
 			Values: []string{cloudformation.Ref(HostHeaderParameter)},
 		})
 	}
 
-	resource := cf.NewResource(cf.QualifiedName(name), rule)
+	resource := cflib.NewResource(cflib.QualifiedName(name), rule)
 	resource.Override("Priority", cloudformation.Ref(priority))
 	resource.AddParameter(&awsdeployer_pb.Parameter{
 		Name:        priority,

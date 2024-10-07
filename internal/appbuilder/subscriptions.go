@@ -7,7 +7,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/internal/cf"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
 )
 
 type subscriptionPlan struct {
@@ -118,7 +118,7 @@ func buildSubscriptionPlan(spec *application_pb.Runtime) (*subscriptionPlan, err
 			if *sub.EnvName == "*" {
 				ruleSet.sourceEnvRef = nil // Don't filter the env.
 			} else {
-				envParamName := cf.CleanParameterName(*sub.EnvName, "FullName")
+				envParamName := cflib.CleanParameterName(*sub.EnvName, "FullName")
 				ruleSet.sourceEnvRef = []string{cloudformation.Ref(envParamName)}
 
 				plan.parameters = append(plan.parameters, &awsdeployer_pb.Parameter{
