@@ -14,8 +14,8 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
-	"github.com/pentops/o5-deploy-aws/internal/aws/aws_cf"
-	"github.com/pentops/o5-deploy-aws/internal/aws/aws_postgres"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_cf"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_postgres"
 	"github.com/pentops/o5-deploy-aws/internal/service"
 	"google.golang.org/protobuf/proto"
 )

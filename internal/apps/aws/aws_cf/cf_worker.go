@@ -10,7 +10,7 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
-	"github.com/pentops/o5-deploy-aws/internal/aws/tokenstore"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/tokenstore"
 	"github.com/pentops/o5-messaging/o5msg"
 	"google.golang.org/protobuf/types/known/emptypb"
 )

@@ -17,7 +17,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
-	"github.com/pentops/o5-deploy-aws/internal/aws/aws_cf"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_cf"
 )
 
 type TemplateStore interface {

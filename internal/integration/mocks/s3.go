@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/pentops/o5-deploy-aws/internal/aws/aws_cf"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_cf"
 )
 
 type S3 struct {
