@@ -1,4 +1,4 @@
-package awsinfra
+package aws_cf
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
+	"github.com/pentops/o5-deploy-aws/internal/aws/tokenstore"
 	"github.com/pentops/o5-messaging/o5msg"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -19,8 +20,6 @@ type DBLite interface {
 	RequestToClientToken(context.Context, *messaging_j5pb.RequestMetadata) (string, error)
 	ClientTokenToRequest(context.Context, string) (*messaging_j5pb.RequestMetadata, error)
 }
-
-var RequestTokenNotFound = errors.New("request token not found")
 
 type InfraWorker struct {
 	awsinfra_tpb.UnimplementedCloudFormationRequestTopicServer
@@ -99,7 +98,7 @@ func (cf *InfraWorker) HandleCloudFormationEvent(ctx context.Context, fields map
 	}
 
 	requestMetadata, err := cf.db.ClientTokenToRequest(ctx, clientToken)
-	if errors.Is(err, RequestTokenNotFound) {
+	if errors.Is(err, tokenstore.RequestTokenNotFound) {
 		return nil
 	} else if err != nil {
 		return err

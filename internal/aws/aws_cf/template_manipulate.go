@@ -1,4 +1,4 @@
-package awsinfra
+package aws_cf
 
 import (
 	"bytes"

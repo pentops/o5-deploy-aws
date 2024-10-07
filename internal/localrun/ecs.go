@@ -9,11 +9,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
-	"github.com/pentops/o5-deploy-aws/internal/awsinfra"
+	"github.com/pentops/o5-deploy-aws/internal/aws/aws_cf"
 )
 
 type ecsRunner struct {
-	ecsClient awsinfra.ECSAPI
+	ecsClient aws_cf.ECSAPI
 }
 
 func (d *ecsRunner) runMigrationTask(ctx context.Context, migrationID string, msg *awsinfra_tpb.MigratePostgresDatabaseMessage) error {

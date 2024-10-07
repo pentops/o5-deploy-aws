@@ -1,4 +1,4 @@
-package awsinfra
+package tokenstore
 
 import (
 	"context"
@@ -13,6 +13,8 @@ import (
 	"github.com/pentops/o5-messaging/outbox"
 	"github.com/pentops/sqrlx.go/sqrlx"
 )
+
+var RequestTokenNotFound = errors.New("request token not found")
 
 type Storage struct {
 	db sqrlx.Transactor

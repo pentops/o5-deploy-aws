@@ -14,20 +14,20 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
+	"github.com/pentops/o5-deploy-aws/internal/aws/aws_cf"
 	"github.com/pentops/o5-deploy-aws/internal/aws/aws_postgres"
-	"github.com/pentops/o5-deploy-aws/internal/awsinfra"
 	"github.com/pentops/o5-deploy-aws/internal/service"
 	"google.golang.org/protobuf/proto"
 )
 
 type InfraAdapter struct {
-	cfClient  *awsinfra.CFClient
+	cfClient  *aws_cf.CFClient
 	dbClient  *aws_postgres.DBMigrator
 	ecsClient *ecsRunner
 }
 
-func NewInfraAdapter(ctx context.Context, cl *awsinfra.DeployerClients) (*InfraAdapter, error) {
-	cfClient := awsinfra.NewCFAdapter(cl, []string{})
+func NewInfraAdapter(ctx context.Context, cl *aws_cf.DeployerClients) (*InfraAdapter, error) {
+	cfClient := aws_cf.NewCFAdapter(cl, []string{})
 	dbMigrator := aws_postgres.NewDBMigrator(cl.SecretsManager)
 	ecsClient := &ecsRunner{
 		ecsClient: cl.ECS,
@@ -41,7 +41,7 @@ func NewInfraAdapter(ctx context.Context, cl *awsinfra.DeployerClients) (*InfraA
 }
 
 func NewInfraAdapterFromConfig(ctx context.Context, config aws.Config) (*InfraAdapter, error) {
-	cfClient, err := awsinfra.NewCFAdapterFromConfig(ctx, config, []string{})
+	cfClient, err := aws_cf.NewCFAdapterFromConfig(ctx, config, []string{})
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +252,7 @@ func (cf *InfraAdapter) UpdateStack(ctx context.Context, msg *awsinfra_tpb.Updat
 
 	err := cf.cfClient.UpdateStack(ctx, reqToken, msg)
 	if err != nil {
-		if awsinfra.IsNoUpdatesError(err) {
+		if aws_cf.IsNoUpdatesError(err) {
 			return cf.noUpdatesToBePerformed(ctx, msg.Spec.StackName, msg.Request)
 		}
 
@@ -268,7 +268,7 @@ func (cf *InfraAdapter) ScaleStack(ctx context.Context, msg *awsinfra_tpb.ScaleS
 
 	err := cf.cfClient.ScaleStack(ctx, reqToken, msg)
 	if err != nil {
-		if awsinfra.IsNoUpdatesError(err) {
+		if aws_cf.IsNoUpdatesError(err) {
 			return cf.noUpdatesToBePerformed(ctx, msg.StackName, msg.Request)
 		}
 		return nil, err
@@ -283,7 +283,7 @@ func (cf *InfraAdapter) CreateChangeSet(ctx context.Context, msg *awsinfra_tpb.C
 
 	err := cf.cfClient.CreateChangeSet(ctx, reqToken, msg)
 	if err != nil {
-		if awsinfra.IsNoUpdatesError(err) {
+		if aws_cf.IsNoUpdatesError(err) {
 			return &awsinfra_tpb.ChangeSetStatusChangedMessage{
 				Request: msg.Request,
 				Status:  "NO UPDATES TO BE PERFORMED",

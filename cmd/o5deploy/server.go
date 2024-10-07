@@ -21,8 +21,9 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
+	"github.com/pentops/o5-deploy-aws/internal/aws/aws_cf"
 	"github.com/pentops/o5-deploy-aws/internal/aws/aws_postgres"
-	"github.com/pentops/o5-deploy-aws/internal/awsinfra"
+	"github.com/pentops/o5-deploy-aws/internal/aws/tokenstore"
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
 	"github.com/pentops/o5-deploy-aws/internal/github"
 	"github.com/pentops/o5-deploy-aws/internal/localrun"
@@ -120,23 +121,23 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	infraStore, err := awsinfra.NewStorage(db)
+	infraStore, err := tokenstore.NewStorage(db)
 	if err != nil {
 		return err
 	}
-	cfAdapter, err := awsinfra.NewCFAdapterFromConfig(ctx, awsConfig, []string{cfg.CallbackARN})
-	if err != nil {
-		return err
-	}
-
-	awsInfraRunner := awsinfra.NewInfraWorker(infraStore, cfAdapter)
-
-	ecsWorker, err := awsinfra.NewECSWorker(infraStore, ecs.NewFromConfig(awsConfig))
+	cfAdapter, err := aws_cf.NewCFAdapterFromConfig(ctx, awsConfig, []string{cfg.CallbackARN})
 	if err != nil {
 		return err
 	}
 
-	rawWorker := awsinfra.NewRawMessageWorker(awsInfraRunner, ecsWorker)
+	awsInfraRunner := aws_cf.NewInfraWorker(infraStore, cfAdapter)
+
+	ecsWorker, err := aws_cf.NewECSWorker(infraStore, ecs.NewFromConfig(awsConfig))
+	if err != nil {
+		return err
+	}
+
+	rawWorker := aws_cf.NewRawMessageWorker(awsInfraRunner, ecsWorker)
 
 	dbMigrator := aws_postgres.NewDBMigrator(secretsmanager.NewFromConfig(awsConfig))
 
