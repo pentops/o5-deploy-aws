@@ -17,7 +17,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_cf"
 	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_postgres"
 	"github.com/pentops/o5-deploy-aws/internal/apps/aws/awsapi"
-	"github.com/pentops/o5-deploy-aws/internal/service"
+	"github.com/pentops/o5-deploy-aws/internal/apps/service"
 	"google.golang.org/protobuf/proto"
 )
 
