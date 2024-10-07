@@ -26,12 +26,7 @@ type Storage struct {
 	db sqrlx.Transactor
 }
 
-func NewStorage(conn sqrlx.Connection) (*Storage, error) {
-	db, err := sqrlx.New(conn, sq.Dollar)
-	if err != nil {
-		return nil, err
-	}
-
+func NewStorage(db sqrlx.Transactor) (*Storage, error) {
 	return &Storage{
 		db: db,
 	}, nil

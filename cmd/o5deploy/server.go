@@ -6,33 +6,25 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
+	realaws "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
-	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/bufbuild/protovalidate-go"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
-	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_cf"
-	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_ecs"
-	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_postgres"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws"
 	"github.com/pentops/o5-deploy-aws/internal/apps/aws/awsapi"
-	"github.com/pentops/o5-deploy-aws/internal/apps/aws/awsraw"
-	"github.com/pentops/o5-deploy-aws/internal/apps/aws/tokenstore"
 	"github.com/pentops/o5-deploy-aws/internal/apps/localrun"
 	"github.com/pentops/o5-deploy-aws/internal/apps/service"
 	"github.com/pentops/o5-deploy-aws/internal/apps/service/github"
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
 	"github.com/pentops/o5-deploy-aws/internal/protoread"
-	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_tpb"
 	"github.com/pentops/runner/commander"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"github.com/pressly/goose"
@@ -86,7 +78,7 @@ func runServe(ctx context.Context, cfg struct {
 	if cfg.DeployerAssumeRole != "" {
 		stsClient := sts.NewFromConfig(awsConfig)
 		provider := stscreds.NewAssumeRoleProvider(stsClient, cfg.DeployerAssumeRole)
-		creds := aws.NewCredentialsCache(provider)
+		creds := realaws.NewCredentialsCache(provider)
 
 		assumeRoleConfig, err := config.LoadDefaultConfig(ctx,
 			config.WithCredentialsProvider(creds),
@@ -105,16 +97,16 @@ func runServe(ctx context.Context, cfg struct {
 			return fmt.Errorf("failed to get caller identity: %w", err)
 		}
 		log.WithFields(ctx, map[string]interface{}{
-			"account":     aws.ToString(identity.Account),
-			"arn":         aws.ToString(identity.Arn),
-			"user":        aws.ToString(identity.UserId),
+			"account":     realaws.ToString(identity.Account),
+			"arn":         realaws.ToString(identity.Arn),
+			"user":        realaws.ToString(identity.UserId),
 			"assumedRole": cfg.DeployerAssumeRole,
 		}).Info("Running With AWS Identity")
 	}
 
 	s3Client := s3.NewFromConfig(awsConfig)
 
-	db, err := service.OpenDatabase(ctx)
+	dbConn, err := service.OpenDatabase(ctx)
 	if err != nil {
 		return err
 	}
@@ -124,30 +116,7 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	infraStore, err := tokenstore.NewStorage(db)
-	if err != nil {
-		return err
-	}
-	cfAdapter, err := aws_cf.NewCFAdapterFromConfig(ctx, awsConfig, []string{cfg.CallbackARN})
-	if err != nil {
-		return err
-	}
-
-	awsInfraRunner := aws_cf.NewInfraWorker(infraStore, cfAdapter)
-
-	ecsWorker, err := aws_ecs.NewECSWorker(infraStore, ecs.NewFromConfig(awsConfig))
-	if err != nil {
-		return err
-	}
-
-	rawWorker := awsraw.NewRawMessageWorker(awsInfraRunner, ecsWorker)
-
-	dbMigrator := aws_postgres.NewDBMigrator(
-		secretsmanager.NewFromConfig(awsConfig),
-		awsapi.NewRDSAuthProviderFromConfig(awsConfig),
-	)
-
-	pgMigrateRunner := aws_postgres.NewPostgresMigrateWorker(infraStore, dbMigrator)
+	db := sqrlx.NewPostgres(dbConn)
 
 	specBuilder, err := deployer.NewSpecBuilder(templateStore)
 	if err != nil {
@@ -164,11 +133,10 @@ func runServe(ctx context.Context, cfg struct {
 	}
 
 	serviceApp, err := service.NewApp(service.AppDeps{
-		DB:           sqrlx.NewPostgres(db),
+		DB:           db,
 		GithubClient: githubClient,
 		SpecBuilder:  specBuilder,
 	})
-
 	if err != nil {
 		return err
 	}
@@ -180,12 +148,17 @@ func runServe(ctx context.Context, cfg struct {
 
 	serviceApp.RegisterGRPC(grpcServer)
 
-	messaging_tpb.RegisterRawMessageTopicServer(grpcServer, rawWorker)
-	awsinfra_tpb.RegisterCloudFormationRequestTopicServer(grpcServer, awsInfraRunner)
-	awsinfra_tpb.RegisterPostgresRequestTopicServer(grpcServer, pgMigrateRunner)
-	awsinfra_tpb.RegisterECSReplyTopicServer(grpcServer, pgMigrateRunner)
-	awsinfra_tpb.RegisterECSRequestTopicServer(grpcServer, ecsWorker)
+	clients, err := awsapi.NewDeployerClientsFromConfig(ctx, awsConfig)
+	if err != nil {
+		return err
+	}
 
+	infraApp, err := aws.NewApp(db, clients, []string{cfg.CallbackARN})
+	if err != nil {
+		return err
+	}
+
+	infraApp.RegisterGRPC(grpcServer)
 	reflection.Register(grpcServer)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
