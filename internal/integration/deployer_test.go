@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/google/uuid"
 	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
+	"github.com/pentops/o5-deploy-aws/gen/j5/drss/v1/drss_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
@@ -172,10 +173,10 @@ func TestDeploymentFlow(t *testing.T) {
 
 		deploymentState := t.AssertDeploymentStatus(t, request.DeploymentId, awsdeployer_pb.DeploymentStatus_RUNNING)
 
-		assertStepStatus(t, deploymentState, map[string]awsdeployer_pb.StepStatus{
-			planbuild.StepCFCreateEmpty: awsdeployer_pb.StepStatus_ACTIVE,
-			planbuild.StepCFUpdate:      awsdeployer_pb.StepStatus_BLOCKED,
-			planbuild.StepScaleUp:       awsdeployer_pb.StepStatus_BLOCKED,
+		assertStepStatus(t, deploymentState, map[string]drss_pb.StepStatus{
+			planbuild.StepCFCreateEmpty: drss_pb.StepStatus_ACTIVE,
+			planbuild.StepCFUpdate:      drss_pb.StepStatus_BLOCKED,
+			planbuild.StepScaleUp:       drss_pb.StepStatus_BLOCKED,
 		})
 	})
 
@@ -212,10 +213,10 @@ func TestDeploymentFlow(t *testing.T) {
 
 		deploymentState := t.AssertDeploymentStatus(t, request.DeploymentId, awsdeployer_pb.DeploymentStatus_RUNNING)
 
-		assertStepStatus(t, deploymentState, map[string]awsdeployer_pb.StepStatus{
-			planbuild.StepCFCreateEmpty: awsdeployer_pb.StepStatus_DONE,
-			planbuild.StepCFUpdate:      awsdeployer_pb.StepStatus_ACTIVE,
-			planbuild.StepScaleUp:       awsdeployer_pb.StepStatus_BLOCKED,
+		assertStepStatus(t, deploymentState, map[string]drss_pb.StepStatus{
+			planbuild.StepCFCreateEmpty: drss_pb.StepStatus_DONE,
+			planbuild.StepCFUpdate:      drss_pb.StepStatus_ACTIVE,
+			planbuild.StepScaleUp:       drss_pb.StepStatus_BLOCKED,
 		})
 
 		migrateRequest := &awsinfra_tpb.UpdateStackMessage{
@@ -248,10 +249,10 @@ func TestDeploymentFlow(t *testing.T) {
 
 		deploymentState := t.AssertDeploymentStatus(t, request.DeploymentId, awsdeployer_pb.DeploymentStatus_RUNNING)
 
-		assertStepStatus(t, deploymentState, map[string]awsdeployer_pb.StepStatus{
-			planbuild.StepCFCreateEmpty: awsdeployer_pb.StepStatus_DONE,
-			planbuild.StepCFUpdate:      awsdeployer_pb.StepStatus_DONE,
-			planbuild.StepScaleUp:       awsdeployer_pb.StepStatus_ACTIVE,
+		assertStepStatus(t, deploymentState, map[string]drss_pb.StepStatus{
+			planbuild.StepCFCreateEmpty: drss_pb.StepStatus_DONE,
+			planbuild.StepCFUpdate:      drss_pb.StepStatus_DONE,
+			planbuild.StepScaleUp:       drss_pb.StepStatus_ACTIVE,
 		})
 
 		scaleUpRequest := &awsinfra_tpb.ScaleStackMessage{
@@ -402,9 +403,9 @@ func TestStackLock(t *testing.T) {
 		// Stack: CREATING --> STABLE --> MIGRATING
 		t.AWSStack.StackCreateComplete(t)
 		ss := t.AssertDeploymentStatus(t, firstDeploymentID, awsdeployer_pb.DeploymentStatus_RUNNING)
-		assertStepStatus(t, ss, map[string]awsdeployer_pb.StepStatus{
-			planbuild.StepCFCreateEmpty: awsdeployer_pb.StepStatus_DONE,
-			planbuild.StepCFUpdate:      awsdeployer_pb.StepStatus_ACTIVE,
+		assertStepStatus(t, ss, map[string]drss_pb.StepStatus{
+			planbuild.StepCFCreateEmpty: drss_pb.StepStatus_DONE,
+			planbuild.StepCFUpdate:      drss_pb.StepStatus_ACTIVE,
 		})
 
 		t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEventStepResult, awsdeployer_pb.DeploymentStatus_RUNNING)
@@ -414,9 +415,9 @@ func TestStackLock(t *testing.T) {
 		t.AWSStack.StackUpdateComplete(t)
 
 		ss = t.AssertDeploymentStatus(t, firstDeploymentID, awsdeployer_pb.DeploymentStatus_DONE)
-		assertStepStatus(t, ss, map[string]awsdeployer_pb.StepStatus{
-			planbuild.StepCFCreateEmpty: awsdeployer_pb.StepStatus_DONE,
-			planbuild.StepCFUpdate:      awsdeployer_pb.StepStatus_DONE,
+		assertStepStatus(t, ss, map[string]drss_pb.StepStatus{
+			planbuild.StepCFCreateEmpty: drss_pb.StepStatus_DONE,
+			planbuild.StepCFUpdate:      drss_pb.StepStatus_DONE,
 		})
 
 		t.AssertStackStatus(t, stackID,
@@ -520,8 +521,8 @@ func TestStackLock(t *testing.T) {
 		t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEventStepResult, awsdeployer_pb.DeploymentStatus_TERMINATED)
 		fullState := t.AssertDeploymentStatus(t, secondDeploymentID, awsdeployer_pb.DeploymentStatus_TERMINATED)
 		upsertStep := fullState.Data.Steps[0]
-		if upsertStep.Status != awsdeployer_pb.StepStatus_DONE {
-			t.Fatalf("expected step status DONE, got %s", upsertStep.Status)
+		if upsertStep.Meta.Status != drss_pb.StepStatus_DONE {
+			t.Fatalf("expected step status DONE, got %s", upsertStep.Meta.Status)
 		}
 
 	})

@@ -12,6 +12,7 @@ import (
 	"github.com/pentops/flowtest"
 	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/log.go/log"
+	"github.com/pentops/o5-deploy-aws/gen/j5/drss/v1/drss_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_epb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
@@ -323,7 +324,7 @@ func (uu *Universe) AssertDeploymentStatus(t flowtest.Asserter, deploymentID str
 	}
 	if deployment.State.Status != status {
 		for _, step := range deployment.State.Data.Steps {
-			t.Logf("step %s is %s", step.Name, step.Status.ShortString())
+			t.Logf("step %s is %s", step.Meta.Name, step.Meta.Status.ShortString())
 		}
 		t.Fatalf("unexpected status: %v, want %s", deployment.State.Status.ShortString(), status.ShortString())
 	}
@@ -353,24 +354,24 @@ func (uu *Universe) AssertStackStatus(t flowtest.Asserter, stackID string, statu
 	}
 }
 
-func assertStepStatus(t flowtest.Asserter, deploymentState *awsdeployer_pb.DeploymentState, wantSteps map[string]awsdeployer_pb.StepStatus) {
+func assertStepStatus(t flowtest.Asserter, deploymentState *awsdeployer_pb.DeploymentState, wantSteps map[string]drss_pb.StepStatus) {
 	t.Helper()
 	allOK := true
 	wantSteps = maps.Clone(wantSteps)
 	gotSteps := deploymentState.Data.Steps
 	for _, step := range gotSteps {
-		t.Logf("step %s is %s", step.Name, step.Status.ShortString())
-		want, ok := wantSteps[step.Name]
+		t.Logf("step %s is %s", step.Meta.Name, step.Meta.Status.ShortString())
+		want, ok := wantSteps[step.Meta.Name]
 		if !ok {
-			t.Errorf("unexpected step %s", step.Name)
+			t.Errorf("unexpected step %s", step.Meta.Name)
 			allOK = false
 			continue
 		}
-		if step.Status != want {
-			t.Errorf("unexpected status for step %s: %s, want %s", step.Name, step.Status, want)
+		if step.Meta.Status != want {
+			t.Errorf("unexpected status for step %s: %s, want %s", step.Meta.Name, step.Meta.Status, want)
 			allOK = false
 		}
-		delete(wantSteps, step.Name)
+		delete(wantSteps, step.Meta.Name)
 	}
 
 	if len(wantSteps) > 0 {

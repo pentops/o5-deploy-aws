@@ -97,7 +97,6 @@ func (si secretInfo) ARN() TemplateRef {
 }
 
 func (si secretInfo) SecretValueFrom(jsonKey string) TemplateRef {
-
 	versionStage := ""
 	versionID := ""
 	return TemplateRef(cloudformation.Join(":", []string{
@@ -127,7 +126,8 @@ func mapResources(bb *Builder, resources resourceBuilder, app *application_pb.Ap
 				app.Name,
 				secretDef.Name,
 			}),
-			Description:                     cflib.Stringf("Application Level Secret for %s:%s - value must be set manually", app.Name, secretDef.Name),
+			Description: cflib.Stringf("Application Level Secret for %s:%s - value must be set manually", app.Name, secretDef.Name),
+
 			AWSCloudFormationDeletionPolicy: policies.DeletionPolicy("Retain"),
 		})
 		bb.Template.AddResource(secret)
@@ -138,7 +138,7 @@ func mapResources(bb *Builder, resources resourceBuilder, app *application_pb.Ap
 	}
 
 	for _, databaseDef := range app.Databases {
-		switch dbType := databaseDef.Engine.(type) {
+		switch databaseDef.Engine.(type) {
 		case *application_pb.Database_Postgres_:
 			ref, def, err := mapPostgresDatabase(bb, databaseDef)
 			if err != nil {
@@ -146,13 +146,6 @@ func mapResources(bb *Builder, resources resourceBuilder, app *application_pb.Ap
 			}
 			resources.addDatabase(ref)
 			bb.AddPostgresResource(def)
-
-			if dbType.Postgres.MigrateContainer != nil {
-				err := mapPostgresMigration(bb, def, dbType.Postgres.MigrateContainer)
-				if err != nil {
-					return fmt.Errorf("mapping postgres migration for %s: %w", databaseDef.Name, err)
-				}
-			}
 
 		default:
 			return fmt.Errorf("unknown database engine type %T", databaseDef.Engine)

@@ -1,7 +1,6 @@
 package appbuilder
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -38,9 +37,6 @@ func NewSidecarBuilder(appName string) *SidecarBuilder {
 			ContainerPort: cflib.Int(8080),
 		}},
 		Environment: []ecs.TaskDefinition_KeyValuePair{{
-			Name:  cflib.String("EVENTBRIDGE_ARN"),
-			Value: cflib.String(cloudformation.Ref(EventBusARNParameter)),
-		}, {
 			Name:  cflib.String("APP_NAME"),
 			Value: cflib.String(appName),
 		}, {
@@ -49,13 +45,8 @@ func NewSidecarBuilder(appName string) *SidecarBuilder {
 		}, {
 			Name:  cflib.String("AWS_REGION"),
 			Value: cflib.String(cloudformation.Ref(AWSRegionParameter)),
-		}, {
-			Name:  cflib.String("CORS_ORIGINS"),
-			Value: cflib.String(cloudformation.Ref(CORSOriginParameter)),
 		}},
 	}
-
-	addLogs(runtimeSidecar, appName)
 
 	sb := &SidecarBuilder{
 		container: runtimeSidecar,
@@ -174,6 +165,10 @@ func (sb *SidecarBuilder) SetWorkerConfig(cfg *application_pb.WorkerConfig) erro
 	return nil
 }
 
+func (sb *SidecarBuilder) PublishToEventBridge() {
+	sb.mustSetEnv("EVENTBRIDGE_ARN", cloudformation.Ref(EventBusARNParameter))
+}
+
 func (sb *SidecarBuilder) SubscribeSQS(urlRef string) error {
 	sb.isRequired = true
 	return sb.setEnv("SQS_URL", urlRef)
@@ -184,7 +179,7 @@ func (sb *SidecarBuilder) ServePublic() {
 	sb.isRequired = true
 	sb.mustSetEnv("PUBLIC_ADDR", ":8080")
 	sb.mustSetEnv("JWKS", cloudformation.Ref(JWKSParameter))
-
+	sb.mustSetEnv("CORS_ORIGINS", cloudformation.Ref(CORSOriginParameter))
 	sb.container.PortMappings = append(sb.container.PortMappings, ecs.TaskDefinition_PortMapping{
 		ContainerPort: cflib.Int(8080),
 	})
@@ -202,16 +197,13 @@ func (sb *SidecarBuilder) ServeAdapter() {
 	sb.mustSetEnv("ADAPTER_ADDR", fmt.Sprintf(":%d", O5SidecarInternalPort))
 }
 
-func (sb *SidecarBuilder) ProxyDB(db DatabaseRef) (string, error) {
+func (sb *SidecarBuilder) ProxyDB(db DatabaseRef) string {
 	sb.isRequired = true
-	envVarValue, err := buildDBProxyEnvVal(db.Name(), O5SidecarContainerName)
-	if err != nil {
-		return "", err
-	}
+	envVarValue := buildDBProxyEnvVal(db.Name(), O5SidecarContainerName)
 	envVarName := strcase.ToScreamingSnake(db.Name())
 	sb.proxyDBs[envVarName] = struct{}{}
 	sb.dbEndpoints[envVarName] = db
-	return envVarValue, nil
+	return envVarValue
 }
 
 func (sb *SidecarBuilder) RunOutbox(db DatabaseRef) error {
@@ -222,28 +214,6 @@ func (sb *SidecarBuilder) RunOutbox(db DatabaseRef) error {
 	return nil
 }
 
-type DBEnvVar struct {
-	Username string `json:"dbuser"`
-	Password string `json:"dbpass"`
-	Hostname string `json:"dbhost"`
-	DBName   string `json:"dbname"`
-	URL      string `json:"dburl"`
-}
-
-func buildDBProxyEnvVal(dbName string, proxyHost string) (string, error) {
-	data := DBEnvVar{
-		Username: dbName,
-		Password: "proxy",
-		Hostname: proxyHost,
-		DBName:   dbName,
-	}
-	data.URL = fmt.Sprintf("postgres://%s:%s@%s/%s", data.Username, data.Password, data.Hostname, data.DBName)
-
-	jsonBytes, err := json.Marshal(data)
-	if err != nil {
-		return "", fmt.Errorf("marshaling DBEnvVar: %w", err)
-	}
-
-	str := string(jsonBytes)
-	return str, nil
+func buildDBProxyEnvVal(dbName string, proxyHost string) string {
+	return fmt.Sprintf("postgres://%s:%s@%s/%s", dbName, "proxy", proxyHost, dbName)
 }

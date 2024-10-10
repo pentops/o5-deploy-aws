@@ -12,6 +12,7 @@ import (
 	"github.com/pentops/flowtest/prototest"
 	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/j5/gen/j5/state/v1/psm_j5pb"
+	"github.com/pentops/o5-deploy-aws/gen/j5/drss/v1/drss_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb"
@@ -63,13 +64,16 @@ func (m *MockInfra) HandleMessage(ctx context.Context, msg proto.Message) (*awsd
 	}
 }
 
-func (m *MockInfra) CFResult(md *messaging_j5pb.RequestMetadata, status awsdeployer_pb.StepStatus, result *awsdeployer_pb.CFStackOutput) {
+func (m *MockInfra) CFResult(md *messaging_j5pb.RequestMetadata, status drss_pb.StepStatus, result *awsdeployer_pb.CFStackOutput) {
 	m.StepResult(md, &awsdeployer_pb.DeploymentEventType_StepResult{
-		Status: status,
+		Result: &drss_pb.StepResult{
+			Status: status,
+		},
 		Output: &awsdeployer_pb.StepOutputType{
-			Type: &awsdeployer_pb.StepOutputType_CfStatus{
-				CfStatus: &awsdeployer_pb.StepOutputType_CFStatus{
-					Output: result,
+			Type: &awsdeployer_pb.StepOutputType_CfStackStatus{
+				CfStackStatus: &awsdeployer_pb.StepOutputType_CFStackStatus{
+					Lifecycle: result.Lifecycle,
+					Outputs:   result.Outputs,
 				},
 			},
 		},
@@ -82,7 +86,7 @@ func (m *MockInfra) StepResult(md *messaging_j5pb.RequestMetadata, result *awsde
 		panic(err)
 	}
 
-	result.StepId = *stepContext.StepId
+	result.Result.StepId = *stepContext.StepId
 
 	m.Send(result)
 }
@@ -227,7 +231,7 @@ func TestLocalRun(t *testing.T) {
 			t.Fatalf("expected CreateNewStackMessage")
 		}
 
-		infra.CFResult(req.Request, awsdeployer_pb.StepStatus_DONE, &awsdeployer_pb.CFStackOutput{
+		infra.CFResult(req.Request, drss_pb.StepStatus_DONE, &awsdeployer_pb.CFStackOutput{
 			Lifecycle: awsdeployer_pb.CFLifecycle_COMPLETE,
 			Outputs: []*awsdeployer_pb.KeyValue{{
 				Name:  "MigrationTaskDefinitionFoo",
@@ -246,7 +250,7 @@ func TestLocalRun(t *testing.T) {
 			t.Fatalf("expected UpsertPostgresDatabaseMessage")
 		}
 
-		infra.CFResult(req.Request, awsdeployer_pb.StepStatus_DONE, &awsdeployer_pb.CFStackOutput{
+		infra.CFResult(req.Request, drss_pb.StepStatus_DONE, &awsdeployer_pb.CFStackOutput{
 			Lifecycle: awsdeployer_pb.CFLifecycle_COMPLETE,
 			Outputs: []*awsdeployer_pb.KeyValue{{
 				Name:  "MigrationTaskDefinitionFoo",
@@ -282,7 +286,9 @@ func TestLocalRun(t *testing.T) {
 		})
 
 		infra.StepResult(msg.Request, &awsdeployer_pb.DeploymentEventType_StepResult{
-			Status: awsdeployer_pb.StepStatus_DONE,
+			Result: &drss_pb.StepResult{
+				Status: drss_pb.StepStatus_DONE,
+			},
 		})
 	})
 
@@ -297,7 +303,9 @@ func TestLocalRun(t *testing.T) {
 		t.Equal("/env/app/secret", msg.SecretArn)
 
 		infra.StepResult(msg.Request, &awsdeployer_pb.DeploymentEventType_StepResult{
-			Status: awsdeployer_pb.StepStatus_DONE,
+			Result: &drss_pb.StepResult{
+				Status: drss_pb.StepStatus_DONE,
+			},
 		})
 	})
 
@@ -309,7 +317,9 @@ func TestLocalRun(t *testing.T) {
 		}
 
 		infra.StepResult(msg.Request, &awsdeployer_pb.DeploymentEventType_StepResult{
-			Status: awsdeployer_pb.StepStatus_DONE,
+			Result: &drss_pb.StepResult{
+				Status: drss_pb.StepStatus_DONE,
+			},
 		})
 	})
 
@@ -322,7 +332,7 @@ func TestLocalRun(t *testing.T) {
 
 		t.Equal(int32(1), msg.DesiredCount)
 
-		infra.CFResult(msg.Request, awsdeployer_pb.StepStatus_DONE, &awsdeployer_pb.CFStackOutput{
+		infra.CFResult(msg.Request, drss_pb.StepStatus_DONE, &awsdeployer_pb.CFStackOutput{
 			Lifecycle: awsdeployer_pb.CFLifecycle_COMPLETE,
 			Outputs:   []*awsdeployer_pb.KeyValue{},
 		})

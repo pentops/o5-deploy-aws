@@ -45,9 +45,7 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 		) error {
 			deployment.Spec = event.Spec
 			deployment.Request = event.Request
-
 			// No follow on, the stack state will trigger
-
 			return nil
 		})).
 		LogicHook(awsdeployer_pb.DeploymentPSMLogicHook(func(
@@ -133,7 +131,7 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 			event *awsdeployer_pb.DeploymentEventType_StackAvailable,
 		) error {
 
-			plan, err := plan.DeploymentSteps(ctx, plan.DeploymentInput{
+			plan, err := plan.PlanDeploymentSteps(ctx, plan.DeploymentInput{
 				Deployment:  deployment.Data.Spec,
 				StackStatus: event.StackOutput,
 			})
@@ -170,7 +168,7 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 			if deployment.Data.Request != nil {
 				msg := make([]string, 0)
 				for _, step := range event.Steps {
-					msg = append(msg, step.Name)
+					msg = append(msg, step.Meta.Name)
 				}
 				tb.SideEffect(&awsdeployer_tpb.DeploymentStatusMessage{
 					Request:      deployment.Data.Request,
@@ -179,6 +177,7 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 					Message:      fmt.Sprintf("Running %d steps\n%s", len(event.Steps), strings.Join(msg, "\n")),
 				})
 			}
+
 			return plan.StepNext(ctx, tb, deployment.Data.Steps)
 		}))
 
@@ -214,14 +213,7 @@ func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 			deployment *awsdeployer_pb.DeploymentState,
 			event *awsdeployer_pb.DeploymentEventType_RunStep,
 		) error {
-			sideEffect, err := plan.RunStep(ctx, deployment.Keys, deployment.Data.Steps, event)
-			if err != nil {
-				return err
-			}
-			if sideEffect != nil {
-				tb.SideEffect(sideEffect)
-			}
-			return nil
+			return plan.RunStep(ctx, tb, deployment.Keys, deployment.Data.Steps, event.StepId)
 		}))
 
 	// RUNNING --> DONE : Done

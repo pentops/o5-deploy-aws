@@ -3,6 +3,7 @@ syntax = "proto3";
 package o5.aws.deployer.v1;
 
 import "buf/validate/validate.proto";
+import "j5/drss/v1/drss.proto";
 import "j5/ext/v1/annotations.proto";
 import "j5/list/v1/annotations.proto";
 import "j5/messaging/v1/reqres.proto";
@@ -155,10 +156,8 @@ message DeploymentEventType {
   }
 
   message StepResult {
-    string step_id = 1;
-    StepStatus status = 2;
+    j5.drss.v1.StepResult result = 1;
     StepOutputType output = 3;
-    optional string error = 4;
   }
 
   message RunStep {

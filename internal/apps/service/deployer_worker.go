@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pentops/j5/gen/j5/state/v1/psm_j5pb"
+	"github.com/pentops/o5-deploy-aws/gen/j5/drss/v1/drss_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
@@ -136,11 +137,15 @@ func StackStatusToEvent(msg *awsinfra_tpb.StackStatusChangedMessage) (*awsdeploy
 		}
 
 		stepResult := &awsdeployer_pb.DeploymentEventType_StepResult{
-			StepId: *stepContext.StepId,
+			Result: &drss_pb.StepResult{
+				StepId: *stepContext.StepId,
+			},
+
 			Output: &awsdeployer_pb.StepOutputType{
-				Type: &awsdeployer_pb.StepOutputType_CfStatus{
-					CfStatus: &awsdeployer_pb.StepOutputType_CFStatus{
-						Output: cfOutput,
+				Type: &awsdeployer_pb.StepOutputType_CfStackStatus{
+					CfStackStatus: &awsdeployer_pb.StepOutputType_CFStackStatus{
+						Lifecycle: msg.Lifecycle,
+						Outputs:   msg.Outputs,
 					},
 				},
 			},
@@ -152,11 +157,11 @@ func StackStatusToEvent(msg *awsinfra_tpb.StackStatusChangedMessage) (*awsdeploy
 			return nil, nil
 
 		case awsdeployer_pb.CFLifecycle_COMPLETE:
-			stepResult.Status = awsdeployer_pb.StepStatus_DONE
+			stepResult.Result.Status = drss_pb.StepStatus_DONE
 		case awsdeployer_pb.CFLifecycle_CREATE_FAILED,
 			awsdeployer_pb.CFLifecycle_ROLLED_BACK,
 			awsdeployer_pb.CFLifecycle_MISSING:
-			stepResult.Status = awsdeployer_pb.StepStatus_FAILED
+			stepResult.Result.Status = drss_pb.StepStatus_FAILED
 		default:
 			return nil, fmt.Errorf("unknown lifecycle: %s", msg.Lifecycle)
 		}
@@ -219,20 +224,19 @@ func ChangeSetStatusToEvent(msg *awsinfra_tpb.ChangeSetStatusChangedMessage) (*a
 		return nil, fmt.Errorf("Plan context expects STEPS and an ID")
 	}
 
-	status := awsdeployer_pb.StepStatus_DONE
+	status := drss_pb.StepStatus_DONE
 	if msg.Lifecycle != awsdeployer_pb.CFChangesetLifecycle_AVAILABLE {
-		status = awsdeployer_pb.StepStatus_FAILED
-	}
-	changesetStatus := &awsdeployer_pb.CFChangesetOutput{
-		Lifecycle: msg.Lifecycle,
+		status = drss_pb.StepStatus_FAILED
 	}
 	stepStatus := &awsdeployer_pb.DeploymentEventType_StepResult{
-		StepId: *stepContext.StepId,
-		Status: status,
+		Result: &drss_pb.StepResult{
+			StepId: *stepContext.StepId,
+			Status: status,
+		},
 		Output: &awsdeployer_pb.StepOutputType{
-			Type: &awsdeployer_pb.StepOutputType_CfPlanStatus{
-				CfPlanStatus: &awsdeployer_pb.StepOutputType_CFPlanStatus{
-					Output: changesetStatus,
+			Type: &awsdeployer_pb.StepOutputType_CfChangesetStatus{
+				CfChangesetStatus: &awsdeployer_pb.StepOutputType_CFChangesetStatus{
+					Lifecycle: msg.Lifecycle,
 				},
 			},
 		},
@@ -306,16 +310,18 @@ func PostgresMigrationToEvent(msg *awsinfra_tpb.PostgresDatabaseStatusMessage) (
 	}
 
 	stepStatus := &awsdeployer_pb.DeploymentEventType_StepResult{
-		StepId: *stepContext.StepId,
+		Result: &drss_pb.StepResult{
+			StepId: *stepContext.StepId,
+		},
 	}
 	event.Event = stepStatus
 
 	switch msg.Status {
 	case awsinfra_tpb.PostgresStatus_DONE:
-		stepStatus.Status = awsdeployer_pb.StepStatus_DONE
+		stepStatus.Result.Status = drss_pb.StepStatus_DONE
 	case awsinfra_tpb.PostgresStatus_ERROR:
-		stepStatus.Status = awsdeployer_pb.StepStatus_FAILED
-		stepStatus.Error = msg.Error
+		stepStatus.Result.Status = drss_pb.StepStatus_FAILED
+		stepStatus.Result.Error = msg.Error
 
 	case awsinfra_tpb.PostgresStatus_STARTED:
 		return nil, nil

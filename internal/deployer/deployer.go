@@ -132,6 +132,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 		return nil, err
 	}
 
+	auroraHosts := map[string]*awsinfra_pb.AuroraConnection{}
 	dbSpecs := make([]*awsdeployer_pb.PostgresSpec, len(app.Databases))
 	for idx, db := range app.Databases {
 		fullName := safeDBName(fmt.Sprintf("%s_%s_%s", environment.FullName, app.Name, db.DbName))
@@ -147,8 +148,14 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 			return nil, fmt.Errorf("no RDS host found for database %s", db.DbName)
 		}
 
-		appConn := &awsdeployer_pb.PostgresConnectionType{}
-		adminConn := &awsinfra_pb.RDSHostType{}
+		dbSpec := &awsdeployer_pb.PostgresSpec{
+			DbName:                  fullName,
+			DbExtensions:            db.DbExtensions,
+			MigrationTaskOutputName: db.MigrationTaskOutputName,
+			AppConnection:           &awsdeployer_pb.PostgresConnectionType{},
+			AdminConnection:         &awsinfra_pb.RDSHostType{},
+		}
+		dbSpecs[idx] = dbSpec
 
 		switch hostType := host.Auth.Get().(type) {
 		case *environment_pb.RDSAuthType_SecretsManager:
@@ -157,25 +164,28 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 				panic(fmt.Sprintf("no secret name found for database %s", db.DbName))
 			}
 
-			appConn.Set(&awsdeployer_pb.PostgresConnectionType_SecretsManager{
+			dbSpec.AppConnection.Set(&awsdeployer_pb.PostgresConnectionType_SecretsManager{
 				AppSecretOutputName: secret,
 			})
 
-			adminConn.Set(&awsinfra_pb.RDSHostType_SecretsManager{
+			dbSpec.AdminConnection.Set(&awsinfra_pb.RDSHostType_SecretsManager{
 				SecretName: hostType.SecretName,
 			})
 
 		case *environment_pb.RDSAuthType_IAM:
-			appConn.Set(&awsdeployer_pb.PostgresConnectionType_Aurora{
-				Conn: &awsinfra_pb.AuroraConnection{
-					Endpoint: host.Endpoint,
-					Port:     host.Port,
-					DbUser:   fullName,
-					DbName:   fullName,
-				},
+			clientConn := &awsinfra_pb.AuroraConnection{
+				Endpoint: host.Endpoint,
+				Port:     host.Port,
+				DbUser:   fullName,
+				DbName:   fullName,
+			}
+			auroraHosts[db.ServerGroup] = clientConn
+
+			dbSpec.AppConnection.Set(&awsdeployer_pb.PostgresConnectionType_Aurora{
+				Conn: clientConn,
 			})
 
-			adminConn.Set(&awsinfra_pb.RDSHostType_Aurora{
+			dbSpec.AdminConnection.Set(&awsinfra_pb.RDSHostType_Aurora{
 				Conn: &awsinfra_pb.AuroraConnection{
 					Endpoint: host.Endpoint,
 					Port:     host.Port,
@@ -186,18 +196,9 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 
 		}
 
-		dbSpec := &awsdeployer_pb.PostgresSpec{
-			DbName:                  fullName,
-			DbExtensions:            db.DbExtensions,
-			MigrationTaskOutputName: db.MigrationTaskOutputName,
-			AppConnection:           appConn,
-			AdminConnection:         adminConn,
-		}
-
-		dbSpecs[idx] = dbSpec
 	}
 
-	deployerResolver, err := BuildParameterResolver(ctx, cluster, environment, dbSpecs)
+	deployerResolver, err := BuildParameterResolver(ctx, cluster, environment, auroraHosts)
 	if err != nil {
 		return nil, err
 	}
@@ -246,12 +247,4 @@ func coalesce[A any](backup A, from ...*A) A {
 		}
 	}
 	return backup
-}
-
-type DBSecret struct {
-	Username string `json:"dbuser"`
-	Password string `json:"dbpass"`
-	Hostname string `json:"dbhost"`
-	DBName   string `json:"dbname"`
-	URL      string `json:"dburl"`
 }

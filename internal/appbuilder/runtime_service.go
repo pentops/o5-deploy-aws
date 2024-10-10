@@ -47,7 +47,6 @@ func NewRuntimeService(globals Globals, runtime *application_pb.Runtime) (*Runti
 
 		needsDockerVolume = needsDockerVolume || def.MountDockerSocket
 
-		addLogs(container.Container, globals.AppName())
 		defs = append(defs, container)
 	}
 
@@ -154,10 +153,7 @@ func (rs *RuntimeService) AddTemplateResources(template *cflib.TemplateBuilder) 
 		}
 
 		for _, ref := range container.ProxyDBs {
-			envVarValue, err := rs.Sidecar.ProxyDB(ref.Database)
-			if err != nil {
-				return fmt.Errorf("building proxy var for database %s: %w", ref.Database.Name(), err)
-			}
+			envVarValue := rs.Sidecar.ProxyDB(ref.Database)
 			*ref.EnvVarVal = envVarValue
 		}
 	}

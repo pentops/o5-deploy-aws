@@ -149,6 +149,13 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (D
 		return nil, nil, fmt.Errorf("unknown auth type %q for database %s", dbHost.AuthType, database.Name)
 	}
 
+	if dbType.MigrateContainer != nil {
+		err := mapPostgresMigration(builder, def, dbType.MigrateContainer)
+		if err != nil {
+			return nil, nil, fmt.Errorf("mapping postgres migration for %s: %w", database.Name, err)
+		}
+	}
+
 	return ref, def, nil
 }
 
@@ -162,10 +169,10 @@ func mapPostgresMigration(builder *Builder, resource *awsdeployer_pb.PostgresDat
 	if err != nil {
 		return fmt.Errorf("building migration container for %s: %w", resource.DbName, err)
 	}
-	addLogs(migrationContainer.Container, fmt.Sprintf("%s/migrate", builder.AppName()))
+
 	name := fmt.Sprintf("MigrationTaskDefinition%s", cflib.CleanParameterName(resource.DbName))
 
-	migrationTaskDefinition := cflib.NewResource(name, &ecs.TaskDefinition{
+	taskDef := cflib.NewResource(name, &ecs.TaskDefinition{
 		ContainerDefinitions: []ecs.TaskDefinition_ContainerDefinition{
 			*migrationContainer.Container,
 		},
@@ -174,13 +181,28 @@ func mapPostgresMigration(builder *Builder, resource *awsdeployer_pb.PostgresDat
 		RequiresCompatibilities: []string{"EC2"},
 	})
 
-	builder.Template.AddResource(migrationTaskDefinition)
+	if len(migrationContainer.ProxyDBs) > 0 {
+		// Migration requires sidecar
+		sidecar := NewSidecarBuilder(builder.Globals.AppName())
+		for _, ref := range migrationContainer.ProxyDBs {
+			envVarValue := sidecar.ProxyDB(ref.Database)
+			*ref.EnvVarVal = envVarValue
+		}
+		container, err := sidecar.Build()
+		if err != nil {
+			return fmt.Errorf("building migration sidecar for %s: %w", resource.DbName, err)
+		}
+
+		taskDef.Resource.ContainerDefinitions = append(taskDef.Resource.ContainerDefinitions, *container)
+	}
+
+	builder.Template.AddResource(taskDef)
 
 	resource.MigrationTaskOutputName = cflib.String(name)
 
 	builder.Template.AddOutput(&cflib.Output{
 		Name:  name,
-		Value: migrationTaskDefinition.Ref(),
+		Value: taskDef.Ref(),
 	})
 
 	return nil

@@ -21,7 +21,7 @@ type ParameterResolver interface {
 	ResolveParameter(param *awsdeployer_pb.Parameter) (*awsdeployer_pb.CloudFormationStackParameter, error)
 }
 
-func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster, environment *environment_pb.Environment, pgSpecs []*awsdeployer_pb.PostgresSpec) (*deployerResolver, error) {
+func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster, environment *environment_pb.Environment, auroraHosts map[string]*awsinfra_pb.AuroraConnection) (*deployerResolver, error) {
 
 	awsEnv := environment.GetAws()
 	if awsEnv == nil {
@@ -55,14 +55,6 @@ func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster
 	namedPolicies := map[string]string{}
 	for _, policy := range awsEnv.IamPolicies {
 		namedPolicies[policy.Name] = policy.PolicyArn
-	}
-
-	auroraHosts := map[string]*awsinfra_pb.AuroraConnection{}
-	for _, rdsHost := range pgSpecs {
-		aurora := rdsHost.AppConnection.GetAurora()
-		if aurora != nil {
-			auroraHosts[rdsHost.DbName] = aurora.Conn
-		}
 	}
 
 	dr := &deployerResolver{
@@ -168,9 +160,9 @@ func (rr *deployerResolver) ResolveParameter(param *awsdeployer_pb.Parameter) (*
 		value = arn
 
 	case *awsdeployer_pb.ParameterSourceType_AuroraEndpoint_:
-		host, ok := rr.auroraHosts[ps.AuroraEndpoint.DbName]
+		host, ok := rr.auroraHosts[ps.AuroraEndpoint.ServerGroup]
 		if !ok {
-			return nil, fmt.Errorf("unknown aurora server server group: %s", ps.AuroraEndpoint.ServerGroup)
+			return nil, fmt.Errorf("unknown aurora server group: %s", ps.AuroraEndpoint.ServerGroup)
 		}
 
 		if host.Port == 0 {

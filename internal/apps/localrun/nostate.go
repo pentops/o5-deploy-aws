@@ -9,6 +9,7 @@ import (
 
 	"github.com/pentops/j5/gen/j5/state/v1/psm_j5pb"
 	"github.com/pentops/log.go/log"
+	"github.com/pentops/o5-deploy-aws/gen/j5/drss/v1/drss_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
@@ -95,7 +96,7 @@ func (rr *Runner) RunDeployment(ctx context.Context, deployment *awsdeployer_pb.
 		}
 	}
 
-	steps, err := plan.DeploymentSteps(ctx, deploymentInput)
+	steps, err := plan.PlanDeploymentSteps(ctx, deploymentInput)
 	if err != nil {
 		return err
 	}
@@ -140,8 +141,8 @@ func (rr *Runner) runSteps(ctx context.Context, steps []*awsdeployer_pb.Deployme
 			case *awsdeployer_pb.DeploymentEventType_RunStep:
 				found := false
 				for _, step := range steps {
-					if step.Id == evt.StepId {
-						step.Status = awsdeployer_pb.StepStatus_ACTIVE
+					if step.Meta.StepId == evt.StepId {
+						step.Meta.Status = drss_pb.StepStatus_ACTIVE
 						found = true
 						break
 					}
@@ -150,12 +151,16 @@ func (rr *Runner) runSteps(ctx context.Context, steps []*awsdeployer_pb.Deployme
 					return fmt.Errorf("step not found: %s", evt.StepId)
 				}
 
-				sideEffect, err := plan.RunStep(ctx, &awsdeployer_pb.DeploymentKeys{}, steps, evt)
+				tb := &TransitionData{}
+				err := plan.RunStep(ctx, tb, &awsdeployer_pb.DeploymentKeys{}, steps, evt.StepId)
 				if err != nil {
 					return err
 				}
+				if len(tb.SideEffects) != 1 {
+					return fmt.Errorf("expected 1 side effect")
+				}
 
-				result, err := rr.awsRunner.HandleMessage(ctx, sideEffect)
+				result, err := rr.awsRunner.HandleMessage(ctx, tb.SideEffects[0])
 				if err != nil {
 					return err
 				}
@@ -208,13 +213,13 @@ func confirmPlan(steps []*awsdeployer_pb.DeploymentStep) bool {
 	fmt.Printf("CONFIRM STEPS\n")
 	stepMap := make(map[string]*awsdeployer_pb.DeploymentStep)
 	for _, step := range steps {
-		stepMap[step.Id] = step
+		stepMap[step.Meta.StepId] = step
 	}
 	for _, step := range steps {
-		typeKey, _ := step.Request.TypeKey()
-		fmt.Printf("- %s (%s)\n", step.Name, typeKey)
-		for _, dep := range step.DependsOn {
-			fmt.Printf("   <- %s\n", stepMap[dep].Name)
+		typeKey := step.Step.Get().TypeKey()
+		fmt.Printf("- %s (%s)\n", step.Meta.Name, typeKey)
+		for _, dep := range step.Meta.DependsOn {
+			fmt.Printf("   <- %s\n", stepMap[dep].Meta.Name)
 		}
 	}
 	return AskBool("Continue?")

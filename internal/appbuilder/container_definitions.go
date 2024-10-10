@@ -39,22 +39,6 @@ func ensureEnvVar(envVars *[]ecs.TaskDefinition_KeyValuePair, name string, value
 	})
 }
 
-func addLogs(def *ecs.TaskDefinition_ContainerDefinition, rsPrefix string) {
-	def.LogConfiguration = &ecs.TaskDefinition_LogConfiguration{
-		LogDriver: "awslogs",
-		Options: map[string]string{
-			"awslogs-group": cloudformation.Join("/", []string{
-				"ecs",
-				cloudformation.Ref(EnvNameParameter),
-				rsPrefix,
-			}),
-			"awslogs-create-group":  "true",
-			"awslogs-region":        cloudformation.Ref("AWS::Region"),
-			"awslogs-stream-prefix": def.Name,
-		},
-	}
-}
-
 func buildContainer(globals Globals, iamPolicy *PolicyBuilder, def *application_pb.Container) (*ContainerDefinition, error) {
 	container := &ecs.TaskDefinition_ContainerDefinition{
 		Name:      def.Name,
@@ -64,7 +48,21 @@ func buildContainer(globals Globals, iamPolicy *PolicyBuilder, def *application_
 		// set
 		Cpu:               cflib.Int(128),
 		MemoryReservation: cflib.Int(256),
+		LogConfiguration: &ecs.TaskDefinition_LogConfiguration{
+			LogDriver: "awslogs",
+			Options: map[string]string{
+				"awslogs-group": cloudformation.Join("/", []string{
+					"ecs",
+					cloudformation.Ref(EnvNameParameter),
+					globals.AppName(),
+				}),
+				"awslogs-create-group":  "true",
+				"awslogs-region":        cloudformation.Ref("AWS::Region"),
+				"awslogs-stream-prefix": def.Name,
+			},
+		},
 	}
+
 	ensureEnvVar(&container.Environment, "AWS_REGION", cloudformation.RefPtr("AWS::Region"))
 
 	if len(def.Command) > 0 {
@@ -165,7 +163,7 @@ func buildContainer(globals Globals, iamPolicy *PolicyBuilder, def *application_
 				envVarVal := &envVarStr
 				envVar := ecs.TaskDefinition_KeyValuePair{
 					Name:  cflib.String(envVar.Name),
-					Value: envVarVal, // dbDef.RefToProxy(host),
+					Value: envVarVal, // This pointer gets filled from the sidecar var
 				}
 				container.Environment = append(container.Environment, envVar)
 				containerDef.ProxyDBs = append(containerDef.ProxyDBs, ProxyDB{

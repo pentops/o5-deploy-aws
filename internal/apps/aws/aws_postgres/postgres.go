@@ -49,7 +49,7 @@ func (d *DBMigrator) UpsertPostgresDatabase(ctx context.Context, migrationID str
 		return err
 	}
 
-	didCreate, err := d.upsertPostgresDatabase(ctx, connSpec, msg.Spec)
+	didCreate, err := d.upsertPostgresDatabase(ctx, connSpec, msg.Spec, msg.AppAccess)
 	if err != nil {
 		return err
 	}
@@ -193,7 +193,15 @@ func (d *DBMigrator) buildSpec(ctx context.Context, spec *awsinfra_pb.RDSHostTyp
 			dbName = dbUser
 		}
 
-		authenticationToken, err := d.creds.BuildAuthToken(ctx, dbEndpoint, dbUser)
+		log.WithFields(ctx, map[string]interface{}{
+			"dbEndpoint": dbEndpoint,
+			"dbPort":     dbPort,
+			"dbUser":     dbUser,
+			"dbName":     dbName,
+		}).Debug("Connecting to Aurora")
+
+		fullEndpoint := fmt.Sprintf("%s:%d", dbEndpoint, dbPort)
+		authenticationToken, err := d.creds.BuildAuthToken(ctx, fullEndpoint, dbUser)
 		if err != nil {
 			return nil, err
 		}
@@ -343,8 +351,16 @@ func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, spec DBSpec, dbNa
 
 }
 
-func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, connSpec DBSpec, spec *awsinfra_pb.RDSCreateSpec) (bool, error) {
+var reSafeRoleName = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+var reSafeExtensionName = regexp.MustCompile(`^[a-zA-Z0-9_\-]+$`)
+
+func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, connSpec DBSpec, spec *awsinfra_pb.RDSCreateSpec, clientConn *awsinfra_pb.RDSAppSpecType) (bool, error) {
 	dbName := spec.DbName
+	// dbName is going to be used directly as a string in postgres, as the role
+	// commands don't accept parameters.
+	if !reSafeRoleName.MatchString(dbName) {
+		return false, fmt.Errorf("unsafe database name: %s", dbName)
+	}
 
 	rootConn, err := connSpec.OpenRoot(ctx)
 	if err != nil {
@@ -354,6 +370,14 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, connSpec DBSpec
 	db, err := sqrlx.NewWithCommander(rootConn, sq.Dollar)
 	if err != nil {
 		return false, err
+	}
+
+	var grantIAM bool
+	switch clientConn.Get().(type) {
+	case *awsinfra_pb.RDSAppSpecType_SecretsManager:
+		grantIAM = false
+	case *awsinfra_pb.RDSAppSpecType_Aurora:
+		grantIAM = true
 	}
 
 	var count int
@@ -377,9 +401,16 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, connSpec DBSpec
 		return false, fmt.Errorf("more than one DB matched %q", dbName)
 	}
 
-	_, err = db.ExecRaw(ctx, fmt.Sprintf(`CREATE ROLE %s`, dbName))
+	_, err = db.ExecRaw(ctx, fmt.Sprintf(`CREATE ROLE %s LOGIN`, dbName))
 	if err != nil {
 		return true, err
+	}
+
+	if grantIAM {
+		_, err = db.ExecRaw(ctx, fmt.Sprintf(`GRANT rds_iam TO %s`, dbName))
+		if err != nil {
+			return true, err
+		}
 	}
 
 	_, err = db.ExecRaw(ctx, fmt.Sprintf(`GRANT %s TO current_user`, dbName))
@@ -397,8 +428,8 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, connSpec DBSpec
 			"count": len(spec.DbExtensions),
 		}).Debug("Adding Extensions")
 		if err := func() error {
-			// Note this connects to the database name, not the wider 'postgres'
-			// namespace, so is different to the outer rootConn
+			// This != the outer rootConn
+			// it connects to the new database as admin
 			superuserConn, err := connSpec.OpenDBAsRoot(ctx, dbName)
 			if err != nil {
 				return err
@@ -488,5 +519,3 @@ func securePassword() (string, error) {
 	return hex.EncodeToString(b), nil
 
 }
-
-var reSafeExtensionName = regexp.MustCompile(`^[a-zA-Z0-9_\-]+$`)
