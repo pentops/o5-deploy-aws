@@ -79,10 +79,16 @@ type Step struct {
 }
 
 func (s *Step) SetOutput(output awsdeployer_pb.IsStepOutputTypeWrappedType) {
+	if s.step.Output == nil {
+		s.step.Output = &awsdeployer_pb.StepOutputType{}
+	}
 	s.step.Output.Set(output)
 }
 
 func (s *Step) GetOutput() awsdeployer_pb.IsStepOutputTypeWrappedType {
+	if s.step.Output == nil {
+		return nil
+	}
 	return s.step.Output.Get()
 }
 

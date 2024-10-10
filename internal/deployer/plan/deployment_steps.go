@@ -152,7 +152,11 @@ func RunStep(ctx context.Context,
 
 func UpdateDeploymentStep(steps []*awsdeployer_pb.DeploymentStep, event *awsdeployer_pb.DeploymentEventType_StepResult) error {
 	stepMap := awsdeployer_step_pb.WrapSteps(steps)
-	return strategy.UpdateDeploymentStep(stepMap, event.Result, event.Output.Get())
+	var output awsdeployer_pb.IsStepOutputTypeWrappedType
+	if event.Output != nil {
+		output = event.Output.Get()
+	}
+	return strategy.UpdateDeploymentStep(stepMap, event.Result, output)
 }
 
 func UpdateStepDependencies(steps []*awsdeployer_pb.DeploymentStep) error {
