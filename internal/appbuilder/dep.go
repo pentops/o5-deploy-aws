@@ -83,28 +83,29 @@ func (gg globals) addDatabase(summary DatabaseRef) {
 }
 
 type SecretRef interface {
-	ARN() TemplateRef
-	SecretValueFrom(jsonKey string) TemplateRef
+	ARN() cflib.TemplateRef
+	SecretValueFrom(jsonKey string) cflib.TemplateRef
 }
 
 type secretInfo struct {
 	refName       string
 	parameterName string
+	arn           cflib.TemplateRef
 }
 
-func (si secretInfo) ARN() TemplateRef {
-	return TemplateRef(si.parameterName)
+func (si secretInfo) ARN() cflib.TemplateRef {
+	return cflib.TemplateRef(si.parameterName)
 }
 
-func (si secretInfo) SecretValueFrom(jsonKey string) TemplateRef {
+func (si secretInfo) SecretValueFrom(jsonKey string) cflib.TemplateRef {
 	versionStage := ""
 	versionID := ""
-	return TemplateRef(cloudformation.Join(":", []string{
+	return cflib.Join(":",
 		si.parameterName,
 		jsonKey,
 		versionStage,
 		versionID,
-	}))
+	)
 }
 
 func mapResources(bb *Builder, resources resourceBuilder, app *application_pb.Application) error {
@@ -120,25 +121,36 @@ func mapResources(bb *Builder, resources resourceBuilder, app *application_pb.Ap
 	for _, secretDef := range app.Secrets {
 		parameterName := fmt.Sprintf("AppSecret%s", cases.Title(language.English).String(secretDef.Name))
 		secret := cflib.NewResource(parameterName, &secretsmanager.Secret{
-			Name: cloudformation.JoinPtr("/", []string{
+			Name: cflib.Join("/",
 				"", // Leading /
 				cloudformation.Ref(EnvNameParameter),
 				app.Name,
 				secretDef.Name,
-			}),
+			).RefPtr(),
 			Description: cflib.Stringf("Application Level Secret for %s:%s - value must be set manually", app.Name, secretDef.Name),
 
 			AWSCloudFormationDeletionPolicy: policies.DeletionPolicy("Retain"),
 		})
 		bb.Template.AddResource(secret)
+		/*
+			arn := cloudformation.Join("", []string{
+				"arn:aws:secretsmanager:us-east-1:",
+				accountIDRef,
+				":secret:/",
+				envNameRef,
+				"/",
+				appName,
+				"/*",
+			}))*/
 		resources.addSecret(&secretInfo{
 			parameterName: parameterName,
 			refName:       secretDef.Name,
+			arn:           cflib.TemplateRef(secret.Ref()),
 		})
 	}
 
 	for _, databaseDef := range app.Databases {
-		switch databaseDef.Engine.(type) {
+		switch dbType := databaseDef.Engine.(type) {
 		case *application_pb.Database_Postgres_:
 			ref, def, err := mapPostgresDatabase(bb, databaseDef)
 			if err != nil {
@@ -147,6 +159,12 @@ func mapResources(bb *Builder, resources resourceBuilder, app *application_pb.Ap
 			resources.addDatabase(ref)
 			bb.AddPostgresResource(def)
 
+			if dbType.Postgres.MigrateContainer != nil {
+				err := mapPostgresMigration(bb, def, dbType.Postgres.MigrateContainer)
+				if err != nil {
+					return fmt.Errorf("mapping postgres migration for %s: %w", databaseDef.Name, err)
+				}
+			}
 		default:
 			return fmt.Errorf("unknown database engine type %T", databaseDef.Engine)
 		}

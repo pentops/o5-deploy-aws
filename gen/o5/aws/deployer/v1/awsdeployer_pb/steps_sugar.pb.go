@@ -5,6 +5,7 @@ package awsdeployer_pb
 import (
 	driver "database/sql/driver"
 	fmt "fmt"
+	proto "google.golang.org/protobuf/proto"
 )
 
 // StepOutputType is a oneof wrapper
@@ -28,6 +29,7 @@ func (x *StepOutputType) TypeKey() (StepOutputTypeKey, bool) {
 
 type IsStepOutputTypeWrappedType interface {
 	TypeKey() StepOutputTypeKey
+	proto.Message
 }
 
 func (x *StepOutputType) Set(val IsStepOutputTypeWrappedType) {
@@ -99,6 +101,7 @@ func (x *DeploymentStepType) TypeKey() (DeploymentStepTypeKey, bool) {
 
 type IsDeploymentStepTypeWrappedType interface {
 	TypeKey() DeploymentStepTypeKey
+	proto.Message
 }
 
 func (x *DeploymentStepType) Set(val IsDeploymentStepTypeWrappedType) {
@@ -200,6 +203,7 @@ func (x *CloudFormationStackParameterType) TypeKey() (CloudFormationStackParamet
 
 type IsCloudFormationStackParameterTypeWrappedType interface {
 	TypeKey() CloudFormationStackParameterTypeKey
+	proto.Message
 }
 
 func (x *CloudFormationStackParameterType) Set(val IsCloudFormationStackParameterTypeWrappedType) {

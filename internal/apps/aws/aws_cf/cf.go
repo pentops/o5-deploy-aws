@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
@@ -137,6 +139,52 @@ func (cf *CFClient) resolveParameters(ctx context.Context, lastInput []types.Par
 	}
 
 	return parameters, nil
+}
+
+type LogEvent struct {
+	Timestamp time.Time
+	Resource  string
+	Status    string
+	Detail    string
+	IsFailure bool
+}
+
+func (cf *CFClient) Logs(ctx context.Context, stackName string) ([]LogEvent, error) {
+	res, err := cf.cfClient.DescribeStackEvents(ctx, &cloudformation.DescribeStackEventsInput{
+		StackName: aws.String(stackName),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	events := make([]LogEvent, 0, len(res.StackEvents))
+	for _, src := range res.StackEvents {
+		evt := LogEvent{
+			Timestamp: *src.Timestamp,
+		}
+		if src.LogicalResourceId != nil {
+			evt.Resource = *src.LogicalResourceId
+		} else if src.PhysicalResourceId != nil {
+			evt.Resource = *src.PhysicalResourceId
+		}
+
+		if src.ResourceStatus != "" {
+			evt.Status = string(src.ResourceStatus)
+			if src.ResourceStatus == types.ResourceStatusCreateFailed || src.ResourceStatus == types.ResourceStatusDeleteFailed || src.ResourceStatus == types.ResourceStatusUpdateFailed {
+				evt.IsFailure = true
+			}
+		}
+
+		if src.ResourceStatusReason != nil {
+			evt.Detail = *src.ResourceStatusReason
+		}
+
+		events = append(events, evt)
+	}
+
+	slices.Reverse(events)
+
+	return events, nil
 }
 
 func (cf *CFClient) CreateNewStack(ctx context.Context, reqToken string, msg *awsinfra_tpb.CreateNewStackMessage) error {

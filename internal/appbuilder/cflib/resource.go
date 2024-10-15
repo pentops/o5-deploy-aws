@@ -12,8 +12,8 @@ import (
 
 type IResource interface {
 	cloudformation.Resource
-	Ref() string
-	GetAtt(name string) string
+	Ref() TemplateRef
+	GetAtt(name string) TemplateRef
 	Name() string
 	DependsOn(IResource)
 	Parameters() []*awsdeployer_pb.Parameter
@@ -29,7 +29,7 @@ type Resource[T cloudformation.Resource] struct {
 
 type Output struct {
 	Name        string
-	Value       string
+	Value       TemplateRef
 	Description string
 }
 
@@ -61,12 +61,12 @@ func (rr *Resource[T]) AddParameter(param *awsdeployer_pb.Parameter) {
 	rr.parameters = append(rr.parameters, param)
 }
 
-func (rr Resource[T]) Ref() string {
-	return cloudformation.Ref(rr.name)
+func (rr Resource[T]) Ref() TemplateRef {
+	return TemplateRef(cloudformation.Ref(rr.name))
 }
 
-func (rr Resource[T]) GetAtt(name string) string {
-	return cloudformation.GetAtt(rr.name, name)
+func (rr Resource[T]) GetAtt(name string) TemplateRef {
+	return TemplateRef(cloudformation.GetAtt(rr.name, name))
 }
 
 func (rr Resource[T]) Name() string {

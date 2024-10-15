@@ -1,144 +1,16 @@
 package appbuilder
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
-	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
-	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib/cftest"
 	"github.com/stretchr/testify/assert"
 )
-
-type testBuilder struct {
-	input    AppInput
-	rdsHosts RDSHostMap
-}
-
-func NewTestBuilder() *testBuilder {
-	app := &application_pb.Application{
-		Name: "app1",
-	}
-	rdsHosts := RDSHostMap{}
-	return &testBuilder{
-		rdsHosts: rdsHosts,
-		input: AppInput{
-			Application: app,
-			RDSHosts:    rdsHosts,
-			VersionTag:  "version1",
-		},
-	}
-}
-
-func (tb *testBuilder) Build(t testing.TB) *BuiltApplication {
-	out, err := BuildApplication(tb.input)
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-	return out
-}
-
-func (tb *testBuilder) AddDatabase(db *application_pb.Database) {
-	tb.input.Application.Databases = append(tb.input.Application.Databases, db)
-}
-
-func (tb *testBuilder) AddRuntime(rt *application_pb.Runtime) {
-	tb.input.Application.Runtimes = append(tb.input.Application.Runtimes, rt)
-}
-
-func (tb *testBuilder) AddBlobstore(store *application_pb.Blobstore) {
-	tb.input.Application.Blobstores = append(tb.input.Application.Blobstores, store)
-}
-
-func (tb *testBuilder) ClusterRDSHost(name string, host *RDSHost) {
-	tb.rdsHosts[name] = host
-}
-
-func (tb *testBuilder) BuildAndAssert(t *testing.T) *cftest.TemplateAsserter {
-	out := tb.Build(t)
-	return cftest.NewTemplateAsserter(&cflib.BuiltTemplate{
-		Template:   out.Template,
-		Parameters: out.Parameters,
-	})
-}
-
-type containerAssert struct {
-	container ecs.TaskDefinition_ContainerDefinition
-}
-
-func (ca *containerAssert) GetEnv(name string) *ecs.TaskDefinition_KeyValuePair {
-	for _, e := range ca.container.Environment {
-		if *e.Name == name {
-			return &e
-		}
-	}
-	return nil
-}
-
-func (ca *containerAssert) MustNotHaveEnvOrSecret(t testing.TB, name string) {
-	if ca.GetEnv(name) != nil {
-		t.Fatalf("unexpected env %s", name)
-	}
-
-	if ca.GetSecret(name) != nil {
-		t.Fatalf("unexpected secret %s", name)
-	}
-}
-func (ca *containerAssert) MustGetEnv(t testing.TB, name string) *ecs.TaskDefinition_KeyValuePair {
-	t.Helper()
-	e := ca.GetEnv(name)
-	if e == nil {
-		t.Fatalf("env %s not found", name)
-	}
-	return e
-}
-
-func (ca *containerAssert) GetSecret(name string) *ecs.TaskDefinition_Secret {
-	for _, s := range ca.container.Secrets {
-		if s.Name == name {
-			return &s
-		}
-	}
-	return nil
-}
-
-func (ca *containerAssert) MustGetSecret(t testing.TB, name string) *ecs.TaskDefinition_Secret {
-	t.Helper()
-	s := ca.GetSecret(name)
-	if s == nil {
-		for _, s := range ca.container.Secrets {
-			t.Logf("secret: %s", s.Name)
-		}
-		for _, e := range ca.container.Environment {
-			t.Logf("env: %s", *e.Name)
-		}
-		t.Fatalf("secret %s not found", name)
-	}
-	return s
-}
-
-type standardRuntimeAssert struct {
-	main    *containerAssert
-	sidecar *containerAssert
-}
-
-func newStandardRuntimeAssert(t testing.TB, aa *cftest.TemplateAsserter) *standardRuntimeAssert {
-	taskDef := &ecs.TaskDefinition{}
-	aa.GetResource(t, "main", taskDef)
-	sra := &standardRuntimeAssert{}
-	for _, c := range taskDef.ContainerDefinitions {
-		if c.Name == "main" {
-			sra.main = &containerAssert{container: c}
-		} else if c.Name == O5SidecarContainerName {
-			sra.sidecar = &containerAssert{container: c}
-		} else {
-			t.Fatalf("unexpected container %s", c.Name)
-		}
-	}
-	return sra
-}
 
 type pgTestCase struct {
 	builder *testBuilder
@@ -201,21 +73,17 @@ func newPGTestCase() *pgTestCase {
 
 }
 
-func runPGTestCase(t *testing.T, tc *pgTestCase) *standardRuntimeAssert {
-	aa := tc.builder.BuildAndAssert(t)
-	rr := newStandardRuntimeAssert(t, aa)
-	return rr
-}
-
 func TestDatabaseCases(t *testing.T) {
 
 	type wantSecret struct {
-		dbName     string
-		wantOutbox bool
+		dbName      string
+		wantOutbox  bool
+		wantMigrate bool
 	}
 	assertSecretCase := func(t *testing.T, tc *pgTestCase, sc *wantSecret) {
 		t.Helper()
-		rr := runPGTestCase(t, tc)
+		aa := tc.builder.BuildAndAssert(t)
+		rr := aa.StandardRuntimeAssert(t)
 
 		wantSecretRef := tSecretRef(cflib.CleanParameterName("Database", sc.dbName), "dburl")
 
@@ -248,10 +116,7 @@ func TestDatabaseCases(t *testing.T) {
 		rr.sidecar.MustNotHaveEnvOrSecret(t, "POSTGRES_IAM_PROXY")
 	}
 
-	assertIAMCase := func(t *testing.T, tc *pgTestCase, want *wantSecret) {
-		t.Helper()
-		rr := runPGTestCase(t, tc)
-
+	assertIAMRuntime := func(t *testing.T, rr *standardRuntimeAssert, want *wantSecret) {
 		env := rr.main.GetEnv("DATABASE_URL")
 		secret := rr.main.GetSecret("DATABASE_URL")
 		if env == nil && secret == nil {
@@ -266,25 +131,75 @@ func TestDatabaseCases(t *testing.T) {
 			t.Errorf("expected DATABASE_URL to have a value, was nil")
 		}
 
-		if rr.sidecar == nil {
-			t.Fatal("Sidecar expected in all IAM cases (for proxy)")
+		rr.WithSidecarContainer(t, func(t testing.TB, sidecar *containerAssert) {
+			proxy := sidecar.MustGetEnv(t, "POSTGRES_IAM_PROXY")
+			assert.Equal(t, "DB_1", *proxy.Value, "Expected proxy env var to be set to the name of the DB")
+
+			if want.wantOutbox {
+				outbox := sidecar.MustGetEnv(t, "POSTGRES_OUTBOX")
+				assert.Equal(t, "DB_1", *outbox.Value, "Expected outbox env var to be set to the name of the DB")
+			} else {
+				sidecar.MustNotHaveEnvOrSecret(t, "POSTGRES_OUTBOX")
+			}
+
+			creds := sidecar.MustGetEnv(t, "DB_CREDS_DB_1")
+			assert.NotEmpty(t, creds.Value, "Expected outbox env value to be set")
+
+			wantEndpointRef := cloudformation.Ref("DatabaseParam" + cflib.CleanParameterName("db1") + "JSON")
+			assertFunctionEqual(t, wantEndpointRef, *creds.Value, "IAM Proxy JSON")
+		})
+
+		rr.WithPolicy(t, PolicyNameRDSConnect, func(t testing.TB, policy *PolicyDocument) {
+			stmt := policy.Statement[0]
+			resource := stmt.Resource[0]
+			got := funcToPlaceholders(t, resource)
+			identifierParam := rr.parent.GetParameter(t, &awsdeployer_pb.ParameterSourceType_Aurora{
+				ServerGroup: "group",
+				DbName:      "foo",
+				Part:        awsdeployer_pb.ParameterSourceType_Aurora_PART_IDENTIFIER,
+			})
+			dbNameParam := rr.parent.GetParameter(t, &awsdeployer_pb.ParameterSourceType_Aurora{
+				ServerGroup: "group",
+				DbName:      "foo",
+				Part:        awsdeployer_pb.ParameterSourceType_Aurora_PART_DBNAME,
+			})
+			want := fmt.Sprintf("arn:aws:rds-db:{AWS::Region}:{AWS::AccountId}:dbuser:{%s}/{%s}",
+				identifierParam.Name,
+				dbNameParam.Name,
+			)
+			assert.Equal(t, want, got)
+		})
+
+	}
+	assertIAMCase := func(t *testing.T, tc *pgTestCase, want *wantSecret) {
+		t.Helper()
+		aa := tc.builder.BuildAndAssert(t)
+		t.Run("Main Task", func(t *testing.T) {
+			mainTask := aa.StandardRuntimeAssert(t)
+			assertIAMRuntime(t, mainTask, want)
+		})
+
+		db := aa.GetDatabase(t, "foo")
+
+		if !want.wantMigrate {
+			if db.MigrationTaskOutputName != nil {
+				t.Errorf("unexpected migration task")
+			}
+			return
 		}
 
-		proxy := rr.sidecar.MustGetEnv(t, "POSTGRES_IAM_PROXY")
-		assert.Equal(t, "DB_1", *proxy.Value, "Expected proxy env var to be set to the name of the DB")
+		t.Run("Migrate Task", func(t *testing.T) {
+			if db.MigrationTaskOutputName == nil {
+				t.Fatalf("expected migration task output name to be set")
+			}
+			outputVal := aa.GetOutputValue(t, *db.MigrationTaskOutputName)
 
-		if want.wantOutbox {
-			outbox := rr.sidecar.MustGetEnv(t, "POSTGRES_OUTBOX")
-			assert.Equal(t, "DB_1", *outbox.Value, "Expected outbox env var to be set to the name of the DB")
-		} else {
-			rr.sidecar.MustNotHaveEnvOrSecret(t, "POSTGRES_OUTBOX")
-		}
-
-		creds := rr.sidecar.MustGetEnv(t, "DB_CREDS_DB_1")
-		assert.NotEmpty(t, creds.Value, "Expected outbox env value to be set")
-
-		wantEndpointRef := cloudformation.Ref("DatabaseParam" + cflib.CleanParameterName("db1"))
-		assertFunctionEqual(t, wantEndpointRef, *creds.Value, "IAM Proxy secret")
+			migrateTask := aa.SingleContainerTaskDef(t, "!!"+outputVal, "migrate")
+			assertIAMRuntime(t, migrateTask, &wantSecret{
+				dbName:     "db1",
+				wantOutbox: false,
+			})
+		})
 	}
 
 	t.Run("SimplestSecret", func(t *testing.T) {
@@ -327,6 +242,38 @@ func TestDatabaseCases(t *testing.T) {
 		})
 	})
 
+	t.Run("MigrateProxy", func(t *testing.T) {
+		tc := newPGTestCase()
+		tc.rdsHost.AuthType = environment_pb.RDSAuth_Iam
+		tc.pg.MigrateContainer = &application_pb.Container{
+			Source:  tc.runtime.Containers[0].Source,
+			Command: []string{"migrate"},
+			EnvVars: tc.runtime.Containers[0].EnvVars,
+		}
+
+		assertIAMCase(t, tc, &wantSecret{
+			dbName:      "db1",
+			wantOutbox:  false,
+			wantMigrate: true,
+		})
+	})
+
+	t.Run("MigrateAndOutboxProxy", func(t *testing.T) {
+		tc := newPGTestCase()
+		tc.rdsHost.AuthType = environment_pb.RDSAuth_Iam
+		tc.pg.RunOutbox = true
+		tc.pg.MigrateContainer = &application_pb.Container{
+			Source:  tc.runtime.Containers[0].Source,
+			Command: []string{"migrate"},
+			EnvVars: tc.runtime.Containers[0].EnvVars,
+		}
+
+		assertIAMCase(t, tc, &wantSecret{
+			dbName:      "db1",
+			wantOutbox:  true,
+			wantMigrate: true,
+		})
+	})
 }
 
 func tSecretRef(name string, jsonKey string) string {

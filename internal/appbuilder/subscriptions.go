@@ -5,6 +5,9 @@ import (
 	"strings"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
+	"github.com/awslabs/goformation/v7/cloudformation/events"
+	"github.com/awslabs/goformation/v7/cloudformation/sns"
+	"github.com/awslabs/goformation/v7/cloudformation/sqs"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
@@ -12,6 +15,7 @@ import (
 
 type subscriptionPlan struct {
 	targetContainers map[string]struct{}
+	namePrefix       string
 
 	parameters []*awsdeployer_pb.Parameter
 
@@ -59,9 +63,10 @@ type singlePattern struct {
 	SourceEnv        []string `json:"sourceEnv,omitempty"`
 }
 
-func buildSubscriptionPlan(spec *application_pb.Runtime) (*subscriptionPlan, error) {
+func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subscriptionPlan, error) {
 
 	plan := &subscriptionPlan{
+		namePrefix:       fmt.Sprintf("%s_%s", appName, spec.Name),
 		targetContainers: make(map[string]struct{}),
 	}
 
@@ -205,4 +210,76 @@ func buildSubscriptionPlan(spec *application_pb.Runtime) (*subscriptionPlan, err
 	}
 
 	return plan, nil
+}
+
+func (sp *subscriptionPlan) AddToTemplate(template *cflib.TemplateBuilder, queueResource *cflib.Resource[*sqs.Queue]) error {
+	namePrefix := sp.namePrefix
+
+	for _, param := range sp.parameters {
+		template.AddParameter(param)
+	}
+
+	topicARNs := []string{}
+	for _, sub := range sp.snsSubscriptions {
+		subscription := cflib.NewResource(cflib.CleanParameterName(namePrefix, sub.name), &sns.Subscription{
+			TopicArn:           sub.topicARN,
+			Protocol:           "sqs",
+			RawMessageDelivery: cflib.Bool(false), // Always include the SNS header info for infra events.
+			Endpoint:           queueResource.GetAtt("Arn").RefPtr(),
+		})
+
+		// The topic is not added to the stack, it should already exist
+		// in this case.
+		template.AddResource(subscription)
+		topicARNs = append(topicARNs, sub.topicARN)
+	}
+
+	for _, sub := range sp.eventBusSubscriptions {
+		eventBusSubscription := &events.Rule{
+			Description:  cflib.String(fmt.Sprintf("Subscription for app %s %s", namePrefix, sub.name)),
+			EventBusName: cloudformation.RefPtr(EventBusARNParameter),
+			Targets: []events.Rule_Target{{
+				Arn: queueResource.GetAtt("Arn").Ref(),
+				Id:  "SQS",
+			}},
+			EventPattern: sub.eventPattern,
+		}
+		template.AddResource(cflib.NewResource(cflib.CleanParameterName(namePrefix, "subscription", sub.name), eventBusSubscription))
+	}
+
+	queuePolicyStatement := []interface{}{
+		map[string]interface{}{
+			"Effect": "Allow",
+			"Principal": map[string]interface{}{
+				"Service": "events.amazonaws.com",
+			},
+			"Action":   "sqs:SendMessage",
+			"Resource": queueResource.GetAtt("Arn"),
+		}}
+
+	if len(topicARNs) > 0 {
+		queuePolicyStatement = append(queuePolicyStatement, map[string]interface{}{
+			"Effect":    "Allow",
+			"Principal": "*",
+			"Action":    "sqs:SendMessage",
+			"Resource":  queueResource.GetAtt("Arn"),
+			"Condition": map[string]interface{}{
+				"ArnEquals": map[string]interface{}{
+					"aws:SourceArn": topicARNs,
+				},
+			},
+		})
+	}
+
+	// Allow SNS and EventBridge to publish to SQS...
+	// (The ARN distinguishes the source)
+	template.AddResource(cflib.NewResource(cflib.CleanParameterName(namePrefix), &sqs.QueuePolicy{
+		Queues: []string{queueResource.Ref().Ref()},
+		PolicyDocument: map[string]interface{}{
+			"Version":   "2012-10-17",
+			"Statement": queuePolicyStatement,
+		},
+	}))
+
+	return nil
 }

@@ -2,6 +2,10 @@
 
 package awsdeployer_pb
 
+import (
+	proto "google.golang.org/protobuf/proto"
+)
+
 // PostgresConnectionType is a oneof wrapper
 type PostgresConnectionTypeKey string
 
@@ -23,6 +27,7 @@ func (x *PostgresConnectionType) TypeKey() (PostgresConnectionTypeKey, bool) {
 
 type IsPostgresConnectionTypeWrappedType interface {
 	TypeKey() PostgresConnectionTypeKey
+	proto.Message
 }
 
 func (x *PostgresConnectionType) Set(val IsPostgresConnectionTypeWrappedType) {

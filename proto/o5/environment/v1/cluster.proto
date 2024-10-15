@@ -53,6 +53,9 @@ message ECSCluster {
 
   // Default value for o5.application.v1.Container.Image.registry
   string default_registry = 3;
+
+  repeated string security_group_ids = 4;
+  repeated string subnet_ids = 5;
 }
 
 message ALBIngress {
@@ -82,6 +85,8 @@ message RDSHost {
   int32 port = 3;
 
   RDSAuthType auth = 4;
+
+  string identifier = 5;
 }
 
 message RDSAuthType {

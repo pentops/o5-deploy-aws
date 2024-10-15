@@ -2,6 +2,10 @@
 
 package awsinfra_pb
 
+import (
+	proto "google.golang.org/protobuf/proto"
+)
+
 // RDSAppSpecType is a oneof wrapper
 type RDSAppSpecTypeKey string
 
@@ -23,6 +27,7 @@ func (x *RDSAppSpecType) TypeKey() (RDSAppSpecTypeKey, bool) {
 
 type IsRDSAppSpecTypeWrappedType interface {
 	TypeKey() RDSAppSpecTypeKey
+	proto.Message
 }
 
 func (x *RDSAppSpecType) Set(val IsRDSAppSpecTypeWrappedType) {
@@ -73,6 +78,7 @@ func (x *RDSHostType) TypeKey() (RDSHostTypeKey, bool) {
 
 type IsRDSHostTypeWrappedType interface {
 	TypeKey() RDSHostTypeKey
+	proto.Message
 }
 
 func (x *RDSHostType) Set(val IsRDSHostTypeWrappedType) {

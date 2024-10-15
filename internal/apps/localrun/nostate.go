@@ -133,23 +133,27 @@ func (rr *Runner) runSteps(ctx context.Context, steps []*awsdeployer_pb.Deployme
 		}
 
 		for _, chainEvent := range tb.ChainEvents {
-			log.WithFields(ctx, map[string]interface{}{
-				"event": chainEvent,
-			}).Info("ChainEvent")
+			fields := map[string]interface{}{
+				"event":     chainEvent,
+				"eventType": chainEvent.PSMEventKey(),
+			}
+			log.WithFields(ctx, fields).Info("ChainEvent")
 
 			switch evt := chainEvent.(type) {
 			case *awsdeployer_pb.DeploymentEventType_RunStep:
-				found := false
-				for _, step := range steps {
-					if step.Meta.StepId == evt.StepId {
-						step.Meta.Status = drss_pb.StepStatus_ACTIVE
-						found = true
+				var step *awsdeployer_pb.DeploymentStep
+				for _, search := range steps {
+					if search.Meta.StepId == evt.StepId {
+						search.Meta.Status = drss_pb.StepStatus_ACTIVE
+						step = search
 						break
 					}
 				}
-				if !found {
+				if step == nil {
 					return fmt.Errorf("step not found: %s", evt.StepId)
 				}
+				ctx := log.WithField(ctx, "step", step.Meta.Name)
+				log.Info(ctx, "Running Step")
 
 				tb := &TransitionData{}
 				err := plan.RunStep(ctx, tb, &awsdeployer_pb.DeploymentKeys{}, steps, evt.StepId)

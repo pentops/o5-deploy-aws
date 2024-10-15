@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
-	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	"github.com/awslabs/goformation/v7/cloudformation/policies"
 	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
@@ -17,32 +16,58 @@ type DatabaseRef interface {
 	// Name as specified in the application o5 file
 	Name() string
 
-	IsProxy() bool
-	SecretValueFrom() (TemplateRef, bool)
-	EndpointParameter() (TemplateRef, bool)
+	AuroraProxy() (*AuroraDatabaseRef, bool)
+	SecretValueFrom() (cflib.TemplateRef, bool)
 }
 
 // DatabaseReference is used to look up parameters ECS Task Definitions
 
-type iamDatabaseRef struct {
-	refName  string
-	paramRef TemplateRef
+type AuroraDatabaseRef struct {
+	refName            string
+	endpointParamRef   cflib.TemplateRef
+	identifierParamRef cflib.TemplateRef
+	dbNameParamRef     cflib.TemplateRef
 }
 
-func (dbDef iamDatabaseRef) Name() string {
+func (dbDef AuroraDatabaseRef) Name() string {
 	return dbDef.refName
 }
 
-func (dbDef iamDatabaseRef) EndpointParameter() (TemplateRef, bool) {
-	return dbDef.paramRef, true
+func (dbDef AuroraDatabaseRef) IsProxy() bool {
+	return true
 }
 
-func (dbDef iamDatabaseRef) SecretValueFrom() (TemplateRef, bool) {
+func (dbDef AuroraDatabaseRef) SecretValueFrom() (cflib.TemplateRef, bool) {
 	return "", false
 }
 
-func (dbDef iamDatabaseRef) IsProxy() bool {
-	return true
+func (dbDef AuroraDatabaseRef) AuroraProxy() (*AuroraDatabaseRef, bool) {
+	return &dbDef, true
+}
+
+func (dbDef AuroraDatabaseRef) AuroraEndpoint() cflib.TemplateRef {
+	return dbDef.endpointParamRef
+}
+
+func (dbDef AuroraDatabaseRef) AuroraConnectARN() cflib.TemplateRef {
+	joined := cloudformation.Join(":", []string{
+		"arn",
+		"aws",
+		"rds-db",
+		cloudformation.Ref("AWS::Region"),
+		cloudformation.Ref("AWS::AccountId"),
+		"dbuser",
+		cloudformation.Join("/", []string{
+			string(dbDef.identifierParamRef),
+			string(dbDef.dbNameParamRef),
+		}),
+	})
+
+	return cflib.TemplateRef(joined)
+}
+
+func (dbDef AuroraDatabaseRef) DSNToProxy(host string) string {
+	return fmt.Sprintf("host=%s user=%s dbname=%s sslmode=disable", host, dbDef.refName, dbDef.refName)
 }
 
 type secretsDatabaseRef struct {
@@ -58,20 +83,20 @@ func (dbDef secretsDatabaseRef) IsProxy() bool {
 	return false
 }
 
-func (dbDef secretsDatabaseRef) EndpointParameter() (TemplateRef, bool) {
-	return "", false
+func (dbDef secretsDatabaseRef) AuroraProxy() (*AuroraDatabaseRef, bool) {
+	return nil, false
 }
 
-func (dbDef secretsDatabaseRef) SecretValueFrom() (TemplateRef, bool) {
+func (dbDef secretsDatabaseRef) SecretValueFrom() (cflib.TemplateRef, bool) {
 	jsonKey := "dburl"
 	versionStage := ""
 	versionID := ""
-	return TemplateRef(cloudformation.Join(":", []string{
+	return cflib.Join(":",
 		dbDef.secretResource.Ref(),
 		jsonKey,
 		versionStage,
 		versionID,
-	})), true
+	), true
 }
 
 func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (DatabaseRef, *awsdeployer_pb.PostgresDatabaseResource, error) {
@@ -124,36 +149,40 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (D
 		}
 
 	case environment_pb.RDSAuth_Iam:
-		paramName := fmt.Sprintf("DatabaseParam%s", cflib.CleanParameterName(database.Name))
-		builder.Template.AddParameter(&awsdeployer_pb.Parameter{
-			Name:        paramName,
-			Type:        "String",
-			Description: fmt.Sprintf("Parameter for IAM Postgres database %s in app %s", database.Name, builder.AppName()),
-			Source: &awsdeployer_pb.ParameterSourceType{
-				Type: &awsdeployer_pb.ParameterSourceType_AuroraEndpoint_{
-					AuroraEndpoint: &awsdeployer_pb.ParameterSourceType_AuroraEndpoint{
-						ServerGroup: dbType.ServerGroup,
-						DbName:      def.DbName, // Matching the resource def
+		endpointParamName := fmt.Sprintf("DatabaseParam%sJSON", cflib.CleanParameterName(database.Name))
+		identifierParamName := fmt.Sprintf("DatabaseParam%sIdentifier", cflib.CleanParameterName(database.Name))
+		dbNameParamName := fmt.Sprintf("DatabaseParam%sDbName", cflib.CleanParameterName(database.Name))
+		for param, part := range map[string]awsdeployer_pb.ParameterSourceType_Aurora_Part{
+			endpointParamName:   awsdeployer_pb.ParameterSourceType_Aurora_PART_JSON,
+			identifierParamName: awsdeployer_pb.ParameterSourceType_Aurora_PART_IDENTIFIER,
+			dbNameParamName:     awsdeployer_pb.ParameterSourceType_Aurora_PART_DBNAME,
+		} {
+			builder.Template.AddParameter(&awsdeployer_pb.Parameter{
+				Name:        param,
+				Type:        "String",
+				Description: fmt.Sprintf("IAM Postgres database %s in app %s : %s", database.Name, builder.AppName(), part.String()),
+				Source: &awsdeployer_pb.ParameterSourceType{
+					Type: &awsdeployer_pb.ParameterSourceType_Aurora_{
+						Aurora: &awsdeployer_pb.ParameterSourceType_Aurora{
+							ServerGroup: dbType.ServerGroup,
+							DbName:      def.DbName, // Matching the resource def
+							Part:        part,
+						},
 					},
 				},
-			},
-		})
-		def.Connection = &awsdeployer_pb.PostgresDatabaseResource_ParameterName{
-			ParameterName: paramName,
+			})
 		}
-		ref = &iamDatabaseRef{
-			refName:  database.Name, // Matching the passed in reference name for lookup
-			paramRef: TemplateRef(cloudformation.Ref(paramName)),
+		def.Connection = &awsdeployer_pb.PostgresDatabaseResource_ParameterName{
+			ParameterName: endpointParamName,
+		}
+		ref = &AuroraDatabaseRef{
+			refName:            database.Name, // Matching the passed in reference name for lookup
+			endpointParamRef:   cflib.TemplateRef(cloudformation.Ref(endpointParamName)),
+			identifierParamRef: cflib.TemplateRef(cloudformation.Ref(identifierParamName)),
+			dbNameParamRef:     cflib.TemplateRef(cloudformation.Ref(dbNameParamName)),
 		}
 	default:
 		return nil, nil, fmt.Errorf("unknown auth type %q for database %s", dbHost.AuthType, database.Name)
-	}
-
-	if dbType.MigrateContainer != nil {
-		err := mapPostgresMigration(builder, def, dbType.MigrateContainer)
-		if err != nil {
-			return nil, nil, fmt.Errorf("mapping postgres migration for %s: %w", database.Name, err)
-		}
 	}
 
 	return ref, def, nil
@@ -165,45 +194,27 @@ func mapPostgresMigration(builder *Builder, resource *awsdeployer_pb.PostgresDat
 		spec.Name = "migrate"
 	}
 
-	migrationContainer, err := buildContainer(builder, nil, spec)
+	taskDefinition := NewECSTaskDefinition(builder.Globals, fmt.Sprintf("migrate_%s", resource.DbName))
+	err := taskDefinition.BuildRuntimeContainer(spec)
 	if err != nil {
-		return fmt.Errorf("building migration container for %s: %w", resource.DbName, err)
+		return fmt.Errorf("building migration container: %w", err)
 	}
 
-	name := fmt.Sprintf("MigrationTaskDefinition%s", cflib.CleanParameterName(resource.DbName))
-
-	taskDef := cflib.NewResource(name, &ecs.TaskDefinition{
-		ContainerDefinitions: []ecs.TaskDefinition_ContainerDefinition{
-			*migrationContainer.Container,
-		},
-		Family:                  cflib.String(fmt.Sprintf("%s_migrate_%s", builder.AppName(), resource.DbName)),
-		ExecutionRoleArn:        cloudformation.RefPtr(ECSTaskExecutionRoleParameter),
-		RequiresCompatibilities: []string{"EC2"},
-	})
-
-	if len(migrationContainer.ProxyDBs) > 0 {
-		// Migration requires sidecar
-		sidecar := NewSidecarBuilder(builder.Globals.AppName())
-		for _, ref := range migrationContainer.ProxyDBs {
-			envVarValue := sidecar.ProxyDB(ref.Database)
-			*ref.EnvVarVal = envVarValue
-		}
-		container, err := sidecar.Build()
-		if err != nil {
-			return fmt.Errorf("building migration sidecar for %s: %w", resource.DbName, err)
-		}
-
-		taskDef.Resource.ContainerDefinitions = append(taskDef.Resource.ContainerDefinitions, *container)
+	err = taskDefinition.BridgeNetwork()
+	if err != nil {
+		return fmt.Errorf("bridging network for migration: %w", err)
 	}
 
-	builder.Template.AddResource(taskDef)
-
-	resource.MigrationTaskOutputName = cflib.String(name)
-
+	taskDef, err := taskDefinition.AddToTemplate(builder.Template)
+	if err != nil {
+		return fmt.Errorf("adding task definition for migration: %w", err)
+	}
+	outputName := fmt.Sprintf("MigrationTaskDefinition%s", cflib.CleanParameterName(resource.DbName))
 	builder.Template.AddOutput(&cflib.Output{
-		Name:  name,
-		Value: taskDef.Ref(),
+		Name:  outputName,
+		Value: taskDef,
 	})
+	resource.MigrationTaskOutputName = cflib.String(outputName)
 
 	return nil
 

@@ -12,45 +12,45 @@ import (
 )
 
 type BucketRef interface {
-	Name() TemplateRef
-	S3URL(subPathPtr *string) TemplateRef
+	Name() cflib.TemplateRef
+	S3URL(subPathPtr *string) cflib.TemplateRef
 	GetPermissions() RWPermission
-	ARN() TemplateRef
+	ARN() cflib.TemplateRef
 }
 
 type bucketInfo struct {
 	specName string
-	name     TemplateRef
-	arn      TemplateRef
+	name     cflib.TemplateRef
+	arn      cflib.TemplateRef
 	read     bool
 	write    bool
 }
 
 // Name returns a reference to the 'bucket name'
-func (bi bucketInfo) Name() TemplateRef {
+func (bi bucketInfo) Name() cflib.TemplateRef {
 	return bi.name
 }
 
-func (bi bucketInfo) ARN() TemplateRef {
+func (bi bucketInfo) ARN() cflib.TemplateRef {
 	return bi.arn
 }
 
-func (bi bucketInfo) S3URL(subPathPtr *string) TemplateRef {
+func (bi bucketInfo) S3URL(subPathPtr *string) cflib.TemplateRef {
 	if subPathPtr == nil {
-		return TemplateRef(cloudformation.Join("", []string{
+		return cflib.Join("", []string{
 			"s3://",
 			string(bi.name),
-		}))
+		})
 	}
 	subPath := *subPathPtr
 	if !strings.HasPrefix(subPath, "/") {
 		subPath = "/" + subPath
 	}
-	return TemplateRef(cloudformation.Join("", []string{
+	return cflib.Join("",
 		"s3://",
 		string(bi.name),
 		subPath,
-	}))
+	)
 }
 
 type RWPermission int
@@ -79,23 +79,23 @@ func mapBlobstore(bb *Builder, blobstoreDef *application_pb.Blobstore) (*bucketI
 	appName := bb.Globals.AppName()
 
 	if blobstoreDef.Ref == nil {
-		bucketName := cloudformation.Join(".", []string{
+		bucketName := cflib.Join(".",
 			blobstoreDef.Name,
 			appName,
 			cloudformation.Ref(EnvNameParameter),
 			cloudformation.Ref(AWSRegionParameter),
 			cloudformation.Ref(S3BucketNamespaceParameter),
-		})
+		)
 		bucket := cflib.NewResource(blobstoreDef.Name, &s3.Bucket{
 			AWSCloudFormationDeletionPolicy: policies.DeletionPolicy("Retain"),
-			BucketName:                      cloudformation.String(bucketName),
+			BucketName:                      bucketName.RefPtr(),
 		})
 		bb.Template.AddResource(bucket)
 
 		bucketInfo := &bucketInfo{
 			specName: blobstoreDef.Name,
-			name:     TemplateRef(bucketName),
-			arn:      TemplateRef(bucket.GetAtt("Arn")),
+			name:     bucketName,
+			arn:      bucket.GetAtt("Arn"),
 			read:     true,
 			write:    true,
 		}
@@ -111,38 +111,36 @@ func mapBlobstore(bb *Builder, blobstoreDef *application_pb.Blobstore) (*bucketI
 
 	switch st := blobstoreDef.Ref.Source.(type) {
 	case *application_pb.BlobstoreRef_Application:
-		bucketName := cloudformation.Join(".", []string{
+		bucketName := cflib.Join(".",
 			blobstoreDef.Name,
 			st.Application,
 			cloudformation.Ref(EnvNameParameter),
 			cloudformation.Ref(AWSRegionParameter),
 			cloudformation.Ref(S3BucketNamespaceParameter),
-		})
+		)
 
 		return &bucketInfo{
 			specName: blobstoreDef.Name,
-			name:     TemplateRef(bucketName),
-			arn: TemplateRef(cloudformation.Join(":", []string{
+			name:     bucketName,
+			arn: cflib.Join(":",
 				"arn:aws:s3",
 				"", //cloudformation.Ref(AWSRegionParameter),
 				"", //cloudformation.Ref(AWSAccountIDParameter),
-				bucketName})),
+				bucketName),
 			read:  readPermission,
 			write: writePermission,
 		}, nil
 
 	case *application_pb.BlobstoreRef_BucketName:
-		bucketName := st.BucketName
+		bucketName := cflib.TemplateRef(st.BucketName)
 		return &bucketInfo{
 			specName: blobstoreDef.Name,
-			name:     TemplateRef(bucketName),
-			arn: TemplateRef(
-				cloudformation.Join(":", []string{
-					"arn:aws:s3",
-					cloudformation.Ref(AWSRegionParameter),
-					cloudformation.Ref(AWSAccountIDParameter),
-					bucketName,
-				}),
+			name:     bucketName,
+			arn: cflib.Join(":",
+				"arn:aws:s3",
+				cloudformation.Ref(AWSRegionParameter),
+				cloudformation.Ref(AWSAccountIDParameter),
+				bucketName,
 			),
 			read:  readPermission,
 			write: writePermission,

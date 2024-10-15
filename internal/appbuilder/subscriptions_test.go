@@ -2,9 +2,6 @@ package appbuilder
 
 import (
 	"encoding/json"
-	"reflect"
-	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
@@ -139,7 +136,8 @@ func TestEventBusRules(t *testing.T) {
 					Name: "default",
 				}}
 			}
-			got, err := buildSubscriptionPlan(tc.input)
+
+			got, err := buildSubscriptionPlan("", tc.input)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -169,57 +167,4 @@ func TestEventBusRules(t *testing.T) {
 
 	}
 
-}
-
-func assertJSONEqual(t *testing.T, path []string, expected, got interface{}) {
-	switch expected := expected.(type) {
-	case []interface{}:
-		gotSlice, ok := got.([]interface{})
-		if !ok {
-			t.Errorf("at %s: expected slice, got %T", strings.Join(path, "."), got)
-		}
-		assertJSONArrayEqual(t, path, expected, gotSlice)
-	case map[string]interface{}:
-		gotMap, ok := got.(map[string]interface{})
-		if !ok {
-			t.Errorf("at %s: expected map, got %T", strings.Join(path, "."), got)
-		}
-		assertJSONMapEqual(t, path, expected, gotMap)
-	default:
-		if !reflect.DeepEqual(expected, got) {
-			t.Errorf("at %s: DEEP expected %#v (%T), got %#v (%T)", strings.Join(path, "."), expected, expected, got, got)
-		}
-	}
-}
-
-func assertJSONArrayEqual(t *testing.T, path []string, expected, got []interface{}) {
-	if len(expected) != len(got) {
-		t.Errorf("expected %d elements, got %d", len(expected), len(got))
-	}
-
-	for ii, val := range expected {
-		if ii >= len(got) {
-			t.Errorf("at %s: index %d out of range", strings.Join(path, "."), ii)
-			continue
-		}
-		gotVal := got[ii]
-		assertJSONEqual(t, append(path, strconv.Itoa(ii)), val, gotVal)
-	}
-}
-
-func assertJSONMapEqual(t *testing.T, path []string, expected, got map[string]interface{}) {
-	for k, v := range expected {
-		got, ok := got[k]
-		if !ok {
-			t.Errorf("at %s: key %q not found", strings.Join(path, "."), k)
-		}
-
-		assertJSONEqual(t, append(path, k), v, got)
-	}
-
-	for k := range got {
-		if _, ok := expected[k]; !ok {
-			t.Errorf("unexpected key %q at %s", k, strings.Join(path, "."))
-		}
-	}
 }

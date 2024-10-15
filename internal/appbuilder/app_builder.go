@@ -103,9 +103,7 @@ func BuildApplication(spec AppInput) (*BuiltApplication, error) {
 			return nil, fmt.Errorf("adding routes to %s: %w", runtime.Name, err)
 		}
 
-		for _, target := range app.Targets {
-			runtimeStack.Policy.AddEventBridgePublish(target.Name)
-		}
+		runtimeStack.TaskDefinition.AddEventBridgeTargets(app.Targets)
 
 	}
 
@@ -125,7 +123,7 @@ func BuildApplication(spec AppInput) (*BuiltApplication, error) {
 		}
 
 		// TODO: Assign to the first runtime which references the DB.
-		if err := firstRuntime.Sidecar.RunOutbox(dbRef); err != nil {
+		if err := firstRuntime.TaskDefinition.Sidecar.RunOutbox(dbRef); err != nil {
 			return nil, err
 		}
 	}

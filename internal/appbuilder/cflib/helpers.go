@@ -59,3 +59,19 @@ func CleanParameterName(unsafes ...string) string {
 	safeString := strings.Join(outParts, "")
 	return safeString
 }
+
+// TemplateRef is a cloudformation 'string' which encodes a reference.
+type TemplateRef string
+
+func (tr TemplateRef) Ref() string {
+	return string(tr)
+}
+
+func (tr TemplateRef) RefPtr() *string {
+	str := string(tr)
+	return &str
+}
+
+func Join(sep string, parts ...any) TemplateRef {
+	return TemplateRef(cloudformation.Join(sep, parts))
+}

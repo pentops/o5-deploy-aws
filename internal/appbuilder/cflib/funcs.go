@@ -1,6 +1,7 @@
 package cflib
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -40,22 +41,69 @@ func (f *FuncJoin) UnmarshalJSON(data []byte) error {
 	return err
 }
 
-func ResolveFunc(raw interface{}, params map[string]string) (string, error) {
-	if stringVal, ok := raw.(string); ok {
-		return stringVal, nil
+type ParamMap map[string]string
+
+func (p ParamMap) Get(key string) (string, bool) {
+	val, ok := p[key]
+	return val, ok
+}
+
+type Params interface {
+	Get(key string) (string, bool)
+}
+
+type ParamFunc func(key string) (string, bool)
+
+func (pf ParamFunc) Get(key string) (string, bool) {
+	return pf(key)
+}
+
+func preEncode(raw interface{}) (map[string]interface{}, bool) {
+	mapStringInterface, ok := raw.(map[string]interface{})
+	if ok {
+		return mapStringInterface, true
+	}
+	stringVal, ok := raw.(string)
+	if ok {
+		return fromBase64(stringVal)
+	}
+	attrVal, ok := raw.(TemplateRef)
+	if ok {
+		return fromBase64(string(attrVal))
 	}
 
-	mapStringInterface, ok := raw.(map[string]interface{})
-	if !ok {
-		return "", fmt.Errorf("expected map[string]interface{}, got %T", raw)
+	return nil, false
+}
+
+func fromBase64(stringVal string) (map[string]interface{}, bool) {
+	b64, err := base64.StdEncoding.DecodeString(stringVal)
+	if err != nil {
+		return nil, false
 	}
+
+	val := map[string]interface{}{}
+	if err := json.Unmarshal(b64, &val); err != nil {
+		return nil, false
+	}
+	return val, true
+}
+
+func ResolveFunc(raw interface{}, params Params) (string, error) {
+	msi, ok := preEncode(raw)
+	if !ok {
+		if str, ok := raw.(string); ok {
+			return str, nil
+		}
+		return "", fmt.Errorf("expected map[string]interface{}, or string, or base64 encoded func got %T", raw)
+	}
+
 	var fnName string
 	var fnValue interface{}
 
-	if len(mapStringInterface) != 1 {
-		return "", fmt.Errorf("expected 1 key, got %d", len(mapStringInterface))
+	if len(msi) != 1 {
+		return "", fmt.Errorf("expected 1 key, got %d", len(msi))
 	}
-	for key, value := range mapStringInterface {
+	for key, value := range msi {
 		fnName = key
 		fnValue = value
 	}
@@ -66,7 +114,7 @@ func ResolveFunc(raw interface{}, params map[string]string) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("ref value should be string, got %T", fnValue)
 		}
-		if val, ok := params[refName]; ok {
+		if val, ok := params.Get(refName); ok {
 			return val, nil
 		}
 		return "", fmt.Errorf("ref %s not found in params", refName)

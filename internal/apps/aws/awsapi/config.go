@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -63,6 +64,7 @@ func LoadFromConfig(ctx context.Context, awsConfig aws.Config, opts ...Option) (
 
 	return &DeployerClients{
 		CloudFormation: cloudformation.NewFromConfig(awsConfig),
+		CloudWatchLogs: cloudwatchlogs.NewFromConfig(awsConfig),
 		SNS:            sns.NewFromConfig(awsConfig),
 		ELB:            elasticloadbalancingv2.NewFromConfig(awsConfig),
 		SecretsManager: secretsmanager.NewFromConfig(awsConfig),

@@ -24,7 +24,7 @@ message ParameterSourceType {
     CrossEnvAttr cross_env_attr = 5;
     EnvVar env_var = 6;
     NamedIAMPolicy named_iam_policy = 7;
-    AuroraEndpoint aurora_endpoint = 8;
+    Aurora aurora = 8;
   }
 
   message Static {
@@ -54,9 +54,17 @@ message ParameterSourceType {
     string name = 1;
   }
 
-  message AuroraEndpoint {
+  message Aurora {
     string server_group = 1;
     string db_name = 2;
+    Part part = 3;
+    enum Part {
+      PART_UNSPECIFIED = 0;
+      PART_JSON = 1;
+      PART_IDENTIFIER = 2;
+      PART_ENDPOINT = 3;
+      PART_DBNAME = 4;
+    }
   }
 }
 

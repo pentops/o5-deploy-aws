@@ -73,7 +73,10 @@ func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster
 			appbuilder.S3BucketNamespaceParameter:    ecsCluster.GlobalNamespace,
 			appbuilder.O5SidecarImageParameter:       sidecarFullImage,
 			appbuilder.CORSOriginParameter:           strings.Join(environment.CorsOrigins, ","),
-			appbuilder.EventBusARNParameter:          ecsCluster.EventBridge.EventBusArn,
+
+			appbuilder.SecurityGroupParameter: strings.Join(ecsCluster.EcsCluster.SecurityGroupIds, ","),
+			appbuilder.SubnetIDsParameter:     strings.Join(ecsCluster.EcsCluster.SubnetIds, ","),
+			appbuilder.EventBusARNParameter:   ecsCluster.EventBridge.EventBusArn,
 		},
 		custom:        environment.Vars,
 		crossEnvs:     crossEnvs,
@@ -159,25 +162,40 @@ func (rr *deployerResolver) ResolveParameter(param *awsdeployer_pb.Parameter) (*
 		}
 		value = arn
 
-	case *awsdeployer_pb.ParameterSourceType_AuroraEndpoint_:
-		host, ok := rr.auroraHosts[ps.AuroraEndpoint.ServerGroup]
+	case *awsdeployer_pb.ParameterSourceType_Aurora_:
+		host, ok := rr.auroraHosts[ps.Aurora.ServerGroup]
 		if !ok {
-			return nil, fmt.Errorf("unknown aurora server group: %s", ps.AuroraEndpoint.ServerGroup)
+			return nil, fmt.Errorf("unknown aurora server group: %s", ps.Aurora.ServerGroup)
 		}
 
-		if host.Port == 0 {
-			host.Port = 5432
-		}
-		jsonValue, err := json.Marshal(&AuroraIAMParameterValue{
-			Endpoint: fmt.Sprintf("%s:%d", host.Endpoint, host.Port),
-			DbName:   host.DbName,
-			DbUser:   host.DbUser,
-		})
-		if err != nil {
-			return nil, err
-		}
+		switch ps.Aurora.Part {
+		case awsdeployer_pb.ParameterSourceType_Aurora_PART_JSON:
 
-		value = string(jsonValue)
+			if host.Port == 0 {
+				host.Port = 5432
+			}
+			jsonValue, err := json.Marshal(&AuroraIAMParameterValue{
+				Endpoint: fmt.Sprintf("%s:%d", host.Endpoint, host.Port),
+				DbName:   host.DbName,
+				DbUser:   host.DbUser,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			value = string(jsonValue)
+		case awsdeployer_pb.ParameterSourceType_Aurora_PART_ENDPOINT:
+			value = host.Endpoint
+
+		case awsdeployer_pb.ParameterSourceType_Aurora_PART_IDENTIFIER:
+			value = host.Identifier
+
+		case awsdeployer_pb.ParameterSourceType_Aurora_PART_DBNAME:
+			value = host.DbName
+
+		default:
+			return nil, fmt.Errorf("unknown aurora part: %v", ps.Aurora.Part)
+		}
 
 	default:
 		return nil, fmt.Errorf("unknown parameter source (%v) %s", param.Source, param.Name)

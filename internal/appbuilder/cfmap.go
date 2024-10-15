@@ -30,6 +30,8 @@ const (
 	O5SidecarImageParameter       = "O5SidecarImage"
 	SourceTagParameter            = "SourceTag"
 	EventBusARNParameter          = "EventBusARN"
+	SecurityGroupParameter        = "SecurityGroup"
+	SubnetIDsParameter            = "SubnetIDs"
 
 	AWSAccountIDParameter = "AWS::AccountId"
 
@@ -45,18 +47,6 @@ func sourceTags(extra ...tags.Tag) []tags.Tag {
 		Key:   "o5-source",
 		Value: cloudformation.Ref(SourceTagParameter),
 	})
-}
-
-// TemplateRef is a cloudformation 'string' which encodes a reference.
-type TemplateRef string
-
-func (tr TemplateRef) Ref() string {
-	return string(tr)
-}
-
-func (tr TemplateRef) RefPtr() *string {
-	str := string(tr)
-	return &str
 }
 
 func addGlobalParameters(bb *Builder, versionTag string) {
@@ -78,6 +68,8 @@ func addGlobalParameters(bb *Builder, versionTag string) {
 		O5SidecarImageParameter,
 		EventBusARNParameter,
 		SourceTagParameter,
+		SecurityGroupParameter,
+		SubnetIDsParameter,
 	} {
 		parameter := &awsdeployer_pb.Parameter{
 			Name: key,

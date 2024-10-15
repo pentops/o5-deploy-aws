@@ -54,7 +54,7 @@ func (ll *ListenerRuleSet) AddRoute(targetGroup *cflib.Resource[*elbv2.TargetGro
 			Type: "forward",
 			ForwardConfig: &elbv2.ListenerRule_ForwardConfig{
 				TargetGroups: []elbv2.ListenerRule_TargetGroupTuple{{
-					TargetGroupArn: cflib.String(targetGroup.Ref()),
+					TargetGroupArn: targetGroup.Ref().RefPtr(),
 				}},
 			},
 		}},

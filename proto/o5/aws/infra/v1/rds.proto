@@ -56,4 +56,6 @@ message AuroraConnection {
   // defaults to the user's name. Used when accessing, not required for the
   // token.
   string db_name = 4;
+
+  string identifier = 5;
 }

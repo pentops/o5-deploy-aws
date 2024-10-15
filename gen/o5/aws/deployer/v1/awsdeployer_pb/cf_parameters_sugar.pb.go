@@ -5,6 +5,7 @@ package awsdeployer_pb
 import (
 	driver "database/sql/driver"
 	fmt "fmt"
+	proto "google.golang.org/protobuf/proto"
 )
 
 // ParameterSourceType is a oneof wrapper
@@ -18,7 +19,7 @@ const (
 	ParameterSource_CrossEnvAttr   ParameterSourceTypeKey = "crossEnvAttr"
 	ParameterSource_EnvVar         ParameterSourceTypeKey = "envVar"
 	ParameterSource_NamedIamPolicy ParameterSourceTypeKey = "namedIamPolicy"
-	ParameterSource_AuroraEndpoint ParameterSourceTypeKey = "auroraEndpoint"
+	ParameterSource_Aurora         ParameterSourceTypeKey = "aurora"
 )
 
 func (x *ParameterSourceType) TypeKey() (ParameterSourceTypeKey, bool) {
@@ -37,8 +38,8 @@ func (x *ParameterSourceType) TypeKey() (ParameterSourceTypeKey, bool) {
 		return ParameterSource_EnvVar, true
 	case *ParameterSourceType_NamedIamPolicy:
 		return ParameterSource_NamedIamPolicy, true
-	case *ParameterSourceType_AuroraEndpoint_:
-		return ParameterSource_AuroraEndpoint, true
+	case *ParameterSourceType_Aurora_:
+		return ParameterSource_Aurora, true
 	default:
 		return "", false
 	}
@@ -46,6 +47,7 @@ func (x *ParameterSourceType) TypeKey() (ParameterSourceTypeKey, bool) {
 
 type IsParameterSourceTypeWrappedType interface {
 	TypeKey() ParameterSourceTypeKey
+	proto.Message
 }
 
 func (x *ParameterSourceType) Set(val IsParameterSourceTypeWrappedType) {
@@ -64,8 +66,8 @@ func (x *ParameterSourceType) Set(val IsParameterSourceTypeWrappedType) {
 		x.Type = &ParameterSourceType_EnvVar_{EnvVar: v}
 	case *ParameterSourceType_NamedIAMPolicy:
 		x.Type = &ParameterSourceType_NamedIamPolicy{NamedIamPolicy: v}
-	case *ParameterSourceType_AuroraEndpoint:
-		x.Type = &ParameterSourceType_AuroraEndpoint_{AuroraEndpoint: v}
+	case *ParameterSourceType_Aurora:
+		x.Type = &ParameterSourceType_Aurora_{Aurora: v}
 	}
 }
 func (x *ParameterSourceType) Get() IsParameterSourceTypeWrappedType {
@@ -84,8 +86,8 @@ func (x *ParameterSourceType) Get() IsParameterSourceTypeWrappedType {
 		return v.EnvVar
 	case *ParameterSourceType_NamedIamPolicy:
 		return v.NamedIamPolicy
-	case *ParameterSourceType_AuroraEndpoint_:
-		return v.AuroraEndpoint
+	case *ParameterSourceType_Aurora_:
+		return v.Aurora
 	default:
 		return nil
 	}
@@ -111,8 +113,8 @@ func (x *ParameterSourceType_EnvVar) TypeKey() ParameterSourceTypeKey {
 func (x *ParameterSourceType_NamedIAMPolicy) TypeKey() ParameterSourceTypeKey {
 	return ParameterSource_NamedIamPolicy
 }
-func (x *ParameterSourceType_AuroraEndpoint) TypeKey() ParameterSourceTypeKey {
-	return ParameterSource_AuroraEndpoint
+func (x *ParameterSourceType_Aurora) TypeKey() ParameterSourceTypeKey {
+	return ParameterSource_Aurora
 }
 
 type IsParameterSourceType_Type = isParameterSourceType_Type

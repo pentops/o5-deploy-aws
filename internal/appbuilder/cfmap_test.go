@@ -1,16 +1,12 @@
 package appbuilder
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"testing"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	"github.com/awslabs/goformation/v7/cloudformation/iam"
 	"github.com/awslabs/goformation/v7/cloudformation/s3"
-	"github.com/awslabs/goformation/v7/intrinsics"
-	"github.com/google/go-cmp/cmp"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
 	"github.com/stretchr/testify/assert"
@@ -102,21 +98,9 @@ func TestIndirectPortAccess(t *testing.T) {
 	t.Logf("ports: %v", taskDef.ContainerDefinitions[1].PortMappings)
 }
 
-type globalData struct {
-	appName string
-	Globals
-}
-
-func (g globalData) AppName() string {
-	return g.appName
-}
-
 func TestRuntime(t *testing.T) {
-	global := globalData{
-		appName: "Test",
-	}
-
-	rs, err := NewRuntimeService(global, &application_pb.Runtime{
+	tb := NewTestBuilder()
+	tb.AddRuntime(&application_pb.Runtime{
 		Name: "main",
 		Containers: []*application_pb.Container{{
 			Name: "main",
@@ -128,16 +112,12 @@ func TestRuntime(t *testing.T) {
 			},
 		}},
 	})
-	if err != nil {
-		t.Fatal(err.Error())
-	}
+	rs := tb.BuildAndAssert(t).StandardRuntimeAssert(t)
 
-	if len(rs.Containers) != 1 {
-		t.Fatalf("expected 1 container definition, got %d", len(rs.Containers))
-	}
+	rs.AssertNoSidecar(t)
 
-	{
-		imageRaw := rs.Containers[0].Container.Image
+	rs.WithMainContainer(t, func(t testing.TB, container *containerAssert) {
+		imageRaw := container.container.Image
 
 		join := &Join{}
 		decode(t, imageRaw, join)
@@ -147,21 +127,21 @@ func TestRuntime(t *testing.T) {
 		ref := &Ref{}
 		decode(t, join.Vals[0], ref)
 		assert.Equal(t, "ECSRepo", ref.Ref)
-	}
+	})
 
 }
 
 func TestSidecarConfigRuntime(t *testing.T) {
-	global := globalData{
-		appName: "Test",
-	}
-
-	rs, err := NewRuntimeService(global, &application_pb.Runtime{
+	tb := NewTestBuilder()
+	tb.AddRuntime(&application_pb.Runtime{
 		Name: "main",
 		WorkerConfig: &application_pb.WorkerConfig{
 			ReplayChance:     1,
 			DeadletterChance: 2,
 		},
+		Subscriptions: []*application_pb.Subscription{{
+			Name: "/foo.v1.Bar/Baz",
+		}},
 		Containers: []*application_pb.Container{{
 			Name: "main",
 			Source: &application_pb.Container_Image_{
@@ -172,39 +152,22 @@ func TestSidecarConfigRuntime(t *testing.T) {
 			},
 		}},
 	})
-	if err != nil {
-		t.Fatal(err.Error())
-	}
 
-	if len(rs.Containers) != 1 {
-		t.Fatalf("expected 1 container definition, got %d", len(rs.Containers))
-	}
-	sidecarConfigBits := 0
-	sidecar, err := rs.Sidecar.Build()
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-
-	for _, ev := range sidecar.Environment {
-		if *ev.Name == "RESEND_CHANCE" && *ev.Value == "1" {
-			sidecarConfigBits += 1
-		}
-		if *ev.Name == "DEADLETTER_CHANCE" && *ev.Value == "2" {
-			sidecarConfigBits += 1
-		}
-	}
-	if sidecarConfigBits != 2 {
-		t.Fatalf("Expected sidecar chance configs in task def, did not find them or values were incorrect")
-	}
+	tb.BuildAndAssert(t).
+		StandardRuntimeAssert(t).
+		WithSidecarContainer(t, func(t testing.TB, container *containerAssert) {
+			container.AssertEnvVal(t, "RESEND_CHANCE", "1")
+			container.AssertEnvVal(t, "DEADLETTER_CHANCE", "2")
+		})
 }
 
 func TestSidecarConfigNotPresentRuntime(t *testing.T) {
-	global := globalData{
-		appName: "Test",
-	}
-
-	rs, err := NewRuntimeService(global, &application_pb.Runtime{
+	tb := NewTestBuilder()
+	tb.AddRuntime(&application_pb.Runtime{
 		Name: "main",
+		Subscriptions: []*application_pb.Subscription{{
+			Name: "/foo.v1.Bar/Baz",
+		}},
 		Containers: []*application_pb.Container{{
 			Name: "main",
 			Source: &application_pb.Container_Image_{
@@ -215,30 +178,13 @@ func TestSidecarConfigNotPresentRuntime(t *testing.T) {
 			},
 		}},
 	})
-	if err != nil {
-		t.Fatal(err.Error())
-	}
 
-	if len(rs.Containers) != 1 {
-		t.Fatalf("expected 1 container definition, got %d", len(rs.Containers))
-	}
-	sidecarConfigBits := 0
-	sidecar, err := rs.Sidecar.Build()
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-
-	for _, ev := range sidecar.Environment {
-		if *ev.Name == "RESEND_CHANCE" && *ev.Value == "1" {
-			sidecarConfigBits += 1
-		}
-		if *ev.Name == "DEADLETTER_CHANCE" && *ev.Value == "2" {
-			sidecarConfigBits += 1
-		}
-	}
-	if sidecarConfigBits != 0 {
-		t.Fatalf("Did not expect sidecar chance configs in task def, but found some")
-	}
+	tb.BuildAndAssert(t).
+		StandardRuntimeAssert(t).
+		WithSidecarContainer(t, func(t testing.TB, container *containerAssert) {
+			container.MustNotHaveEnvOrSecret(t, "RESEND_CHANCE")
+			container.MustNotHaveEnvOrSecret(t, "DEADLETTER_CHANCE")
+		})
 }
 
 func TestBlobstore(t *testing.T) {
@@ -392,119 +338,4 @@ func TestBlobstore(t *testing.T) {
 		assertFunctionEqual(t, bucketS3URL, *rr.envVar.Value)
 	})
 
-}
-
-func assertFunctionEqual(t testing.TB, want, got string, messageAndArgs ...any) {
-	t.Helper()
-	if want == got {
-		return
-	}
-
-	wantAny := decodeAny(t, want)
-	gotAny := decodeAny(t, got)
-
-	diff := cmp.Diff(wantAny, gotAny)
-	if diff != "" {
-		assert.FailNow(t, diff, messageAndArgs...)
-	}
-}
-
-func findPolicy(t testing.TB, roleResource *iam.Role, name string) *PolicyDocument {
-	t.Helper()
-	for _, policy := range roleResource.Policies {
-		join := decodeJoin(t, policy.PolicyName)
-		if join.Vals[3] == name {
-			doc, ok := policy.PolicyDocument.(PolicyDocument)
-			if !ok {
-				t.Fatalf("policy document is a %T", policy.PolicyDocument)
-			}
-			return &doc
-		}
-	}
-	return nil
-}
-
-func decodeJoin(t testing.TB, s string) *Join {
-	t.Helper()
-	join := &Join{}
-	decode(t, s, join)
-	return join
-}
-
-func decodeAny(t testing.TB, s string) interface{} {
-
-	jb, err := json.Marshal(s)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	processed, err := intrinsics.ProcessJSON(jb, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var out interface{}
-	if err := json.Unmarshal(processed, &out); err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
-
-func decode(t testing.TB, s string, into interface{}) {
-	t.Helper()
-	val, err := base64.StdEncoding.DecodeString(s)
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-	t.Logf("decoded: '%s'", string(val))
-	if err := json.Unmarshal(val, into); err != nil {
-		t.Fatalf("decoding %s: %s", val, err.Error())
-	}
-}
-
-type Join struct {
-	Delim string
-	Vals  []string
-}
-
-func (j *Join) UnmarshalJSON(b []byte) error {
-	raw := struct {
-		Vals []interface{} `json:"Fn::Join"`
-	}{}
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return err
-	}
-	if len(raw.Vals) != 2 {
-		return nil
-	}
-	j.Delim = raw.Vals[0].(string)
-	for _, v := range raw.Vals[1].([]interface{}) {
-		j.Vals = append(j.Vals, v.(string))
-	}
-
-	return nil
-}
-
-type GetAtt struct {
-	Resource  string
-	Attribute string
-}
-
-func (g *GetAtt) UnmarshalJSON(b []byte) error {
-	raw := struct {
-		Vals []string `json:"Fn::GetAtt"`
-	}{}
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return err
-	}
-	if len(raw.Vals) != 2 {
-		return nil
-	}
-	g.Resource = raw.Vals[0]
-	g.Attribute = raw.Vals[1]
-	return nil
-}
-
-type Ref struct {
-	Ref string `json:"Ref"`
 }

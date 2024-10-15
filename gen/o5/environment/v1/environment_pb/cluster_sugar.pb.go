@@ -2,6 +2,10 @@
 
 package environment_pb
 
+import (
+	proto "google.golang.org/protobuf/proto"
+)
+
 type IsCluster_Provider = isCluster_Provider
 type IsCombinedConfig_Provider = isCombinedConfig_Provider
 
@@ -26,6 +30,7 @@ func (x *RDSAuthType) TypeKey() (RDSAuthTypeKey, bool) {
 
 type IsRDSAuthTypeWrappedType interface {
 	TypeKey() RDSAuthTypeKey
+	proto.Message
 }
 
 func (x *RDSAuthType) Set(val IsRDSAuthTypeWrappedType) {

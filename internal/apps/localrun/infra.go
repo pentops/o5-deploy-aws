@@ -28,7 +28,8 @@ func NewInfraAdapter(ctx context.Context, cl *awsapi.DeployerClients) (*InfraAda
 	cfClient := aws_cf.NewCFAdapter(cl, []string{})
 	dbMigrator := aws_postgres.NewDBMigrator(cl.SecretsManager, cl.RDSAuthProvider)
 	ecsClient := &ecsRunner{
-		ecsClient: cl.ECS,
+		ecsClient:        cl.ECS,
+		cloudwatchClient: cl.CloudWatchLogs,
 	}
 
 	return &InfraAdapter{
@@ -336,13 +337,6 @@ func (cf *InfraAdapter) noUpdatesToBePerformed(ctx context.Context, stackName st
 	}, nil
 }
 
-func (cf *InfraAdapter) PollStack(
-	ctx context.Context,
-	stackName string,
-) (*awsinfra_tpb.StackStatusChangedMessage, error) {
-	return cf.pollStack(ctx, stackName, "", nil)
-}
-
 func (cf *InfraAdapter) pollStack(
 	ctx context.Context,
 	stackName string,
@@ -358,6 +352,8 @@ func (cf *InfraAdapter) pollStack(
 
 	log.Debug(ctx, "PollStack Begin")
 
+	lastEvent := time.Now().Add(time.Second * -1)
+
 	for {
 		remoteStack, err := cf.cfClient.GetOneStack(ctx, stackName)
 		if err != nil {
@@ -365,6 +361,32 @@ func (cf *InfraAdapter) pollStack(
 		}
 		if remoteStack == nil {
 			return nil, fmt.Errorf("missing stack %s", stackName)
+		}
+
+		events, err := cf.cfClient.Logs(ctx, stackName)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, event := range events {
+			if event.Timestamp.After(lastEvent) {
+				lastEvent = event.Timestamp
+				args := map[string]interface{}{
+					"timestamp": event.Timestamp,
+					"resource":  event.Resource,
+					"status":    event.Status,
+				}
+
+				if event.Detail != "" {
+					args["details"] = event.Detail
+				}
+
+				if event.IsFailure {
+					log.WithFields(ctx, args).Error("CF Stack Event")
+				} else {
+					log.WithFields(ctx, args).Info("CF Stack Event")
+				}
+			}
 		}
 
 		if !remoteStack.Stable {

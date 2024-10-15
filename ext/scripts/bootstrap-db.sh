@@ -10,30 +10,25 @@ echo "Identifier: $identifier"
 echo "Admin Role: $adminRole"
 dbdata=$(aws rds describe-db-clusters --db-cluster-identifier="${identifier}" | jq -r '.DBClusters[0]')
 
-endpoint=$(echo $dbdata | jq -r '.Endpoint')
-secret=$(echo $dbdata | jq -r '.MasterUserSecret.SecretArn')
-username=$(echo $dbdata | jq -r '.MasterUsername')
-database=$(echo $dbdata | jq -r '.DatabaseName')
+secretArn=$(echo $dbdata | jq -r '.MasterUserSecret.SecretArn')
+dbArn=$(echo $dbdata | jq -r '.DBClusterArn')
 
-echo "DB Endpoint: ${endpoint}"
-echo "DB Secret: ${secret}"
-echo "DB Database: ${database}"
-echo "DB Username: ${username}"
+echo "DB Secret: ${secretArn}"
+echo "DB ARN: ${dbArn}"
 echo "adminRole: ${adminRole}"
 
-echo "Fetching password..."
 
-password=$(aws secretsmanager get-secret-value --secret-id $secret | jq -r '.SecretString' | jq -r '.password')
+function run() {
+  aws rds-data execute-statement \
+    --resource-arn "${dbArn}" \
+    --secret-arn "${secretArn}" \
+    --sql "$1"
+}
 
-echo "Connecting to db..."
-
-dsn="host=$endpoint port=5432 dbname=$database user=$username password=$password"
-psql "$dsn"  <<EOF
-CREATE ROLE ${adminRole} WITH LOGIN CREATEDB CREATEROLE;
-GRANT rds_iam TO ${adminRole};
-SET ROLE ${adminRole};
-CREATE DATABASE ${adminRole};
-EOF
+run "CREATE ROLE ${adminRole} WITH LOGIN CREATEDB CREATEROLE"
+run "GRANT rds_iam TO ${adminRole} WITH ADMIN TRUE"
+run "CREATE DATABASE ${adminRole}"
+run "GRANT CONNECT ON DATABASE ${adminRole} TO ${adminRole}"
 
 # This script doesn't grant rds_iam to the master user
 # It is unclear to me if this is the optimal approach.
@@ -43,3 +38,6 @@ EOF
 #   - even with INHERIT FALSE, which is surprising (at least to me)
 # - The master user can still "SET ROLE {adminRole}"
 #   - probably because of the rds_superuser role.
+#
+#
+

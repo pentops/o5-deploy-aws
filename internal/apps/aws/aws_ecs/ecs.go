@@ -40,7 +40,8 @@ func (handler *ECSWorker) RunECSTask(ctx context.Context, msg *awsinfra_tpb.RunE
 		TaskDefinition: aws.String(msg.TaskDefinition),
 		Cluster:        aws.String(msg.Cluster),
 		Count:          aws.Int32(1),
-		ClientToken:    aws.String(clientToken),
+
+		ClientToken: aws.String(clientToken),
 		Tags: []ecs_types.Tag{{
 			Key:   aws.String("o5-run-task"),
 			Value: aws.String(clientToken),
@@ -137,38 +138,11 @@ func (handler *ECSWorker) HandleECSTaskEvent(ctx context.Context, eventID string
 			})
 
 		case "EssentialContainerExited":
-
-			var nonZeroExit *ECSTaskStateChangeEvent_Container
-			allOK := true
-			reasonCodes := make([]string, 0, len(taskEvent.Containers))
-
-			for _, container := range taskEvent.Containers {
-				container := container
-				if container.ExitCode != nil {
-					if *container.ExitCode != 0 {
-						nonZeroExit = &container
-						allOK = false
-					}
-				} else if container.Reason != nil {
-					allOK = false
-					reasonCodes = append(reasonCodes, *container.Reason)
-				}
+			msg, err := getExitedEvent(taskEvent)
+			if err != nil {
+				return err
 			}
-
-			if allOK {
-				statusMessage.Event.Set(&awsinfra_tpb.ECSTaskEventType_Exited{
-					ExitCode: 0,
-				})
-			} else if nonZeroExit != nil {
-				statusMessage.Event.Set(&awsinfra_tpb.ECSTaskEventType_Exited{
-					ExitCode:      int32(*nonZeroExit.ExitCode),
-					ContainerName: nonZeroExit.Name,
-				})
-			} else {
-				statusMessage.Event.Set(&awsinfra_tpb.ECSTaskEventType_Failed{
-					Reason: fmt.Sprintf("Containers exited with no exit codes: %v", reasonCodes),
-				})
-			}
+			statusMessage.Event.Set(msg)
 
 		default:
 			return fmt.Errorf("unexpected stop code: %s", *taskEvent.StopCode)
@@ -182,4 +156,41 @@ func (handler *ECSWorker) HandleECSTaskEvent(ctx context.Context, eventID string
 
 	return handler.db.PublishEvent(ctx, statusMessage)
 
+}
+func getExitedEvent(taskEvent *ECSTaskStateChangeEvent) (awsinfra_tpb.IsECSTaskEventTypeWrappedType, error) {
+
+	var nonZeroExit *ECSTaskStateChangeEvent_Container
+	allOK := true
+	reasonCodes := make([]string, 0, len(taskEvent.Containers))
+
+	for _, container := range taskEvent.Containers {
+		container := container
+		if container.ExitCode != nil {
+			if *container.ExitCode != 0 {
+				nonZeroExit = &container
+				allOK = false
+			}
+		} else if container.Reason != nil {
+			allOK = false
+			reasonCodes = append(reasonCodes, *container.Reason)
+		}
+	}
+
+	if allOK {
+		return &awsinfra_tpb.ECSTaskEventType_Exited{
+			ExitCode: 0,
+		}, nil
+	}
+	if nonZeroExit == nil {
+		return &awsinfra_tpb.ECSTaskEventType_Failed{
+			Reason: fmt.Sprintf("Containers exited with no exit codes: %v", reasonCodes),
+		}, nil
+	}
+
+	exited := &awsinfra_tpb.ECSTaskEventType_Exited{
+		ExitCode:      int32(*nonZeroExit.ExitCode),
+		ContainerName: nonZeroExit.Name,
+	}
+
+	return exited, nil
 }

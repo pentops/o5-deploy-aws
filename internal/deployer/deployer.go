@@ -174,10 +174,11 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 
 		case *environment_pb.RDSAuthType_IAM:
 			clientConn := &awsinfra_pb.AuroraConnection{
-				Endpoint: host.Endpoint,
-				Port:     host.Port,
-				DbUser:   fullName,
-				DbName:   fullName,
+				Endpoint:   host.Endpoint,
+				Port:       host.Port,
+				DbUser:     fullName,
+				DbName:     fullName,
+				Identifier: host.Identifier,
 			}
 			auroraHosts[db.ServerGroup] = clientConn
 
