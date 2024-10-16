@@ -89,16 +89,16 @@ func safeDBName(dbName string) string {
 	}, dbName)
 }
 
+type databaseServer struct {
+	name                string
+	clientSecurityGroup string
+}
+
 func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.RequestDeploymentMessage, cluster *environment_pb.Cluster, environment *environment_pb.Environment) (*awsdeployer_pb.DeploymentSpec, error) {
 	ctx = log.WithFields(ctx, map[string]interface{}{
 		"appName":     trigger.Application.Name,
 		"environment": environment.FullName,
 	})
-
-	awsEnv := environment.GetAws()
-	if awsEnv == nil {
-		return nil, fmt.Errorf("environment %s is not an AWS environment", environment.FullName)
-	}
 
 	awsCluster := cluster.GetAws()
 	if awsCluster == nil {
@@ -199,7 +199,11 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 
 	}
 
-	deployerResolver, err := BuildParameterResolver(ctx, cluster, environment, auroraHosts)
+	deployerResolver, err := buildParameterResolver(ctx, parameterInput{
+		cluster:     cluster,
+		environment: environment,
+		auroraHosts: auroraHosts,
+	})
 	if err != nil {
 		return nil, err
 	}

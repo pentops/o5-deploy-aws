@@ -30,7 +30,7 @@ const (
 	O5SidecarImageParameter       = "O5SidecarImage"
 	SourceTagParameter            = "SourceTag"
 	EventBusARNParameter          = "EventBusARN"
-	SecurityGroupParameter        = "SecurityGroup"
+	LoadBalancerSecurityGroup     = "LoadBalancerSecurityGroup"
 	SubnetIDsParameter            = "SubnetIDs"
 
 	AWSAccountIDParameter = "AWS::AccountId"
@@ -68,7 +68,7 @@ func addGlobalParameters(bb *Builder, versionTag string) {
 		O5SidecarImageParameter,
 		EventBusARNParameter,
 		SourceTagParameter,
-		SecurityGroupParameter,
+		LoadBalancerSecurityGroup,
 		SubnetIDsParameter,
 	} {
 		parameter := &awsdeployer_pb.Parameter{

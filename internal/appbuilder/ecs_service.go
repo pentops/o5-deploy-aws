@@ -2,14 +2,17 @@ package appbuilder
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
+	"github.com/awslabs/goformation/v7/cloudformation/ec2"
 	"github.com/awslabs/goformation/v7/cloudformation/ecs"
 	elbv2 "github.com/awslabs/goformation/v7/cloudformation/elasticloadbalancingv2"
 	"github.com/awslabs/goformation/v7/cloudformation/sqs"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
+	"golang.org/x/exp/maps"
 )
 
 type RuntimeService struct {
@@ -86,6 +89,23 @@ func NewRuntimeService(globals Globals, spec *application_pb.Runtime) (*RuntimeS
 	return rs, nil
 }
 
+func (rs *RuntimeService) ListDatabaseServerGroups() []DatabaseServerGroup {
+	groups := map[string]DatabaseServerGroup{}
+	for _, container := range rs.TaskDefinition.containers {
+		for _, db := range container.Databases {
+			group := db.Database.ServerGroup()
+			groups[group.GroupName] = group
+		}
+	}
+	keys := maps.Keys(groups)
+	sort.Strings(keys)
+	result := make([]DatabaseServerGroup, 0, len(groups))
+	for _, name := range keys {
+		result = append(result, groups[name])
+	}
+	return result
+}
+
 func (rs *RuntimeService) AddTemplateResources(template *cflib.TemplateBuilder) error {
 	var err error
 
@@ -117,6 +137,20 @@ func (rs *RuntimeService) AddTemplateResources(template *cflib.TemplateBuilder) 
 		return err
 	}
 
+	mainSecurityGroup := cflib.NewResource(rs.Name, &ec2.SecurityGroup{
+		VpcId:            cloudformation.RefPtr(VPCParameter),
+		GroupDescription: fmt.Sprintf("Security Group for %s", rs.Name),
+	})
+	template.AddResource(mainSecurityGroup)
+
+	securityGroups := []string{
+		mainSecurityGroup.Ref().Ref(),
+	}
+
+	for _, dbGroup := range rs.ListDatabaseServerGroups() {
+		securityGroups = append(securityGroups, dbGroup.ClientSecurityGroup.Ref())
+	}
+
 	service := cflib.NewResource(cflib.CleanParameterName(rs.Name), &ecs.Service{
 		Cluster:        cflib.String(cloudformation.Ref(ECSClusterParameter)),
 		TaskDefinition: cflib.String(taskDefinition.Ref()),
@@ -131,11 +165,12 @@ func (rs *RuntimeService) AddTemplateResources(template *cflib.TemplateBuilder) 
 		PropagateTags: cflib.String("TASK_DEFINITION"),
 
 		NetworkConfiguration: &ecs.Service_NetworkConfiguration{
-			AwsvpcConfiguration: &ecs.Service_AwsVpcConfiguration{},
+			AwsvpcConfiguration: &ecs.Service_AwsVpcConfiguration{
+				SecurityGroups: securityGroups,
+			},
 		},
 	})
 
-	service.Override("NetworkConfiguration.AwsvpcConfiguration.SecurityGroups", cloudformation.Split(",", cloudformation.Ref(SecurityGroupParameter)))
 	service.Override("NetworkConfiguration.AwsvpcConfiguration.Subnets", cloudformation.Split(",", cloudformation.Ref(SubnetIDsParameter)))
 
 	for _, target := range rs.TargetGroups {
@@ -150,6 +185,13 @@ func (rs *RuntimeService) AddTemplateResources(template *cflib.TemplateBuilder) 
 			template.AddResource(rule)
 			service.DependsOn(rule)
 		}
+
+		mainSecurityGroup.Resource.SecurityGroupIngress = append(mainSecurityGroup.Resource.SecurityGroupIngress, ec2.SecurityGroup_Ingress{
+			ToPort:                cflib.Int(lb.ContainerPort),
+			FromPort:              cflib.Int(lb.ContainerPort),
+			IpProtocol:            "tcp",
+			SourceSecurityGroupId: cloudformation.RefPtr(LoadBalancerSecurityGroup),
+		})
 	}
 
 	desiredCountParameter := fmt.Sprintf("DesiredCount%s", rs.Name)

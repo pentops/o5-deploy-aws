@@ -20,6 +20,7 @@ const (
 	ParameterSource_EnvVar         ParameterSourceTypeKey = "envVar"
 	ParameterSource_NamedIamPolicy ParameterSourceTypeKey = "namedIamPolicy"
 	ParameterSource_Aurora         ParameterSourceTypeKey = "aurora"
+	ParameterSource_DatabaseServer ParameterSourceTypeKey = "databaseServer"
 )
 
 func (x *ParameterSourceType) TypeKey() (ParameterSourceTypeKey, bool) {
@@ -40,6 +41,8 @@ func (x *ParameterSourceType) TypeKey() (ParameterSourceTypeKey, bool) {
 		return ParameterSource_NamedIamPolicy, true
 	case *ParameterSourceType_Aurora_:
 		return ParameterSource_Aurora, true
+	case *ParameterSourceType_DatabaseServer_:
+		return ParameterSource_DatabaseServer, true
 	default:
 		return "", false
 	}
@@ -68,6 +71,8 @@ func (x *ParameterSourceType) Set(val IsParameterSourceTypeWrappedType) {
 		x.Type = &ParameterSourceType_NamedIamPolicy{NamedIamPolicy: v}
 	case *ParameterSourceType_Aurora:
 		x.Type = &ParameterSourceType_Aurora_{Aurora: v}
+	case *ParameterSourceType_DatabaseServer:
+		x.Type = &ParameterSourceType_DatabaseServer_{DatabaseServer: v}
 	}
 }
 func (x *ParameterSourceType) Get() IsParameterSourceTypeWrappedType {
@@ -88,6 +93,8 @@ func (x *ParameterSourceType) Get() IsParameterSourceTypeWrappedType {
 		return v.NamedIamPolicy
 	case *ParameterSourceType_Aurora_:
 		return v.Aurora
+	case *ParameterSourceType_DatabaseServer_:
+		return v.DatabaseServer
 	default:
 		return nil
 	}
@@ -115,6 +122,9 @@ func (x *ParameterSourceType_NamedIAMPolicy) TypeKey() ParameterSourceTypeKey {
 }
 func (x *ParameterSourceType_Aurora) TypeKey() ParameterSourceTypeKey {
 	return ParameterSource_Aurora
+}
+func (x *ParameterSourceType_DatabaseServer) TypeKey() ParameterSourceTypeKey {
+	return ParameterSource_DatabaseServer
 }
 
 type IsParameterSourceType_Type = isParameterSourceType_Type

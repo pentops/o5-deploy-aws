@@ -16,14 +16,21 @@ type DatabaseRef interface {
 	// Name as specified in the application o5 file
 	Name() string
 
+	ServerGroup() DatabaseServerGroup
 	AuroraProxy() (*AuroraDatabaseRef, bool)
 	SecretValueFrom() (cflib.TemplateRef, bool)
+}
+
+type DatabaseServerGroup struct {
+	GroupName           string
+	ClientSecurityGroup cflib.TemplateRef
 }
 
 // DatabaseReference is used to look up parameters ECS Task Definitions
 
 type AuroraDatabaseRef struct {
 	refName            string
+	group              DatabaseServerGroup
 	endpointParamRef   cflib.TemplateRef
 	identifierParamRef cflib.TemplateRef
 	dbNameParamRef     cflib.TemplateRef
@@ -39,6 +46,10 @@ func (dbDef AuroraDatabaseRef) IsProxy() bool {
 
 func (dbDef AuroraDatabaseRef) SecretValueFrom() (cflib.TemplateRef, bool) {
 	return "", false
+}
+
+func (dbDef AuroraDatabaseRef) ServerGroup() DatabaseServerGroup {
+	return dbDef.group
 }
 
 func (dbDef AuroraDatabaseRef) AuroraProxy() (*AuroraDatabaseRef, bool) {
@@ -72,6 +83,7 @@ func (dbDef AuroraDatabaseRef) DSNToProxy(host string) string {
 
 type secretsDatabaseRef struct {
 	refName        string
+	group          DatabaseServerGroup
 	secretResource *cflib.Resource[*secretsmanager.Secret]
 }
 
@@ -81,6 +93,10 @@ func (dbDef secretsDatabaseRef) Name() string {
 
 func (dbDef secretsDatabaseRef) IsProxy() bool {
 	return false
+}
+
+func (dbDef secretsDatabaseRef) ServerGroup() DatabaseServerGroup {
+	return dbDef.group
 }
 
 func (dbDef secretsDatabaseRef) AuroraProxy() (*AuroraDatabaseRef, bool) {
@@ -106,6 +122,26 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (D
 	dbHost, ok := builder.Globals.FindRDSHost(dbType.ServerGroup)
 	if !ok {
 		return nil, nil, fmt.Errorf("no RDS host %q for database %s", dbType.ServerGroup, database.Name)
+	}
+
+	serverGroupClientSGParamName := fmt.Sprintf("DatabaseGroup%sClientSecurityGroup", cflib.CleanParameterName(dbType.ServerGroup))
+	builder.Template.AddParameter(&awsdeployer_pb.Parameter{
+		Name:        serverGroupClientSGParamName,
+		Type:        "String",
+		Description: fmt.Sprintf("Client security group for Postgres database %s in app %s", database.Name, builder.AppName()),
+		Source: &awsdeployer_pb.ParameterSourceType{
+			Type: &awsdeployer_pb.ParameterSourceType_DatabaseServer_{
+				DatabaseServer: &awsdeployer_pb.ParameterSourceType_DatabaseServer{
+					ServerGroup: dbType.ServerGroup,
+					Part:        awsdeployer_pb.ParameterSourceType_DatabaseServer_PART_CLIENT_SECURITY_GROUP,
+				},
+			},
+		},
+	})
+
+	group := DatabaseServerGroup{
+		GroupName:           dbType.ServerGroup,
+		ClientSecurityGroup: cflib.TemplateRef(cloudformation.Ref(serverGroupClientSGParamName)),
 	}
 
 	def := &awsdeployer_pb.PostgresDatabaseResource{
@@ -146,6 +182,7 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (D
 		ref = &secretsDatabaseRef{
 			refName:        database.Name,
 			secretResource: secret,
+			group:          group,
 		}
 
 	case environment_pb.RDSAuth_Iam:
@@ -172,6 +209,7 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (D
 				},
 			})
 		}
+
 		def.Connection = &awsdeployer_pb.PostgresDatabaseResource_ParameterName{
 			ParameterName: endpointParamName,
 		}
@@ -180,6 +218,7 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (D
 			endpointParamRef:   cflib.TemplateRef(cloudformation.Ref(endpointParamName)),
 			identifierParamRef: cflib.TemplateRef(cloudformation.Ref(identifierParamName)),
 			dbNameParamRef:     cflib.TemplateRef(cloudformation.Ref(dbNameParamName)),
+			group:              group,
 		}
 	default:
 		return nil, nil, fmt.Errorf("unknown auth type %q for database %s", dbHost.AuthType, database.Name)

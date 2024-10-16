@@ -51,6 +51,25 @@ func (td *ECSTaskDefinition) BuildRuntimeContainer(def *application_pb.Container
 	return nil
 }
 
+func (td *ECSTaskDefinition) ListDatabases() []*DatabaseReference {
+	databases := make([]*DatabaseReference, 0, len(td.containers))
+	for _, container := range td.containers {
+		for _, db := range container.Databases {
+			found := false
+			for _, existing := range databases {
+				if existing.Name == db.Name {
+					found = true
+					break
+				}
+			}
+			if !found {
+				databases = append(databases, db)
+			}
+		}
+	}
+	return databases
+}
+
 func (td *ECSTaskDefinition) resolveContainerResources(cd *ContainerDefinition) ([]*awsdeployer_pb.Parameter, error) {
 	params := make([]*awsdeployer_pb.Parameter, 0)
 

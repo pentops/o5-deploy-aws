@@ -25,6 +25,7 @@ message ParameterSourceType {
     EnvVar env_var = 6;
     NamedIAMPolicy named_iam_policy = 7;
     Aurora aurora = 8;
+    DatabaseServer database_server = 9;
   }
 
   message Static {
@@ -64,6 +65,15 @@ message ParameterSourceType {
       PART_IDENTIFIER = 2;
       PART_ENDPOINT = 3;
       PART_DBNAME = 4;
+    }
+  }
+
+  message DatabaseServer {
+    string server_group = 1;
+    Part part = 3;
+    enum Part {
+      PART_UNSPECIFIED = 0;
+      PART_CLIENT_SECURITY_GROUP = 1;
     }
   }
 }
