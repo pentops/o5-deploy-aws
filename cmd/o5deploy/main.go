@@ -54,7 +54,13 @@ func runMigrate(ctx context.Context, config struct {
 		return err
 	}
 
-	return goose.Up(db, "/migrations")
+	log.Info(ctx, "Running migrations")
+	err = goose.Up(db, "/migrations")
+	if err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
+	}
+	log.Info(ctx, "Migrations complete")
+	return nil
 }
 
 func runServe(ctx context.Context, cfg struct {
