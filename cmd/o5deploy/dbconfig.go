@@ -32,5 +32,7 @@ func (cfg *DBConfig) OpenDatabase(ctx context.Context) (*sql.DB, error) {
 		break
 	}
 
+	log.Info(ctx, "Connected to Postgres")
+
 	return db, nil
 }

@@ -51,7 +51,6 @@ type SecretReference struct {
 	Name   string
 	def    *application_pb.SecretEnvVar
 	secret SecretRef
-	Value  *valuePromise
 }
 
 type BucketReference struct {
@@ -203,17 +202,10 @@ func (cd *ContainerDefinition) addDefEnvVar(globals Globals, envVar *application
 			return fmt.Errorf("unknown secret: %s", secretName)
 		}
 
-		value := &valuePromise{}
 		cd.Secrets = append(cd.Secrets, &SecretReference{
 			Name:   envVar.Name,
 			secret: secretDef,
 			def:    varType.Secret,
-			Value:  value,
-		})
-
-		cd.envVars = append(cd.envVars, EnvVar{
-			Name:  envVar.Name,
-			Value: value,
 		})
 
 		return nil

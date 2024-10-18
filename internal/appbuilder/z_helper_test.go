@@ -328,13 +328,6 @@ func decodeJoin(t testing.TB, s string) *Join {
 	return join
 }
 
-func decodeRef(t testing.TB, s string) *Ref {
-	t.Helper()
-	ref := &Ref{}
-	decode(t, s, ref)
-	return ref
-}
-
 func decodeGetAtt(t testing.TB, s string) *GetAtt {
 	t.Helper()
 	getAtt := &GetAtt{}

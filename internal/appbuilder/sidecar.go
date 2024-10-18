@@ -178,10 +178,10 @@ func (sb *SidecarBuilder) ServePublic() {
 	})
 }
 
-func (sb *SidecarBuilder) AddAppEndpoint(containerName string, port int64) {
+func (sb *SidecarBuilder) AddAppEndpoint(_ string, port int64) {
+	// ignore container name, endpoint uses localhost in awsvpc mode
 	sb.isRequired = true
-	containerName = "localhost"
-	addr := fmt.Sprintf("%s:%d", containerName, port)
+	addr := fmt.Sprintf("localhost:%d", port)
 	sb.serviceEndpoints[addr] = struct{}{}
 }
 

@@ -364,27 +364,25 @@ func (cf *InfraAdapter) pollStack(
 		}
 
 		events, err := cf.cfClient.Logs(ctx, stackName)
-		if err != nil {
-			return nil, err
-		}
+		if err == nil {
+			for _, event := range events {
+				if event.Timestamp.After(lastEvent) {
+					lastEvent = event.Timestamp
+					args := map[string]interface{}{
+						"timestamp": event.Timestamp,
+						"resource":  event.Resource,
+						"status":    event.Status,
+					}
 
-		for _, event := range events {
-			if event.Timestamp.After(lastEvent) {
-				lastEvent = event.Timestamp
-				args := map[string]interface{}{
-					"timestamp": event.Timestamp,
-					"resource":  event.Resource,
-					"status":    event.Status,
-				}
+					if event.Detail != "" {
+						args["details"] = event.Detail
+					}
 
-				if event.Detail != "" {
-					args["details"] = event.Detail
-				}
-
-				if event.IsFailure {
-					log.WithFields(ctx, args).Error("CF Stack Event")
-				} else {
-					log.WithFields(ctx, args).Info("CF Stack Event")
+					if event.IsFailure {
+						log.WithFields(ctx, args).Error("CF Stack Event")
+					} else {
+						log.WithFields(ctx, args).Info("CF Stack Event")
+					}
 				}
 			}
 		}

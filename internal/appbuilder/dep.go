@@ -88,20 +88,19 @@ type SecretRef interface {
 }
 
 type secretInfo struct {
-	refName       string
-	parameterName string
-	arn           cflib.TemplateRef
+	refName string
+	arn     cflib.TemplateRef
 }
 
 func (si secretInfo) ARN() cflib.TemplateRef {
-	return cflib.TemplateRef(si.parameterName)
+	return si.arn
 }
 
 func (si secretInfo) SecretValueFrom(jsonKey string) cflib.TemplateRef {
 	versionStage := ""
 	versionID := ""
 	return cflib.Join(":",
-		si.parameterName,
+		si.arn,
 		jsonKey,
 		versionStage,
 		versionID,
@@ -143,9 +142,8 @@ func mapResources(bb *Builder, resources resourceBuilder, app *application_pb.Ap
 				"/*",
 			}))*/
 		resources.addSecret(&secretInfo{
-			parameterName: parameterName,
-			refName:       secretDef.Name,
-			arn:           cflib.TemplateRef(secret.Ref()),
+			refName: secretDef.Name,
+			arn:     secret.Ref(),
 		})
 	}
 

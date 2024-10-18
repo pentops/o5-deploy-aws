@@ -89,11 +89,6 @@ func safeDBName(dbName string) string {
 	}, dbName)
 }
 
-type databaseServer struct {
-	name                string
-	clientSecurityGroup string
-}
-
 func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.RequestDeploymentMessage, cluster *environment_pb.Cluster, environment *environment_pb.Environment) (*awsdeployer_pb.DeploymentSpec, error) {
 	ctx = log.WithFields(ctx, map[string]interface{}{
 		"appName":     trigger.Application.Name,
