@@ -146,7 +146,7 @@ message UpsertStackResponse {
 }
 
 message SetClusterOverrideRequest {
-  string cluster_id = 1 [(buf.validate.field).string.uuid = true];
+  string cluster_id = 1; // ID or name
   repeated o5.aws.deployer.v1.ParameterOverride overrides = 2;
 }
 

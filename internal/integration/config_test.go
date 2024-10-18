@@ -26,11 +26,15 @@ func TestConfigFlow(t *testing.T) {
 
 				Config: &environment_pb.CombinedConfig{
 					Name: "cluster",
-					Provider: &environment_pb.CombinedConfig_EcsCluster{
-						EcsCluster: &environment_pb.ECSCluster{
-							EcsClusterName:      "cluster",
-							GlobalNamespace:     "g1",
-							SidecarImageVersion: "version1",
+					Provider: &environment_pb.CombinedConfig_Aws{
+						Aws: &environment_pb.AWSCluster{
+							EcsCluster: &environment_pb.ECSCluster{
+								ClusterName: "cluster",
+							},
+							GlobalNamespace: "g1",
+							O5Sidecar: &environment_pb.O5Sidecar{
+								ImageVersion: "version1",
+							},
 						},
 					},
 				},
@@ -46,8 +50,8 @@ func TestConfigFlow(t *testing.T) {
 		})
 		t.NoError(err)
 		t.Equal("cluster", resp.State.Data.Config.Name)
-		t.Equal("g1", resp.State.Data.Config.GetEcsCluster().GlobalNamespace)
-		t.Equal("version1", resp.State.Data.Config.GetEcsCluster().SidecarImageVersion)
+		t.Equal("g1", resp.State.Data.Config.GetAws().GlobalNamespace)
+		t.Equal("version1", resp.State.Data.Config.GetAws().GetO5Sidecar().ImageVersion)
 	})
 
 	ss.Step("Configure Override", func(ctx context.Context, t UniverseAsserter) {
@@ -69,8 +73,8 @@ func TestConfigFlow(t *testing.T) {
 		})
 		t.NoError(err)
 		t.Equal("cluster", resp.State.Data.Config.Name)
-		t.Equal("g1", resp.State.Data.Config.GetEcsCluster().GlobalNamespace)
-		t.Equal("version2", resp.State.Data.Config.GetEcsCluster().SidecarImageVersion)
+		t.Equal("g1", resp.State.Data.Config.GetAws().GlobalNamespace)
+		t.Equal("version2", resp.State.Data.Config.GetAws().GetO5Sidecar().ImageVersion)
 	})
 
 	ss.Step("Remove Override", func(ctx context.Context, t UniverseAsserter) {
@@ -92,8 +96,8 @@ func TestConfigFlow(t *testing.T) {
 		})
 		t.NoError(err)
 		t.Equal("cluster", resp.State.Data.Config.Name)
-		t.Equal("g1", resp.State.Data.Config.GetEcsCluster().GlobalNamespace)
-		t.Equal("version1", resp.State.Data.Config.GetEcsCluster().SidecarImageVersion)
+		t.Equal("g1", resp.State.Data.Config.GetAws().GlobalNamespace)
+		t.Equal("version1", resp.State.Data.Config.GetAws().GetO5Sidecar().ImageVersion)
 	})
 
 	ss.Step("Invalid Override", func(ctx context.Context, t UniverseAsserter) {

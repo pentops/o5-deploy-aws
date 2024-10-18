@@ -2,6 +2,10 @@
 
 package awsinfra_tpb
 
+import (
+	proto "google.golang.org/protobuf/proto"
+)
+
 // ECSTaskEventType is a oneof wrapper
 type ECSTaskEventTypeKey string
 
@@ -32,6 +36,7 @@ func (x *ECSTaskEventType) TypeKey() (ECSTaskEventTypeKey, bool) {
 
 type IsECSTaskEventTypeWrappedType interface {
 	TypeKey() ECSTaskEventTypeKey
+	proto.Message
 }
 
 func (x *ECSTaskEventType) Set(val IsECSTaskEventTypeWrappedType) {

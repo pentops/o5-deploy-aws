@@ -1,9 +1,7 @@
 package protoread
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,8 +9,9 @@ import (
 	"strconv"
 	"strings"
 
+	"buf.build/go/protoyaml"
+
 	"github.com/bufbuild/protovalidate-go"
-	"github.com/goccy/go-yaml"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -29,33 +28,18 @@ func Parse(filename string, data []byte, into proto.Message) error {
 	fileSuffix := filepath.Ext(filename)
 	switch fileSuffix {
 	case ".json":
+		err := protojson.Unmarshal(data, into)
+		if err != nil {
+			return findTokenError(data, err)
+		}
 
 	case ".yaml", ".yml":
-		dec := yaml.NewDecoder(bytes.NewBuffer(data), yaml.UseOrderedMap())
-
-		var v map[string]interface{}
-		if err := dec.Decode(&v); err != nil {
-			return fmt.Errorf("unmarshalling YAML %s %w", filename, err)
+		if err := protoyaml.Unmarshal(data, into); err != nil {
+			return err
 		}
-
-		jsonBytes, err := yaml.MarshalWithOptions(v, yaml.JSON())
-		if err != nil {
-			return fmt.Errorf("failed to marshal with json option: %w", err)
-		}
-		out := &bytes.Buffer{}
-		if err := json.Indent(out, jsonBytes, "", "  "); err != nil {
-			return fmt.Errorf("failed to indent json: %w", err)
-		}
-
-		data = out.Bytes()
 
 	default:
 		return fmt.Errorf("unknown file type: %s", fileSuffix)
-	}
-
-	err := protojson.Unmarshal(data, into)
-	if err != nil {
-		return findTokenError(data, err)
 	}
 
 	// should usually be cached, but this is used rarely.

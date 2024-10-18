@@ -5,6 +5,7 @@ package awsdeployer_pb
 import (
 	driver "database/sql/driver"
 	fmt "fmt"
+	proto "google.golang.org/protobuf/proto"
 )
 
 // StackEventType is a oneof wrapper
@@ -37,6 +38,7 @@ func (x *StackEventType) TypeKey() (StackEventTypeKey, bool) {
 
 type IsStackEventTypeWrappedType interface {
 	TypeKey() StackEventTypeKey
+	proto.Message
 }
 
 func (x *StackEventType) Set(val IsStackEventTypeWrappedType) {

@@ -5,6 +5,7 @@ package awsdeployer_pb
 import (
 	driver "database/sql/driver"
 	fmt "fmt"
+	proto "google.golang.org/protobuf/proto"
 )
 
 // DeploymentEventType is a oneof wrapper
@@ -55,6 +56,7 @@ func (x *DeploymentEventType) TypeKey() (DeploymentEventTypeKey, bool) {
 
 type IsDeploymentEventTypeWrappedType interface {
 	TypeKey() DeploymentEventTypeKey
+	proto.Message
 }
 
 func (x *DeploymentEventType) Set(val IsDeploymentEventTypeWrappedType) {

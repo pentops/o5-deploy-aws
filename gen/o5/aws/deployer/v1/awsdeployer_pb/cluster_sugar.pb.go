@@ -5,6 +5,7 @@ package awsdeployer_pb
 import (
 	driver "database/sql/driver"
 	fmt "fmt"
+	proto "google.golang.org/protobuf/proto"
 )
 
 // ClusterEventType is a oneof wrapper
@@ -28,6 +29,7 @@ func (x *ClusterEventType) TypeKey() (ClusterEventTypeKey, bool) {
 
 type IsClusterEventTypeWrappedType interface {
 	TypeKey() ClusterEventTypeKey
+	proto.Message
 }
 
 func (x *ClusterEventType) Set(val IsClusterEventTypeWrappedType) {

@@ -13,22 +13,27 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
-	"github.com/pentops/o5-deploy-aws/internal/awsinfra"
-	"github.com/pentops/o5-deploy-aws/internal/cf/app"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
 )
 
 type TemplateStore interface {
 	PutTemplate(ctx context.Context, envName, appName, deploymentID string, template []byte) (*awsdeployer_pb.S3Template, error)
 }
 
+type S3API interface {
+	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	GetBucketLocation(ctx context.Context, params *s3.GetBucketLocationInput, optFns ...func(*s3.Options)) (*s3.GetBucketLocationOutput, error)
+}
+
 type S3TemplateStore struct {
-	s3Client         awsinfra.S3API
+	s3Client         S3API
 	region           string
 	cfTemplateBucket string
 }
 
-func NewS3TemplateStore(ctx context.Context, s3Client awsinfra.S3API, cfTemplateBucket string) (*S3TemplateStore, error) {
+func NewS3TemplateStore(ctx context.Context, s3Client S3API, cfTemplateBucket string) (*S3TemplateStore, error) {
 	cfTemplateBucket = strings.TrimPrefix(cfTemplateBucket, "s3://")
 
 	regionRes, err := s3Client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
@@ -85,29 +90,35 @@ func safeDBName(dbName string) string {
 }
 
 func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.RequestDeploymentMessage, cluster *environment_pb.Cluster, environment *environment_pb.Environment) (*awsdeployer_pb.DeploymentSpec, error) {
-	app, err := app.BuildApplication(trigger.Application, trigger.Version)
+	ctx = log.WithFields(ctx, map[string]interface{}{
+		"appName":     trigger.Application.Name,
+		"environment": environment.FullName,
+	})
+
+	awsCluster := cluster.GetAws()
+	if awsCluster == nil {
+		return nil, fmt.Errorf("cluster %s is not an ECS cluster", cluster.Name)
+	}
+
+	rdsHosts := appbuilder.RDSHostMap{}
+	for _, host := range awsCluster.RdsHosts {
+		rdsHosts[host.ServerGroupName] = &appbuilder.RDSHost{
+			AuthType: host.Auth.Get().TypeKey(),
+		}
+	}
+
+	app, err := appbuilder.BuildApplication(appbuilder.AppInput{
+		Application: trigger.Application,
+		VersionTag:  trigger.Version,
+		RDSHosts:    rdsHosts,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	ctx = log.WithFields(ctx, map[string]interface{}{
-		"appName":     app.Name,
-		"environment": environment.FullName,
-	})
-
-	awsEnv := environment.GetAws()
-	if awsEnv == nil {
-		return nil, fmt.Errorf("environment %s is not an AWS environment", environment.FullName)
-	}
-
-	ecsCluster := cluster.GetEcsCluster()
-	if ecsCluster == nil {
-		return nil, fmt.Errorf("cluster %s is not an ECS cluster", cluster.Name)
-	}
-
 	deploymentID := uuid.NewString()
 
-	templateJSON, err := app.TemplateJSON()
+	templateJSON, err := app.Template.JSON()
 	if err != nil {
 		return nil, err
 	}
@@ -116,29 +127,78 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 		return nil, err
 	}
 
-	dbSpecs := make([]*awsdeployer_pb.PostgresSpec, len(app.PostgresDatabases))
-	for idx, db := range app.PostgresDatabases {
+	auroraHosts := map[string]*awsinfra_pb.AuroraConnection{}
+	dbSpecs := make([]*awsdeployer_pb.PostgresSpec, len(app.Databases))
+	for idx, db := range app.Databases {
 		fullName := safeDBName(fmt.Sprintf("%s_%s_%s", environment.FullName, app.Name, db.DbName))
+
+		var host *environment_pb.RDSHost
+		for _, search := range awsCluster.RdsHosts {
+			if search.ServerGroupName == db.ServerGroup {
+				host = search
+				break
+			}
+		}
+		if host == nil {
+			return nil, fmt.Errorf("no RDS host found for database %s", db.DbName)
+		}
+
 		dbSpec := &awsdeployer_pb.PostgresSpec{
 			DbName:                  fullName,
 			DbExtensions:            db.DbExtensions,
 			MigrationTaskOutputName: db.MigrationTaskOutputName,
-			SecretOutputName:        db.SecretOutputName,
+			AppConnection:           &awsdeployer_pb.PostgresConnectionType{},
+			AdminConnection:         &awsinfra_pb.RDSHostType{},
 		}
-		for _, host := range ecsCluster.RdsHosts {
-			if host.ServerGroup == db.ServerGroup {
-				dbSpec.RootSecretName = host.SecretName
-				break
+		dbSpecs[idx] = dbSpec
+
+		switch hostType := host.Auth.Get().(type) {
+		case *environment_pb.RDSAuthType_SecretsManager:
+			secret := db.GetSecretOutputName()
+			if secret == "" {
+				panic(fmt.Sprintf("no secret name found for database %s", db.DbName))
 			}
-		}
-		if dbSpec.RootSecretName == "" {
-			return nil, fmt.Errorf("no RDS host found for database %s", db.DbName)
+
+			dbSpec.AppConnection.Set(&awsdeployer_pb.PostgresConnectionType_SecretsManager{
+				AppSecretOutputName: secret,
+			})
+
+			dbSpec.AdminConnection.Set(&awsinfra_pb.RDSHostType_SecretsManager{
+				SecretName: hostType.SecretName,
+			})
+
+		case *environment_pb.RDSAuthType_IAM:
+			clientConn := &awsinfra_pb.AuroraConnection{
+				Endpoint:   host.Endpoint,
+				Port:       host.Port,
+				DbUser:     fullName,
+				DbName:     fullName,
+				Identifier: host.Identifier,
+			}
+			auroraHosts[db.ServerGroup] = clientConn
+
+			dbSpec.AppConnection.Set(&awsdeployer_pb.PostgresConnectionType_Aurora{
+				Conn: clientConn,
+			})
+
+			dbSpec.AdminConnection.Set(&awsinfra_pb.RDSHostType_Aurora{
+				Conn: &awsinfra_pb.AuroraConnection{
+					Endpoint: host.Endpoint,
+					Port:     host.Port,
+					DbUser:   hostType.DbUser,
+					DbName:   coalesce(hostType.DbUser, hostType.DbName),
+				},
+			})
+
 		}
 
-		dbSpecs[idx] = dbSpec
 	}
 
-	deployerResolver, err := BuildParameterResolver(ctx, cluster, environment)
+	deployerResolver, err := buildParameterResolver(ctx, parameterInput{
+		cluster:     cluster,
+		environment: environment,
+		auroraHosts: auroraHosts,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -152,17 +212,14 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 		parameters[idx] = parameter
 	}
 
-	snsTopics := make([]string, len(app.SnsTopics))
-	for idx, topic := range app.SnsTopics {
-		snsTopics[idx] = fmt.Sprintf("%s-%s", environment.FullName, topic)
-	}
-
 	if trigger.Flags == nil {
 		trigger.Flags = &awsdeployer_pb.DeploymentFlags{}
 	}
 
-	if app.QuickMode {
-		trigger.Flags.QuickMode = true
+	if trigger.Application.DeploymentConfig != nil {
+		if trigger.Application.DeploymentConfig.QuickMode {
+			trigger.Flags.QuickMode = true
+		}
 	}
 
 	spec := &awsdeployer_pb.DeploymentSpec{
@@ -173,12 +230,21 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 		Template:        templateLocation,
 		Databases:       dbSpecs,
 		Parameters:      parameters,
-		SnsTopics:       snsTopics,
 		Flags:           trigger.Flags,
 		CfStackName:     fmt.Sprintf("%s-%s", environment.FullName, app.Name),
+		SnsTopics:       []string{},
 
-		EcsCluster: ecsCluster.EcsClusterName,
+		EcsCluster: awsCluster.EcsCluster.ClusterName,
 	}
 
 	return spec, nil
+}
+
+func coalesce[A any](backup A, from ...*A) A {
+	for _, val := range from {
+		if val != nil {
+			return *val
+		}
+	}
+	return backup
 }
