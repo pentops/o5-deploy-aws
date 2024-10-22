@@ -63,6 +63,7 @@ func (app *App) RegisterGRPC(server *grpc.Server) {
 	awsdeployer_tpb.RegisterDeploymentRequestTopicServer(server, app.DeployerWorker)
 	awsinfra_tpb.RegisterCloudFormationReplyTopicServer(server, app.DeployerWorker)
 	awsinfra_tpb.RegisterPostgresReplyTopicServer(server, app.DeployerWorker)
+	awsinfra_tpb.RegisterECSReplyTopicServer(server, app.DeployerWorker)
 
 }
 

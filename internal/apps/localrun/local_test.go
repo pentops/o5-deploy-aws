@@ -293,14 +293,13 @@ func TestLocalRun(t *testing.T) {
 	})
 
 	ss.Step("MigratePostgresDatabase", func(ctx context.Context, t flowtest.Asserter) {
-		msg, ok := infra.Pop(t, ctx).(*awsinfra_tpb.MigratePostgresDatabaseMessage)
+		msg, ok := infra.Pop(t, ctx).(*awsinfra_tpb.RunECSTaskMessage)
 		if !ok {
 			cancel()
 			t.Fatalf("expected MigratePostgresDatabaseMessage")
 		}
 
-		t.Equal("ecs-cluster", msg.EcsClusterName)
-		t.Equal("/env/app/secret", msg.SecretArn)
+		t.Equal("ecs-cluster", msg.Cluster)
 
 		infra.StepResult(msg.Request, &awsdeployer_pb.DeploymentEventType_StepResult{
 			Result: &drss_pb.StepResult{

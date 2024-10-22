@@ -6,6 +6,8 @@ import (
 	proto "google.golang.org/protobuf/proto"
 )
 
+type IsPostgresMigrateSpec_Type = isPostgresMigrateSpec_Type
+
 // PostgresConnectionType is a oneof wrapper
 type PostgresConnectionTypeKey string
 

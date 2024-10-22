@@ -261,14 +261,18 @@ func (ds *StepBuild) RunPGUpsert(sb awsdeployer_step_pb.StepBaton, req *awsdeplo
 
 func (ds *StepBuild) RunPGMigrate(sb awsdeployer_step_pb.StepBaton, req *awsdeployer_pb.DeploymentStepType_PGMigrate) (awsdeployer_step_pb.Outcome, error) {
 	src := req.Spec
-
-	msg := &awsinfra_tpb.MigratePostgresDatabaseMessage{
-		MigrationId:    sb.GetID(),
-		EcsClusterName: req.EcsClusterName,
-
-		// Explicitly Default
-		MigrationTaskArn: "",
-		SecretArn:        "",
+	msg := &awsinfra_tpb.RunECSTaskMessage{
+		TaskDefinition: "",
+		Cluster:        req.EcsClusterName,
+		Count:          1,
+		Network: &awsinfra_tpb.ECSTaskNetworkType{
+			Type: &awsinfra_tpb.ECSTaskNetworkType_Awsvpc{
+				Awsvpc: &awsinfra_tpb.ECSTaskNetworkType_AWSVPC{
+					SecurityGroups: []string{src.ClientSecurityGroupId},
+					Subnets:        src.Subnets,
+				},
+			},
+		},
 	}
 
 	outputs, err := getStackOutputs(sb, req.InfraOutputStepId)
@@ -281,15 +285,7 @@ func (ds *StepBuild) RunPGMigrate(sb awsdeployer_step_pb.StepBaton, req *awsdepl
 		if !ok {
 			return nil, fmt.Errorf("stack output missing %s for database %s", *src.MigrationTaskOutputName, src.DbName)
 		}
-		msg.MigrationTaskArn = migrationTaskARN
-	}
-
-	if smSpec := src.AppConnection.GetSecretsManager(); smSpec != nil {
-		secretARN, ok := outputs.Find(smSpec.AppSecretOutputName)
-		if !ok {
-			return nil, fmt.Errorf("stack output missing %s for database %s", smSpec.AppSecretOutputName, src.DbName)
-		}
-		msg.SecretArn = secretARN
+		msg.TaskDefinition = migrationTaskARN
 	}
 
 	return awsdeployer_step_pb.Request(msg)

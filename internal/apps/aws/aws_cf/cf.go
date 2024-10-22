@@ -29,10 +29,9 @@ type CFClient struct {
 	secretsManagerClient awsapi.SecretsManagerAPI
 	region               string
 	accountID            string
-	CallbackARNs         []string
 }
 
-func NewCFAdapter(clients *awsapi.DeployerClients, callbackARNs []string) *CFClient {
+func NewCFAdapter(clients *awsapi.DeployerClients) *CFClient {
 	return &CFClient{
 		cfClient:             clients.CloudFormation,
 		elbClient:            clients.ELB,
@@ -41,7 +40,6 @@ func NewCFAdapter(clients *awsapi.DeployerClients, callbackARNs []string) *CFCli
 		secretsManagerClient: clients.SecretsManager,
 		region:               clients.Region,
 		accountID:            clients.AccountID,
-		CallbackARNs:         callbackARNs,
 	}
 }
 
@@ -205,7 +203,6 @@ func (cf *CFClient) CreateNewStack(ctx context.Context, reqToken string, msg *aw
 		Capabilities: []types.Capability{
 			types.CapabilityCapabilityNamedIam,
 		},
-		NotificationARNs: cf.CallbackARNs,
 	}
 
 	switch tpl := msg.Spec.Template.(type) {
@@ -249,7 +246,6 @@ func (cf *CFClient) UpdateStack(ctx context.Context, reqToken string, msg *awsin
 		Capabilities: []types.Capability{
 			types.CapabilityCapabilityNamedIam,
 		},
-		NotificationARNs: cf.CallbackARNs,
 	}
 	switch tpl := msg.Spec.Template.(type) {
 	case *awsdeployer_pb.CFStackInput_TemplateBody:
@@ -302,7 +298,6 @@ func (cf *CFClient) CreateChangeSet(ctx context.Context, reqToken string, msg *a
 		Capabilities: []types.Capability{
 			types.CapabilityCapabilityNamedIam,
 		},
-		NotificationARNs: cf.CallbackARNs,
 	}
 
 	if msg.ImportResources {
@@ -423,7 +418,6 @@ func (cf *CFClient) ScaleStack(ctx context.Context, reqToken string, msg *awsinf
 		Capabilities: []types.Capability{
 			types.CapabilityCapabilityNamedIam,
 		},
-		NotificationARNs: cf.CallbackARNs,
 	})
 	if err != nil {
 		return err

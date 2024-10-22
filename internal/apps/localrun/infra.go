@@ -59,6 +59,23 @@ func stackEvent(msg *awsinfra_tpb.StackStatusChangedMessage, err error) (*awsdep
 	return event, nil
 }
 
+func ecsEvent(msg *awsinfra_tpb.ECSTaskStatusMessage, err error) (*awsdeployer_pb.DeploymentPSMEventSpec, error) {
+	if err != nil {
+		return nil, err
+	}
+
+	if msg == nil {
+		return nil, fmt.Errorf("ecsEvent: msg and error are nil")
+	}
+
+	event, err := service.ECSTaskStatusToEvent(msg)
+	if err != nil {
+		return nil, err
+	}
+	return event, nil
+
+}
+
 func dbEvent(msg *awsinfra_tpb.PostgresDatabaseStatusMessage, err error) (*awsdeployer_pb.DeploymentPSMEventSpec, error) {
 	if err != nil {
 		return nil, err
@@ -130,11 +147,11 @@ func (cf *InfraAdapter) HandleMessage(ctx context.Context, msg proto.Message) (*
 		}
 		return dbEvent(cf.UpsertPostgresDatabase(ctx, msg))
 
-	case *awsinfra_tpb.MigratePostgresDatabaseMessage:
+	case *awsinfra_tpb.RunECSTaskMessage:
 		if msg.Request == nil {
 			return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
 		}
-		return dbEvent(cf.MigratePostgresDatabase(ctx, msg))
+		return ecsEvent(cf.ecsClient.RunECSTask(ctx, msg))
 
 	case *awsinfra_tpb.CleanupPostgresDatabaseMessage:
 		if msg.Request == nil {
@@ -301,14 +318,6 @@ func (cf *InfraAdapter) runPostgresCallback(ctx context.Context, msg pgRequest, 
 		Status:      awsinfra_tpb.PostgresStatus_DONE,
 	}, nil
 }
-
-func (cf *InfraAdapter) MigratePostgresDatabase(ctx context.Context, msg *awsinfra_tpb.MigratePostgresDatabaseMessage) (*awsinfra_tpb.PostgresDatabaseStatusMessage, error) {
-
-	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context) error {
-		return cf.ecsClient.runMigrationTask(ctx, msg.MigrationId, msg)
-	})
-}
-
 func (cf *InfraAdapter) UpsertPostgresDatabase(ctx context.Context, msg *awsinfra_tpb.UpsertPostgresDatabaseMessage) (*awsinfra_tpb.PostgresDatabaseStatusMessage, error) {
 	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context) error {
 		return cf.dbClient.UpsertPostgresDatabase(ctx, msg.MigrationId, msg)

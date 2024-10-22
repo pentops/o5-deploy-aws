@@ -239,11 +239,6 @@ func mapPostgresMigration(builder *Builder, resource *awsdeployer_pb.PostgresDat
 		return fmt.Errorf("building migration container: %w", err)
 	}
 
-	err = taskDefinition.BridgeNetwork()
-	if err != nil {
-		return fmt.Errorf("bridging network for migration: %w", err)
-	}
-
 	taskDef, err := taskDefinition.AddToTemplate(builder.Template)
 	if err != nil {
 		return fmt.Errorf("adding task definition for migration: %w", err)

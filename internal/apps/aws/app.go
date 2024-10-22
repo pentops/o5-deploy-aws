@@ -20,13 +20,13 @@ type App struct {
 	RawWorker     *awsraw.RawMessageWorker
 }
 
-func NewApp(db sqrlx.Transactor, awsClients *awsapi.DeployerClients, callbackARNs []string) (*App, error) {
+func NewApp(db sqrlx.Transactor, awsClients *awsapi.DeployerClients) (*App, error) {
 
 	infraStore, err := tokenstore.NewStorage(db)
 	if err != nil {
 		return nil, err
 	}
-	cfAdapter := aws_cf.NewCFAdapter(awsClients, callbackARNs)
+	cfAdapter := aws_cf.NewCFAdapter(awsClients)
 
 	awsInfraRunner := aws_cf.NewInfraWorker(infraStore, cfAdapter)
 
@@ -58,7 +58,6 @@ func (app *App) RegisterGRPC(grpcServer *grpc.Server) {
 	messaging_tpb.RegisterRawMessageTopicServer(grpcServer, app.RawWorker)
 	awsinfra_tpb.RegisterCloudFormationRequestTopicServer(grpcServer, app.CFRunner)
 	awsinfra_tpb.RegisterPostgresRequestTopicServer(grpcServer, app.MigrateRunner)
-	awsinfra_tpb.RegisterECSReplyTopicServer(grpcServer, app.MigrateRunner)
 	awsinfra_tpb.RegisterECSRequestTopicServer(grpcServer, app.ECSWorker)
 
 }

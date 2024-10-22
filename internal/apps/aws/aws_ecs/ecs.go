@@ -7,6 +7,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
+	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	ecs_types "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
@@ -29,6 +30,31 @@ func NewECSWorker(db tokenstore.DBLite, ecsClient awsapi.ECSAPI) (*ECSWorker, er
 	}, nil
 }
 
+func RunTaskInput(msg *awsinfra_tpb.RunECSTaskMessage) (*ecs.RunTaskInput, error) {
+	var network *types.NetworkConfiguration
+	if msg.Network != nil {
+		switch nt := msg.Network.Get().(type) {
+		case *awsinfra_tpb.ECSTaskNetworkType_AWSVPC:
+			network = &types.NetworkConfiguration{
+				AwsvpcConfiguration: &types.AwsVpcConfiguration{
+					SecurityGroups: nt.SecurityGroups,
+					Subnets:        nt.Subnets,
+				},
+			}
+
+		default:
+			return nil, fmt.Errorf("unsupported network type: %T", msg.Network)
+		}
+	}
+	return &ecs.RunTaskInput{
+		TaskDefinition:       aws.String(msg.TaskDefinition),
+		Cluster:              aws.String(msg.Cluster),
+		Count:                aws.Int32(1),
+		NetworkConfiguration: network,
+	}, nil
+
+}
+
 func (handler *ECSWorker) RunECSTask(ctx context.Context, msg *awsinfra_tpb.RunECSTaskMessage) (*emptypb.Empty, error) {
 
 	clientToken, err := handler.db.RequestToClientToken(ctx, msg.Request)
@@ -36,18 +62,18 @@ func (handler *ECSWorker) RunECSTask(ctx context.Context, msg *awsinfra_tpb.RunE
 		return nil, err
 	}
 
-	_, err = handler.ecs.RunTask(ctx, &ecs.RunTaskInput{
-		TaskDefinition: aws.String(msg.TaskDefinition),
-		Cluster:        aws.String(msg.Cluster),
-		Count:          aws.Int32(1),
-
-		ClientToken: aws.String(clientToken),
-		Tags: []ecs_types.Tag{{
-			Key:   aws.String("o5-run-task"),
-			Value: aws.String(clientToken),
-		}},
-		StartedBy: aws.String(fmt.Sprintf("o5-run-task/%s", clientToken)),
+	runTaskInput, err := RunTaskInput(msg)
+	if err != nil {
+		return nil, err
+	}
+	runTaskInput.StartedBy = aws.String(fmt.Sprintf("o5-run-task/%s", clientToken))
+	runTaskInput.Tags = append(runTaskInput.Tags, ecs_types.Tag{
+		Key:   aws.String("o5-run-task"),
+		Value: aws.String(clientToken),
 	})
+	runTaskInput.ClientToken = aws.String(clientToken)
+
+	_, err = handler.ecs.RunTask(ctx, runTaskInput)
 	if err != nil {
 		return nil, err
 	}

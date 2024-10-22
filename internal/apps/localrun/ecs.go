@@ -12,9 +12,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
+	"github.com/google/uuid"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_ecs"
 	"github.com/pentops/o5-deploy-aws/internal/apps/aws/awsapi"
 )
 
@@ -23,16 +25,33 @@ type ecsRunner struct {
 	cloudwatchClient awsapi.CloudWatchLogsAPI
 }
 
-func (d *ecsRunner) runMigrationTask(ctx context.Context, migrationID string, msg *awsinfra_tpb.MigratePostgresDatabaseMessage) error {
-	ecsClient := d.ecsClient
+func (d *ecsRunner) RunECSTask(ctx context.Context, ecsMsg *awsinfra_tpb.RunECSTaskMessage) (*awsinfra_tpb.ECSTaskStatusMessage, error) {
+	err := d.runECSTask(ctx, ecsMsg)
+	if err != nil {
+		log.WithError(ctx, err).Error("error running ECS task")
+		return nil, err
+	}
+	return &awsinfra_tpb.ECSTaskStatusMessage{
+		Request: ecsMsg.Request,
+		EventId: uuid.NewString(),
+		Event: &awsinfra_tpb.ECSTaskEventType{
+			Type: &awsinfra_tpb.ECSTaskEventType_Exited_{
+				Exited: &awsinfra_tpb.ECSTaskEventType_Exited{
+					ExitCode: 0,
+				},
+			},
+		},
+	}, nil
+}
 
-	task, err := ecsClient.RunTask(ctx, &ecs.RunTaskInput{
-		TaskDefinition: aws.String(msg.MigrationTaskArn),
-		Cluster:        aws.String(msg.EcsClusterName),
-		Count:          aws.Int32(1),
-		ClientToken:    aws.String(migrationID),
-		StartedBy:      aws.String("o5-local-run"),
-	})
+func (d *ecsRunner) runECSTask(ctx context.Context, ecsMsg *awsinfra_tpb.RunECSTaskMessage) error {
+	ecsClient := d.ecsClient
+	input, err := aws_ecs.RunTaskInput(ecsMsg)
+	if err != nil {
+		return err
+	}
+
+	task, err := ecsClient.RunTask(ctx, input)
 	if err != nil {
 		return err
 	}
@@ -44,7 +63,7 @@ func (d *ecsRunner) runMigrationTask(ctx context.Context, migrationID string, ms
 	for {
 		state, err := ecsClient.DescribeTasks(ctx, &ecs.DescribeTasksInput{
 			Tasks:   []string{*task.Tasks[0].TaskArn},
-			Cluster: aws.String(msg.EcsClusterName),
+			Cluster: aws.String(ecsMsg.Cluster),
 		})
 		if err != nil {
 			return err

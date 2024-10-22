@@ -376,10 +376,11 @@ func addLogsToContainer(container *ecs.TaskDefinition_ContainerDefinition, appNa
 				"ecs",
 				cloudformation.Ref(EnvNameParameter),
 				appName,
+				container.Name,
 			}),
-			"awslogs-create-group":  "true",
-			"awslogs-region":        cloudformation.Ref("AWS::Region"),
-			"awslogs-stream-prefix": container.Name,
+			"awslogs-create-group": "true",
+			"awslogs-region":       cloudformation.Ref("AWS::Region"),
+			//"awslogs-stream-prefix": container.Name,
 		},
 	}
 }

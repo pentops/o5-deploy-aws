@@ -68,7 +68,6 @@ func runServe(ctx context.Context, cfg struct {
 
 	DeployerAssumeRole string `env:"DEPLOYER_ASSUME_ROLE"`
 	CFTemplates        string `env:"CF_TEMPLATES"`
-	CallbackARN        string `env:"CALLBACK_ARN"`
 	GithubAppsJSON     string `env:"GITHUB_APPS"`
 
 	DBConfig

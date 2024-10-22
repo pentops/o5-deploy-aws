@@ -143,10 +143,11 @@ func (td *ECSTaskDefinition) ExposeContainerPort(containerName string, port int)
 	return fmt.Errorf("container %s not found in task %s", containerName, td.family)
 }
 
+/*
 func (td *ECSTaskDefinition) BridgeNetwork() error {
 	td.networkMode = "bridge"
 	return nil
-}
+}*/
 
 func (td *ECSTaskDefinition) AddEventBridgeTargets(targets []*application_pb.Target) {
 	for _, target := range targets {

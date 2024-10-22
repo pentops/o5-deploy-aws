@@ -4,13 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/google/uuid"
 	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-messaging/o5msg"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -22,7 +20,6 @@ type DBLite interface {
 
 type PostgresMigrateWorker struct {
 	awsinfra_tpb.UnimplementedPostgresRequestTopicServer
-	awsinfra_tpb.UnimplementedECSReplyTopicServer
 
 	db       DBLite
 	migrator IDBMigrator
@@ -105,6 +102,7 @@ func (d *PostgresMigrateWorker) CleanupPostgresDatabase(ctx context.Context, msg
 	})
 }
 
+/*
 func (d *PostgresMigrateWorker) MigratePostgresDatabase(ctx context.Context, msg *awsinfra_tpb.MigratePostgresDatabaseMessage) (*emptypb.Empty, error) {
 
 	request := msg.GetRequest()
@@ -144,50 +142,4 @@ func (d *PostgresMigrateWorker) MigratePostgresDatabase(ctx context.Context, msg
 	return &emptypb.Empty{}, nil
 }
 
-func (d *PostgresMigrateWorker) ECSTaskStatus(ctx context.Context, msg *awsinfra_tpb.ECSTaskStatusMessage) (*emptypb.Empty, error) {
-
-	taskContext := &awsinfra_tpb.MigrationTaskContext{}
-	if err := proto.Unmarshal(msg.Request.Context, taskContext); err != nil {
-		return nil, err
-	}
-
-	replyMessage := &awsinfra_tpb.PostgresDatabaseStatusMessage{
-		Request:     taskContext.Upstream,
-		EventId:     msg.EventId,
-		MigrationId: taskContext.MigrationId,
-	}
-
-	switch et := msg.Event.Type.(type) {
-	case *awsinfra_tpb.ECSTaskEventType_Pending_, *awsinfra_tpb.ECSTaskEventType_Running_:
-		// Ignore
-		return &emptypb.Empty{}, nil
-
-	case *awsinfra_tpb.ECSTaskEventType_Exited_:
-		if et.Exited.ExitCode == 0 {
-			replyMessage.Status = awsinfra_tpb.PostgresStatus_DONE
-		} else {
-			replyMessage.Status = awsinfra_tpb.PostgresStatus_ERROR
-			replyMessage.Error = aws.String(fmt.Sprintf("task exited with code %d", et.Exited.ExitCode))
-		}
-
-	case *awsinfra_tpb.ECSTaskEventType_Failed_:
-		replyMessage.Status = awsinfra_tpb.PostgresStatus_ERROR
-		replyMessage.Error = aws.String(et.Failed.Reason)
-		if et.Failed.ContainerName != nil {
-			replyMessage.Error = aws.String(fmt.Sprintf("%s: %s", *et.Failed.ContainerName, et.Failed.Reason))
-		}
-
-	case *awsinfra_tpb.ECSTaskEventType_Stopped_:
-		replyMessage.Status = awsinfra_tpb.PostgresStatus_ERROR
-		replyMessage.Error = aws.String(fmt.Sprintf("ECS Task Stopped: %s", et.Stopped.Reason))
-
-	default:
-		return nil, fmt.Errorf("unknown ECS Status Event type: %T", et)
-	}
-
-	if err := d.db.PublishEvent(ctx, replyMessage); err != nil {
-		return nil, err
-	}
-
-	return &emptypb.Empty{}, nil
-}
+*/

@@ -9,11 +9,25 @@ option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/aws
 message PostgresSpec {
   string db_name = 1;
   repeated string db_extensions = 3;
-  optional string migration_task_output_name = 7;
 
   o5.aws.infra.v1.RDSHostType admin_connection = 4;
 
   PostgresConnectionType app_connection = 5;
+
+  string client_security_group_id = 6;
+
+  PostgresMigrateSpec migrate = 10;
+}
+
+message PostgresMigrateSpec {
+  oneof type {
+    ECS ecs = 1;
+  }
+
+  message ECS {
+    string task_output_name = 7;
+    string subnet_ids = 8;
+  }
 }
 
 message PostgresConnectionType {
