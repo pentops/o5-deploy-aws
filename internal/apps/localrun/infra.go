@@ -25,7 +25,7 @@ type InfraAdapter struct {
 }
 
 func NewInfraAdapter(ctx context.Context, cl *awsapi.DeployerClients) (*InfraAdapter, error) {
-	cfClient := aws_cf.NewCFAdapter(cl, []string{})
+	cfClient := aws_cf.NewCFAdapter(cl)
 	dbMigrator := aws_postgres.NewDBMigrator(cl.SecretsManager, cl.RDSAuthProvider)
 	ecsClient := &ecsRunner{
 		ecsClient:        cl.ECS,

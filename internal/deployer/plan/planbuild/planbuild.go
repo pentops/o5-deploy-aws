@@ -116,7 +116,9 @@ func (ds *StepBuild) RunCFScale(sb awsdeployer_step_pb.StepBaton, req *awsdeploy
 
 // NopDiscovery add a fake discovery step which is already completed.
 func (plan *DeploymentPlan) NOPDiscovery() *PlanStep {
-	evalJoin := &awsdeployer_pb.DeploymentStepType_EvalJoin{}
+	evalJoin := &awsdeployer_pb.DeploymentStepType_EvalJoin{
+		StackOutput: plan.StackStatus,
+	}
 	return plan.addStep(StepNOPDiscovery, evalJoin)
 }
 
@@ -178,7 +180,7 @@ func (plan *DeploymentPlan) MigrateDatabases(ctx context.Context, infraReadyStep
 	for _, db := range plan.Deployment.Databases {
 
 		ctx = log.WithFields(ctx, map[string]interface{}{
-			"database": db.DbName,
+			"database": db.AppKey,
 		})
 		log.Debug(ctx, "Upsert Database")
 
@@ -192,7 +194,7 @@ func (plan *DeploymentPlan) MigrateDatabases(ctx context.Context, infraReadyStep
 
 func (plan *DeploymentPlan) UpsertDatabase(db *awsdeployer_pb.PostgresSpec, infraReadyStep *PlanStep) *PlanStep {
 
-	upsertStep := plan.addStep(QualifiedStep(StepPgUpsert, db.DbName),
+	upsertStep := plan.addStep(QualifiedStep(StepPgUpsert, db.AppKey),
 		&awsdeployer_pb.DeploymentStepType_PGUpsert{
 			Spec:              db,
 			InfraOutputStepId: infraReadyStep.meta.StepId,
@@ -200,7 +202,7 @@ func (plan *DeploymentPlan) UpsertDatabase(db *awsdeployer_pb.PostgresSpec, infr
 		},
 	).DependsOn(infraReadyStep)
 
-	migrateStep := plan.addStep(QualifiedStep(StepPgMigrate, db.DbName),
+	migrateStep := plan.addStep(QualifiedStep(StepPgMigrate, db.AppKey),
 		&awsdeployer_pb.DeploymentStepType_PGMigrate{
 			Spec:              db,
 			InfraOutputStepId: infraReadyStep.meta.StepId,
@@ -210,7 +212,7 @@ func (plan *DeploymentPlan) UpsertDatabase(db *awsdeployer_pb.PostgresSpec, infr
 	// depends on infraReady even though upsert also depends on it, so
 	// that the output of the infraStep is still injected
 
-	cleanupStep := plan.addStep(QualifiedStep(StepPgCleanup, db.DbName),
+	cleanupStep := plan.addStep(QualifiedStep(StepPgCleanup, db.AppKey),
 		&awsdeployer_pb.DeploymentStepType_PGCleanup{
 			Spec: db,
 		},
@@ -236,7 +238,7 @@ func (ds *StepBuild) RunPGUpsert(sb awsdeployer_step_pb.StepBaton, req *awsdeplo
 	case *awsdeployer_pb.PostgresConnectionType_SecretsManager:
 		secret, ok := outputs.Find(conn.AppSecretOutputName)
 		if !ok {
-			return nil, fmt.Errorf("stack output missing %s for database %s", conn.AppSecretOutputName, src.DbName)
+			return nil, fmt.Errorf("stack output missing %s for database %s", conn.AppSecretOutputName, src.AppKey)
 		}
 
 		appSpec.Set(&awsinfra_pb.RDSAppSpecType_SecretsManager{
@@ -254,13 +256,18 @@ func (ds *StepBuild) RunPGUpsert(sb awsdeployer_step_pb.StepBaton, req *awsdeplo
 		AppAccess:   appSpec,
 		Spec: &awsinfra_pb.RDSCreateSpec{
 			DbExtensions: src.DbExtensions,
-			DbName:       src.DbName,
+			DbName:       src.FullDbName,
 		},
 	})
 }
 
 func (ds *StepBuild) RunPGMigrate(sb awsdeployer_step_pb.StepBaton, req *awsdeployer_pb.DeploymentStepType_PGMigrate) (awsdeployer_step_pb.Outcome, error) {
 	src := req.Spec
+	ecsMigrate := req.Spec.Migrate.GetEcs()
+	if ecsMigrate == nil {
+		return nil, fmt.Errorf("missing ECS spec for database %s", src.AppKey)
+	}
+
 	msg := &awsinfra_tpb.RunECSTaskMessage{
 		TaskDefinition: "",
 		Cluster:        req.EcsClusterName,
@@ -269,7 +276,7 @@ func (ds *StepBuild) RunPGMigrate(sb awsdeployer_step_pb.StepBaton, req *awsdepl
 			Type: &awsinfra_tpb.ECSTaskNetworkType_Awsvpc{
 				Awsvpc: &awsinfra_tpb.ECSTaskNetworkType_AWSVPC{
 					SecurityGroups: []string{src.ClientSecurityGroupId},
-					Subnets:        src.Subnets,
+					Subnets:        ecsMigrate.SubnetIds,
 				},
 			},
 		},
@@ -280,13 +287,11 @@ func (ds *StepBuild) RunPGMigrate(sb awsdeployer_step_pb.StepBaton, req *awsdepl
 		return nil, err
 	}
 
-	if src.MigrationTaskOutputName != nil {
-		migrationTaskARN, ok := outputs.Find(*src.MigrationTaskOutputName)
-		if !ok {
-			return nil, fmt.Errorf("stack output missing %s for database %s", *src.MigrationTaskOutputName, src.DbName)
-		}
-		msg.TaskDefinition = migrationTaskARN
+	migrationTaskARN, ok := outputs.Find(ecsMigrate.TaskOutputName)
+	if !ok {
+		return nil, fmt.Errorf("stack output missing %s for database %s", ecsMigrate.TaskOutputName, src.AppKey)
 	}
+	msg.TaskDefinition = migrationTaskARN
 
 	return awsdeployer_step_pb.Request(msg)
 }
@@ -294,7 +299,7 @@ func (ds *StepBuild) RunPGMigrate(sb awsdeployer_step_pb.StepBaton, req *awsdepl
 func (ds *StepBuild) RunPGCleanup(sb awsdeployer_step_pb.StepBaton, req *awsdeployer_pb.DeploymentStepType_PGCleanup) (awsdeployer_step_pb.Outcome, error) {
 	return awsdeployer_step_pb.Request(&awsinfra_tpb.CleanupPostgresDatabaseMessage{
 		MigrationId: sb.GetID(),
-		DbName:      req.Spec.DbName,
+		DbName:      req.Spec.AppKey,
 		AdminHost:   req.Spec.AdminConnection,
 	})
 }

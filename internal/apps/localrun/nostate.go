@@ -128,8 +128,8 @@ func (rr *Runner) runSteps(ctx context.Context, steps []*awsdeployer_pb.Deployme
 			return err
 		}
 
-		if len(tb.ChainEvents) == 0 {
-			return fmt.Errorf("no chain events")
+		if len(tb.ChainEvents) != 1 {
+			return fmt.Errorf("expected one chain event, got %d", len(tb.ChainEvents))
 		}
 
 		for _, chainEvent := range tb.ChainEvents {
@@ -160,8 +160,31 @@ func (rr *Runner) runSteps(ctx context.Context, steps []*awsdeployer_pb.Deployme
 				if err != nil {
 					return err
 				}
-				if len(tb.SideEffects) != 1 {
-					return fmt.Errorf("expected 1 side effect")
+				if len(tb.SideEffects) > 1 {
+					return fmt.Errorf("expected <= 1 side effect")
+				}
+				if len(tb.ChainEvents) > 1 {
+					return fmt.Errorf("expected <= 1 chain event")
+				}
+				hadSideEffect := len(tb.SideEffects) == 1
+				hadChainEvent := len(tb.ChainEvents) == 1
+				if !hadSideEffect && !hadChainEvent {
+					return fmt.Errorf("expected side effect or chain event, deadlock.")
+				}
+				if hadChainEvent && hadSideEffect {
+					return fmt.Errorf("expected side effect or chain event, not both.")
+				}
+
+				if hadChainEvent {
+					evt := tb.ChainEvents[0]
+					stepResult, ok := evt.(*awsdeployer_pb.DeploymentEventType_StepResult)
+					if !ok {
+						return fmt.Errorf("expected step result")
+					}
+					if err := plan.UpdateDeploymentStep(steps, stepResult); err != nil {
+						return err
+					}
+					continue
 				}
 
 				result, err := rr.awsRunner.HandleMessage(ctx, tb.SideEffects[0])

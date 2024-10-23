@@ -102,7 +102,7 @@ func runServe(ctx context.Context, cfg struct {
 			return err
 		}
 
-		infraApp, err := aws.NewApp(db, clients, []string{cfg.CallbackARN})
+		infraApp, err := aws.NewApp(db, clients)
 		if err != nil {
 			return err
 		}

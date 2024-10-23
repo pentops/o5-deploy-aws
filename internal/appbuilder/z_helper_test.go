@@ -89,13 +89,13 @@ type TemplateAsserter struct {
 func (ta *TemplateAsserter) GetDatabase(t testing.TB, name string) *awsdeployer_pb.PostgresDatabaseResource {
 	t.Helper()
 	for _, db := range ta.out.Databases {
-		if db.DbName == name {
+		if db.AppKey == name {
 			return db
 		}
 	}
 
 	for _, db := range ta.out.Databases {
-		t.Logf("had db %q", db.DbName)
+		t.Logf("had db %q", db.AppKey)
 	}
 	t.Fatalf("database %q not found", name)
 	return nil

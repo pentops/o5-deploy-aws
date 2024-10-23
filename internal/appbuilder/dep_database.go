@@ -145,13 +145,14 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (D
 	}
 
 	def := &awsdeployer_pb.PostgresDatabaseResource{
-		DbName:       database.Name,
+		AppKey:       database.Name,
+		DbNameSuffix: dbType.DbNameSuffix,
 		DbExtensions: dbType.DbExtensions,
 		ServerGroup:  dbType.ServerGroup,
 	}
 
-	if dbType.DbName != "" {
-		def.DbName = dbType.DbName
+	if dbType.DbNameSuffix == "" {
+		def.DbNameSuffix = database.Name
 	}
 
 	var ref DatabaseRef
@@ -202,7 +203,7 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (D
 					Type: &awsdeployer_pb.ParameterSourceType_Aurora_{
 						Aurora: &awsdeployer_pb.ParameterSourceType_Aurora{
 							ServerGroup: dbType.ServerGroup,
-							DbName:      def.DbName, // Matching the resource def
+							AppKey:      def.AppKey,
 							Part:        part,
 						},
 					},
@@ -233,7 +234,7 @@ func mapPostgresMigration(builder *Builder, resource *awsdeployer_pb.PostgresDat
 		spec.Name = "migrate"
 	}
 
-	taskDefinition := NewECSTaskDefinition(builder.Globals, fmt.Sprintf("migrate_%s", resource.DbName))
+	taskDefinition := NewECSTaskDefinition(builder.Globals, fmt.Sprintf("migrate_%s", resource.AppKey))
 	err := taskDefinition.BuildRuntimeContainer(spec)
 	if err != nil {
 		return fmt.Errorf("building migration container: %w", err)
@@ -243,7 +244,7 @@ func mapPostgresMigration(builder *Builder, resource *awsdeployer_pb.PostgresDat
 	if err != nil {
 		return fmt.Errorf("adding task definition for migration: %w", err)
 	}
-	outputName := fmt.Sprintf("MigrationTaskDefinition%s", cflib.CleanParameterName(resource.DbName))
+	outputName := fmt.Sprintf("MigrationTaskDefinition%s", cflib.CleanParameterName(resource.AppKey))
 	builder.Template.AddOutput(&cflib.Output{
 		Name:  outputName,
 		Value: taskDef,

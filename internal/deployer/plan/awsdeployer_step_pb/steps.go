@@ -16,7 +16,7 @@ func Done(output awsdeployer_pb.IsStepOutputTypeWrappedType) (Outcome, error) {
 		result = &awsdeployer_pb.StepOutputType{}
 		result.Set(output)
 	}
-	return strategy.DoneOutcome[*awsdeployer_pb.StepOutputType]{
+	return &strategy.DoneOutcome[*awsdeployer_pb.StepOutputType]{
 		Output: result,
 	}, nil
 }

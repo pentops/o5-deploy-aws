@@ -6,6 +6,7 @@ import (
 	proto "google.golang.org/protobuf/proto"
 )
 
+type IsPostgresDatabaseResource_Connection = isPostgresDatabaseResource_Connection
 type IsPostgresMigrateSpec_Type = isPostgresMigrateSpec_Type
 
 // PostgresConnectionType is a oneof wrapper
@@ -58,4 +59,3 @@ func (x *PostgresConnectionType_SecretsManager) TypeKey() PostgresConnectionType
 }
 
 type IsPostgresConnectionType_Type = isPostgresConnectionType_Type
-type IsPostgresDatabaseResource_Connection = isPostgresDatabaseResource_Connection

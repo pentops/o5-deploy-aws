@@ -1,14 +1,12 @@
 package deployer
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
 )
@@ -23,11 +21,11 @@ type ParameterResolver interface {
 
 type parameterInput struct {
 	cluster     *environment_pb.Cluster
+	dbDeps      []*awsdeployer_pb.PostgresSpec
 	environment *environment_pb.Environment
-	auroraHosts map[string]*awsinfra_pb.AuroraConnection
 }
 
-func buildParameterResolver(ctx context.Context, input parameterInput) (*deployerResolver, error) {
+func buildParameterResolver(input parameterInput) (*deployerResolver, error) {
 
 	awsEnv := input.environment.GetAws()
 	if awsEnv == nil {
@@ -54,7 +52,12 @@ func buildParameterResolver(ctx context.Context, input parameterInput) (*deploye
 		databaseHosts[host.ServerGroupName] = host
 	}
 
-	wellKnown, err := buildWellKnown(ctx, input.cluster, input.environment)
+	postgresSpecs := map[string]*awsdeployer_pb.PostgresSpec{}
+	for _, dbDep := range input.dbDeps {
+		postgresSpecs[dbDep.AppKey] = dbDep
+	}
+
+	wellKnown, err := buildWellKnown(input.cluster, input.environment)
 	if err != nil {
 		return nil, err
 	}
@@ -64,13 +67,13 @@ func buildParameterResolver(ctx context.Context, input parameterInput) (*deploye
 		custom:        input.environment.Vars,
 		crossEnvs:     crossEnvs,
 		namedPolicies: namedPolicies,
-		auroraHosts:   input.auroraHosts,
 		databaseHosts: databaseHosts,
+		postgresSpecs: postgresSpecs,
 	}
 	return dr, nil
 }
 
-func buildWellKnown(ctx context.Context, cluster *environment_pb.Cluster, environment *environment_pb.Environment) (map[string]string, error) {
+func buildWellKnown(cluster *environment_pb.Cluster, environment *environment_pb.Environment) (map[string]string, error) {
 
 	awsEnv := environment.GetAws()
 	if awsEnv == nil {
@@ -127,7 +130,7 @@ type deployerResolver struct {
 	namedPolicies map[string]string
 	custom        []*environment_pb.CustomVariable
 	crossEnvs     map[string]*environment_pb.AWSLink
-	auroraHosts   map[string]*awsinfra_pb.AuroraConnection
+	postgresSpecs map[string]*awsdeployer_pb.PostgresSpec
 	databaseHosts map[string]*environment_pb.RDSHost
 }
 
@@ -199,11 +202,16 @@ func (rr *deployerResolver) ResolveParameter(param *awsdeployer_pb.Parameter) (*
 		value = arn
 
 	case *awsdeployer_pb.ParameterSourceType_Aurora_:
-		host, ok := rr.auroraHosts[ps.Aurora.ServerGroup]
+		spec, ok := rr.postgresSpecs[ps.Aurora.AppKey]
 		if !ok {
-			return nil, fmt.Errorf("unknown aurora server group: %s", ps.Aurora.ServerGroup)
+			return nil, fmt.Errorf("unknown postgres DB (aurora): %s", ps.Aurora.AppKey)
+		}
+		aurora := spec.AppConnection.GetAurora()
+		if aurora == nil {
+			return nil, fmt.Errorf("database %s is not an aurora database but is used in parameter %s", ps.Aurora.AppKey, param.Name)
 		}
 
+		host := aurora.Conn
 		switch ps.Aurora.Part {
 		case awsdeployer_pb.ParameterSourceType_Aurora_PART_JSON:
 

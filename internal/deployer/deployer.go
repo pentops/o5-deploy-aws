@@ -126,15 +126,15 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 		return nil, err
 	}
 
-	dbDeps, err := buildDBSpecs(ctx, app.Databases, awsCluster)
+	dbDeps, err := buildDatabaseSpecs(app.Databases, awsCluster, environment.FullName, app.Name)
 	if err != nil {
 		return nil, err
 	}
 
-	deployerResolver, err := buildParameterResolver(ctx, parameterInput{
+	deployerResolver, err := buildParameterResolver(parameterInput{
 		cluster:     cluster,
 		environment: environment,
-		auroraHosts: auroraHosts,
+		dbDeps:      dbDeps,
 	})
 	if err != nil {
 		return nil, err
@@ -165,7 +165,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 		EnvironmentName: environment.FullName,
 		EnvironmentId:   trigger.EnvironmentId,
 		Template:        templateLocation,
-		Databases:       dbSpecs,
+		Databases:       dbDeps,
 		Parameters:      parameters,
 		Flags:           trigger.Flags,
 		CfStackName:     fmt.Sprintf("%s-%s", environment.FullName, app.Name),

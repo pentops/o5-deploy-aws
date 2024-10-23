@@ -51,6 +51,15 @@ func buildPlan(ctx context.Context, plan *planbuild.DeploymentPlan) error {
 		return nil
 	}
 
+	if plan.Deployment.Flags.DbOnly {
+		if plan.StackStatus == nil {
+			return fmt.Errorf("cannot migrate databases without a stack")
+		}
+		discovery := plan.NOPDiscovery()
+		plan.MigrateDatabases(ctx, discovery)
+		return nil
+	}
+
 	if plan.Deployment.Flags.QuickMode {
 		if plan.StackStatus != nil {
 			infraMigrate := plan.CFUpdate(1)
@@ -60,15 +69,6 @@ func buildPlan(ctx context.Context, plan *planbuild.DeploymentPlan) error {
 				Then(plan.CFUpdate(0))
 			plan.MigrateDatabases(ctx, update)
 		}
-		return nil
-	}
-
-	if plan.Deployment.Flags.DbOnly {
-		if plan.StackStatus == nil {
-			return fmt.Errorf("cannot migrate databases without a stack")
-		}
-		discovery := plan.NOPDiscovery()
-		plan.MigrateDatabases(ctx, discovery)
 		return nil
 	}
 

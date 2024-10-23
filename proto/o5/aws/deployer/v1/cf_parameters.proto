@@ -57,7 +57,7 @@ message ParameterSourceType {
 
   message Aurora {
     string server_group = 1;
-    string db_name = 2;
+    string app_key = 2;
     Part part = 3;
     enum Part {
       PART_UNSPECIFIED = 0;

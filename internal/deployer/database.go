@@ -1,21 +1,20 @@
 package deployer
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb"
-	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
+	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 )
 
-func buildDatabaseSpecs(ctx context.Context, databases []appbuilder.DatabaseRef, awsCluster *environment_pb.AwsCluster, environment *environment_pb.Environment, app *application_pb.Application) ([]*awsdeployer_pb.PostgresSpec, error) {
+func buildDatabaseSpecs(databases []*awsdeployer_pb.PostgresDatabaseResource, awsCluster *environment_pb.AWSCluster, envName, appName string) ([]*awsdeployer_pb.PostgresSpec, error) {
 
 	auroraHosts := map[string]*awsinfra_pb.AuroraConnection{}
-	dbSpecs := make([]*awsdeployer_pb.PostgresSpec, len(app.Databases))
-	for idx, db := range app.Databases {
-		fullName := safeDBName(fmt.Sprintf("%s_%s_%s", environment.FullName, app.Name, db.DbName))
+	dbSpecs := make([]*awsdeployer_pb.PostgresSpec, 0, len(databases))
+	for _, db := range databases {
+
+		fullName := safeDBName(fmt.Sprintf("%s_%s_%s", envName, appName, db.DbNameSuffix))
 
 		var host *environment_pb.RDSHost
 		for _, search := range awsCluster.RdsHosts {
@@ -25,24 +24,33 @@ func buildDatabaseSpecs(ctx context.Context, databases []appbuilder.DatabaseRef,
 			}
 		}
 		if host == nil {
-			return nil, fmt.Errorf("no RDS host found for database %s", db.DbName)
+			return nil, fmt.Errorf("no RDS host found for database %s", db.AppKey)
 		}
 
 		dbSpec := &awsdeployer_pb.PostgresSpec{
-			DbName:                  fullName,
-			DbExtensions:            db.DbExtensions,
-			MigrationTaskOutputName: db.MigrationTaskOutputName,
-			AppConnection:           &awsdeployer_pb.PostgresConnectionType{},
-			AdminConnection:         &awsinfra_pb.RDSHostType{},
-			ClientSecurityGroupId:   host.ClientSecurityGroupId,
+			AppKey:                db.AppKey,
+			FullDbName:            fullName,
+			DbExtensions:          db.DbExtensions,
+			AppConnection:         &awsdeployer_pb.PostgresConnectionType{},
+			AdminConnection:       &awsinfra_pb.RDSHostType{},
+			ClientSecurityGroupId: host.ClientSecurityGroupId,
 		}
-		dbSpecs[idx] = dbSpec
+		if db.MigrationTaskOutputName != nil {
+			dbSpec.Migrate = &awsdeployer_pb.PostgresMigrateSpec{
+				Type: &awsdeployer_pb.PostgresMigrateSpec_Ecs{
+					Ecs: &awsdeployer_pb.PostgresMigrateSpec_ECS{
+						TaskOutputName: *db.MigrationTaskOutputName,
+						SubnetIds:      awsCluster.EcsCluster.SubnetIds,
+					},
+				},
+			}
+		}
 
 		switch hostType := host.Auth.Get().(type) {
 		case *environment_pb.RDSAuthType_SecretsManager:
 			secret := db.GetSecretOutputName()
 			if secret == "" {
-				panic(fmt.Sprintf("no secret name found for database %s", db.DbName))
+				panic(fmt.Sprintf("no secret name found for database %s", db.AppKey))
 			}
 
 			dbSpec.AppConnection.Set(&awsdeployer_pb.PostgresConnectionType_SecretsManager{
@@ -78,5 +86,7 @@ func buildDatabaseSpecs(ctx context.Context, databases []appbuilder.DatabaseRef,
 
 		}
 
+		dbSpecs = append(dbSpecs, dbSpec)
 	}
+	return dbSpecs, nil
 }
