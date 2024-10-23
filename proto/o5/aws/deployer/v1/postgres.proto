@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package o5.aws.deployer.v1;
+
+import "o5/aws/infra/v1/rds.proto";
+
+option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb";
+
+// Output from AppBuilder
+message PostgresDatabaseResource {
+  // Key as specified in the app config file
+  string app_key = 1;
+
+  // Matches application.v1.Database.Postgres
+  string db_name_suffix = 2;
+
+  // Matches application.v1.Database.Postgres
+  string server_group = 5;
+
+  // Matches application.v1.Database.Postgres
+  repeated string db_extensions = 3;
+
+  // Built from application.v1.Database.Postgres.Container
+  optional string migration_task_output_name = 4;
+
+  oneof connection {
+    // The main runtime has a SecretFrom loading the
+    // credentials and expects a direct connection
+    string secret_output_name = 10;
+
+    // The sidecar/app has an environment variable coming from
+    // this parameter for proxy.
+    string parameter_name = 11;
+  }
+}
+
+// Input into Deployer - Takes the Output + Infra info
+message PostgresSpec {
+  // Key as specified in the app config file
+  string app_key = 1;
+
+  string full_db_name = 2;
+  repeated string db_extensions = 3;
+
+  o5.aws.infra.v1.RDSHostType admin_connection = 4;
+
+  PostgresConnectionType app_connection = 5;
+
+  string client_security_group_id = 6;
+
+  PostgresMigrateSpec migrate = 10;
+}
+
+message PostgresMigrateSpec {
+  oneof type {
+    ECS ecs = 1;
+  }
+
+  message ECS {
+    string task_output_name = 7;
+    repeated string subnet_ids = 8;
+  }
+}
+
+message PostgresConnectionType {
+  oneof type {
+    Aurora aurora = 1;
+    SecretsManager secrets_manager = 2;
+  }
+
+  message Aurora {
+    o5.aws.infra.v1.AuroraConnection conn = 1;
+  }
+
+  message SecretsManager {
+    string app_secret_output_name = 1;
+  }
+}

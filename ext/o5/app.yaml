@@ -65,9 +65,9 @@ runtimes:
           - name: DEPLOYER_ASSUME_ROLE
             fromEnv:
               name: "o5-deployer-assume-role"
-          - name: CALLBACK_ARN
-            fromEnv:
-              name: "o5-deployer-callback-arn"
+              #- name: CALLBACK_ARN
+              #fromEnv:
+              #name: "o5-deployer-callback-arn"
 
           - name: CF_TEMPLATES
             blobstore:

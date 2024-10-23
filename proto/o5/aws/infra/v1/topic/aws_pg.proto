@@ -4,16 +4,16 @@ package o5.aws.infra.v1.topic;
 
 import "buf/validate/validate.proto";
 import "google/protobuf/empty.proto";
-import "o5/aws/deployer/v1/pgmigrate.proto";
 import "j5/messaging/v1/annotations.proto";
 import "j5/messaging/v1/reqres.proto";
+import "o5/aws/infra/v1/rds.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb";
 
 service PostgresRequestTopic {
   option (j5.messaging.v1.config).request.name = "o5-aws-command";
   rpc UpsertPostgresDatabase(UpsertPostgresDatabaseMessage) returns (google.protobuf.Empty) {}
-  rpc MigratePostgresDatabase(MigratePostgresDatabaseMessage) returns (google.protobuf.Empty) {}
+  //rpc MigratePostgresDatabase(MigratePostgresDatabaseMessage) returns (google.protobuf.Empty) {}
   rpc CleanupPostgresDatabase(CleanupPostgresDatabaseMessage) returns (google.protobuf.Empty) {}
 }
 
@@ -25,20 +25,28 @@ service PostgresReplyTopic {
 message UpsertPostgresDatabaseMessage {
   j5.messaging.v1.RequestMetadata request = 1;
   string migration_id = 2 [(buf.validate.field).string.uuid = true];
-  o5.aws.deployer.v1.PostgresCreationSpec spec = 3;
+  o5.aws.infra.v1.RDSHostType admin_host = 3;
+  o5.aws.infra.v1.RDSCreateSpec spec = 6;
+  o5.aws.infra.v1.RDSAppSpecType app_access = 7;
 }
 
 message CleanupPostgresDatabaseMessage {
   j5.messaging.v1.RequestMetadata request = 1;
   string migration_id = 2 [(buf.validate.field).string.uuid = true];
-  o5.aws.deployer.v1.PostgresCleanupSpec spec = 3;
+  o5.aws.infra.v1.RDSHostType admin_host = 3;
+  string db_name = 4;
 }
 
-message MigratePostgresDatabaseMessage {
-  j5.messaging.v1.RequestMetadata request = 1;
-  string migration_id = 2 [(buf.validate.field).string.uuid = true];
-  o5.aws.deployer.v1.PostgresMigrationSpec spec = 3;
-}
+/*
+   message MigratePostgresDatabaseMessage {
+     j5.messaging.v1.RequestMetadata request = 1;
+     string migration_id = 2 [(buf.validate.field).string.uuid = true];
+
+     string migration_task_arn = 3;
+     string secret_arn = 4;
+     string ecs_cluster_name = 5;
+     ECSTaskNetworkType network = 5;
+   }*/
 
 message PostgresDatabaseStatusMessage {
   j5.messaging.v1.RequestMetadata request = 1;
@@ -53,4 +61,9 @@ enum PostgresStatus {
   POSTGRES_STATUS_STARTED = 1;
   POSTGRES_STATUS_DONE = 2;
   POSTGRES_STATUS_ERROR = 3;
+}
+
+message MigrationTaskContext {
+  j5.messaging.v1.RequestMetadata upstream = 1;
+  string migration_id = 2;
 }

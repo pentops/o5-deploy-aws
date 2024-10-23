@@ -77,11 +77,13 @@ message Database {
 
   message Postgres {
     // The name of the database within the postgres instance, default is the
-    // name in the parent message
-    string db_name = 1;
+    // name in the parent message.
+    // This is prefixed with {env_name}_{app_name}_ in all cases.
+    string db_name_suffix = 1;
 
     // default is 'default' - identifies which database server from the
-    // environment config this belongs with
+    // environment config this belongs with.
+    // Matches o5.environment.v1.RDSHost.server_group_name
     string server_group = 2;
 
     repeated string db_extensions = 3;

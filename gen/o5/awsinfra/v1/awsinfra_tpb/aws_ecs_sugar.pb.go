@@ -2,6 +2,10 @@
 
 package awsinfra_tpb
 
+import (
+	proto "google.golang.org/protobuf/proto"
+)
+
 // ECSTaskEventType is a oneof wrapper
 type ECSTaskEventTypeKey string
 
@@ -32,6 +36,7 @@ func (x *ECSTaskEventType) TypeKey() (ECSTaskEventTypeKey, bool) {
 
 type IsECSTaskEventTypeWrappedType interface {
 	TypeKey() ECSTaskEventTypeKey
+	proto.Message
 }
 
 func (x *ECSTaskEventType) Set(val IsECSTaskEventTypeWrappedType) {
@@ -81,3 +86,44 @@ func (x *ECSTaskEventType_Stopped) TypeKey() ECSTaskEventTypeKey {
 }
 
 type IsECSTaskEventType_Type = isECSTaskEventType_Type
+
+// ECSTaskNetworkType is a oneof wrapper
+type ECSTaskNetworkTypeKey string
+
+const (
+	ECSTaskNetwork_Awsvpc ECSTaskNetworkTypeKey = "awsvpc"
+)
+
+func (x *ECSTaskNetworkType) TypeKey() (ECSTaskNetworkTypeKey, bool) {
+	switch x.Type.(type) {
+	case *ECSTaskNetworkType_Awsvpc:
+		return ECSTaskNetwork_Awsvpc, true
+	default:
+		return "", false
+	}
+}
+
+type IsECSTaskNetworkTypeWrappedType interface {
+	TypeKey() ECSTaskNetworkTypeKey
+	proto.Message
+}
+
+func (x *ECSTaskNetworkType) Set(val IsECSTaskNetworkTypeWrappedType) {
+	switch v := val.(type) {
+	case *ECSTaskNetworkType_AWSVPC:
+		x.Type = &ECSTaskNetworkType_Awsvpc{Awsvpc: v}
+	}
+}
+func (x *ECSTaskNetworkType) Get() IsECSTaskNetworkTypeWrappedType {
+	switch v := x.Type.(type) {
+	case *ECSTaskNetworkType_Awsvpc:
+		return v.Awsvpc
+	default:
+		return nil
+	}
+}
+func (x *ECSTaskNetworkType_AWSVPC) TypeKey() ECSTaskNetworkTypeKey {
+	return ECSTaskNetwork_Awsvpc
+}
+
+type IsECSTaskNetworkType_Type = isECSTaskNetworkType_Type

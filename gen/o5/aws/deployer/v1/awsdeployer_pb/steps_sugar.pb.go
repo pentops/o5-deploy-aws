@@ -5,22 +5,23 @@ package awsdeployer_pb
 import (
 	driver "database/sql/driver"
 	fmt "fmt"
+	proto "google.golang.org/protobuf/proto"
 )
 
 // StepOutputType is a oneof wrapper
 type StepOutputTypeKey string
 
 const (
-	StepOutput_CfStatus     StepOutputTypeKey = "cfStatus"
-	StepOutput_CfPlanStatus StepOutputTypeKey = "cfPlanStatus"
+	StepOutput_CfStackStatus     StepOutputTypeKey = "cfStackStatus"
+	StepOutput_CfChangesetStatus StepOutputTypeKey = "cfChangesetStatus"
 )
 
 func (x *StepOutputType) TypeKey() (StepOutputTypeKey, bool) {
 	switch x.Type.(type) {
-	case *StepOutputType_CfStatus:
-		return StepOutput_CfStatus, true
-	case *StepOutputType_CfPlanStatus:
-		return StepOutput_CfPlanStatus, true
+	case *StepOutputType_CfStackStatus:
+		return StepOutput_CfStackStatus, true
+	case *StepOutputType_CfChangesetStatus:
+		return StepOutput_CfChangesetStatus, true
 	default:
 		return "", false
 	}
@@ -28,154 +29,156 @@ func (x *StepOutputType) TypeKey() (StepOutputTypeKey, bool) {
 
 type IsStepOutputTypeWrappedType interface {
 	TypeKey() StepOutputTypeKey
+	proto.Message
 }
 
 func (x *StepOutputType) Set(val IsStepOutputTypeWrappedType) {
 	switch v := val.(type) {
-	case *StepOutputType_CFStatus:
-		x.Type = &StepOutputType_CfStatus{CfStatus: v}
-	case *StepOutputType_CFPlanStatus:
-		x.Type = &StepOutputType_CfPlanStatus{CfPlanStatus: v}
+	case *StepOutputType_CFStackStatus:
+		x.Type = &StepOutputType_CfStackStatus{CfStackStatus: v}
+	case *StepOutputType_CFChangesetStatus:
+		x.Type = &StepOutputType_CfChangesetStatus{CfChangesetStatus: v}
 	}
 }
 func (x *StepOutputType) Get() IsStepOutputTypeWrappedType {
 	switch v := x.Type.(type) {
-	case *StepOutputType_CfStatus:
-		return v.CfStatus
-	case *StepOutputType_CfPlanStatus:
-		return v.CfPlanStatus
+	case *StepOutputType_CfStackStatus:
+		return v.CfStackStatus
+	case *StepOutputType_CfChangesetStatus:
+		return v.CfChangesetStatus
 	default:
 		return nil
 	}
 }
-func (x *StepOutputType_CFStatus) TypeKey() StepOutputTypeKey {
-	return StepOutput_CfStatus
+func (x *StepOutputType_CFStackStatus) TypeKey() StepOutputTypeKey {
+	return StepOutput_CfStackStatus
 }
-func (x *StepOutputType_CFPlanStatus) TypeKey() StepOutputTypeKey {
-	return StepOutput_CfPlanStatus
+func (x *StepOutputType_CFChangesetStatus) TypeKey() StepOutputTypeKey {
+	return StepOutput_CfChangesetStatus
 }
 
 type IsStepOutputType_Type = isStepOutputType_Type
 
-// StepRequestType is a oneof wrapper
-type StepRequestTypeKey string
+// DeploymentStepType is a oneof wrapper
+type DeploymentStepTypeKey string
 
 const (
-	StepRequest_EvalJoin   StepRequestTypeKey = "evalJoin"
-	StepRequest_CfCreate   StepRequestTypeKey = "cfCreate"
-	StepRequest_CfPlan     StepRequestTypeKey = "cfPlan"
-	StepRequest_CfUpdate   StepRequestTypeKey = "cfUpdate"
-	StepRequest_CfScale    StepRequestTypeKey = "cfScale"
-	StepRequest_PgUpsert   StepRequestTypeKey = "pgUpsert"
-	StepRequest_PgEvaluate StepRequestTypeKey = "pgEvaluate"
-	StepRequest_PgCleanup  StepRequestTypeKey = "pgCleanup"
-	StepRequest_PgMigrate  StepRequestTypeKey = "pgMigrate"
+	DeploymentStep_EvalJoin   DeploymentStepTypeKey = "evalJoin"
+	DeploymentStep_CfCreate   DeploymentStepTypeKey = "cfCreate"
+	DeploymentStep_CfPlan     DeploymentStepTypeKey = "cfPlan"
+	DeploymentStep_CfUpdate   DeploymentStepTypeKey = "cfUpdate"
+	DeploymentStep_CfScale    DeploymentStepTypeKey = "cfScale"
+	DeploymentStep_PgUpsert   DeploymentStepTypeKey = "pgUpsert"
+	DeploymentStep_PgEvaluate DeploymentStepTypeKey = "pgEvaluate"
+	DeploymentStep_PgCleanup  DeploymentStepTypeKey = "pgCleanup"
+	DeploymentStep_PgMigrate  DeploymentStepTypeKey = "pgMigrate"
 )
 
-func (x *StepRequestType) TypeKey() (StepRequestTypeKey, bool) {
+func (x *DeploymentStepType) TypeKey() (DeploymentStepTypeKey, bool) {
 	switch x.Type.(type) {
-	case *StepRequestType_EvalJoin_:
-		return StepRequest_EvalJoin, true
-	case *StepRequestType_CfCreate:
-		return StepRequest_CfCreate, true
-	case *StepRequestType_CfPlan:
-		return StepRequest_CfPlan, true
-	case *StepRequestType_CfUpdate:
-		return StepRequest_CfUpdate, true
-	case *StepRequestType_CfScale:
-		return StepRequest_CfScale, true
-	case *StepRequestType_PgUpsert:
-		return StepRequest_PgUpsert, true
-	case *StepRequestType_PgEvaluate:
-		return StepRequest_PgEvaluate, true
-	case *StepRequestType_PgCleanup:
-		return StepRequest_PgCleanup, true
-	case *StepRequestType_PgMigrate:
-		return StepRequest_PgMigrate, true
+	case *DeploymentStepType_EvalJoin_:
+		return DeploymentStep_EvalJoin, true
+	case *DeploymentStepType_CfCreate:
+		return DeploymentStep_CfCreate, true
+	case *DeploymentStepType_CfPlan:
+		return DeploymentStep_CfPlan, true
+	case *DeploymentStepType_CfUpdate:
+		return DeploymentStep_CfUpdate, true
+	case *DeploymentStepType_CfScale:
+		return DeploymentStep_CfScale, true
+	case *DeploymentStepType_PgUpsert:
+		return DeploymentStep_PgUpsert, true
+	case *DeploymentStepType_PgEvaluate:
+		return DeploymentStep_PgEvaluate, true
+	case *DeploymentStepType_PgCleanup:
+		return DeploymentStep_PgCleanup, true
+	case *DeploymentStepType_PgMigrate:
+		return DeploymentStep_PgMigrate, true
 	default:
 		return "", false
 	}
 }
 
-type IsStepRequestTypeWrappedType interface {
-	TypeKey() StepRequestTypeKey
+type IsDeploymentStepTypeWrappedType interface {
+	TypeKey() DeploymentStepTypeKey
+	proto.Message
 }
 
-func (x *StepRequestType) Set(val IsStepRequestTypeWrappedType) {
+func (x *DeploymentStepType) Set(val IsDeploymentStepTypeWrappedType) {
 	switch v := val.(type) {
-	case *StepRequestType_EvalJoin:
-		x.Type = &StepRequestType_EvalJoin_{EvalJoin: v}
-	case *StepRequestType_CFCreate:
-		x.Type = &StepRequestType_CfCreate{CfCreate: v}
-	case *StepRequestType_CFPlan:
-		x.Type = &StepRequestType_CfPlan{CfPlan: v}
-	case *StepRequestType_CFUpdate:
-		x.Type = &StepRequestType_CfUpdate{CfUpdate: v}
-	case *StepRequestType_CFScale:
-		x.Type = &StepRequestType_CfScale{CfScale: v}
-	case *StepRequestType_PGUpsert:
-		x.Type = &StepRequestType_PgUpsert{PgUpsert: v}
-	case *StepRequestType_PGEvaluate:
-		x.Type = &StepRequestType_PgEvaluate{PgEvaluate: v}
-	case *StepRequestType_PGCleanup:
-		x.Type = &StepRequestType_PgCleanup{PgCleanup: v}
-	case *StepRequestType_PGMigrate:
-		x.Type = &StepRequestType_PgMigrate{PgMigrate: v}
+	case *DeploymentStepType_EvalJoin:
+		x.Type = &DeploymentStepType_EvalJoin_{EvalJoin: v}
+	case *DeploymentStepType_CFCreate:
+		x.Type = &DeploymentStepType_CfCreate{CfCreate: v}
+	case *DeploymentStepType_CFPlan:
+		x.Type = &DeploymentStepType_CfPlan{CfPlan: v}
+	case *DeploymentStepType_CFUpdate:
+		x.Type = &DeploymentStepType_CfUpdate{CfUpdate: v}
+	case *DeploymentStepType_CFScale:
+		x.Type = &DeploymentStepType_CfScale{CfScale: v}
+	case *DeploymentStepType_PGUpsert:
+		x.Type = &DeploymentStepType_PgUpsert{PgUpsert: v}
+	case *DeploymentStepType_PGEvaluate:
+		x.Type = &DeploymentStepType_PgEvaluate{PgEvaluate: v}
+	case *DeploymentStepType_PGCleanup:
+		x.Type = &DeploymentStepType_PgCleanup{PgCleanup: v}
+	case *DeploymentStepType_PGMigrate:
+		x.Type = &DeploymentStepType_PgMigrate{PgMigrate: v}
 	}
 }
-func (x *StepRequestType) Get() IsStepRequestTypeWrappedType {
+func (x *DeploymentStepType) Get() IsDeploymentStepTypeWrappedType {
 	switch v := x.Type.(type) {
-	case *StepRequestType_EvalJoin_:
+	case *DeploymentStepType_EvalJoin_:
 		return v.EvalJoin
-	case *StepRequestType_CfCreate:
+	case *DeploymentStepType_CfCreate:
 		return v.CfCreate
-	case *StepRequestType_CfPlan:
+	case *DeploymentStepType_CfPlan:
 		return v.CfPlan
-	case *StepRequestType_CfUpdate:
+	case *DeploymentStepType_CfUpdate:
 		return v.CfUpdate
-	case *StepRequestType_CfScale:
+	case *DeploymentStepType_CfScale:
 		return v.CfScale
-	case *StepRequestType_PgUpsert:
+	case *DeploymentStepType_PgUpsert:
 		return v.PgUpsert
-	case *StepRequestType_PgEvaluate:
+	case *DeploymentStepType_PgEvaluate:
 		return v.PgEvaluate
-	case *StepRequestType_PgCleanup:
+	case *DeploymentStepType_PgCleanup:
 		return v.PgCleanup
-	case *StepRequestType_PgMigrate:
+	case *DeploymentStepType_PgMigrate:
 		return v.PgMigrate
 	default:
 		return nil
 	}
 }
-func (x *StepRequestType_EvalJoin) TypeKey() StepRequestTypeKey {
-	return StepRequest_EvalJoin
+func (x *DeploymentStepType_EvalJoin) TypeKey() DeploymentStepTypeKey {
+	return DeploymentStep_EvalJoin
 }
-func (x *StepRequestType_CFCreate) TypeKey() StepRequestTypeKey {
-	return StepRequest_CfCreate
+func (x *DeploymentStepType_CFCreate) TypeKey() DeploymentStepTypeKey {
+	return DeploymentStep_CfCreate
 }
-func (x *StepRequestType_CFPlan) TypeKey() StepRequestTypeKey {
-	return StepRequest_CfPlan
+func (x *DeploymentStepType_CFPlan) TypeKey() DeploymentStepTypeKey {
+	return DeploymentStep_CfPlan
 }
-func (x *StepRequestType_CFUpdate) TypeKey() StepRequestTypeKey {
-	return StepRequest_CfUpdate
+func (x *DeploymentStepType_CFUpdate) TypeKey() DeploymentStepTypeKey {
+	return DeploymentStep_CfUpdate
 }
-func (x *StepRequestType_CFScale) TypeKey() StepRequestTypeKey {
-	return StepRequest_CfScale
+func (x *DeploymentStepType_CFScale) TypeKey() DeploymentStepTypeKey {
+	return DeploymentStep_CfScale
 }
-func (x *StepRequestType_PGUpsert) TypeKey() StepRequestTypeKey {
-	return StepRequest_PgUpsert
+func (x *DeploymentStepType_PGUpsert) TypeKey() DeploymentStepTypeKey {
+	return DeploymentStep_PgUpsert
 }
-func (x *StepRequestType_PGEvaluate) TypeKey() StepRequestTypeKey {
-	return StepRequest_PgEvaluate
+func (x *DeploymentStepType_PGEvaluate) TypeKey() DeploymentStepTypeKey {
+	return DeploymentStep_PgEvaluate
 }
-func (x *StepRequestType_PGCleanup) TypeKey() StepRequestTypeKey {
-	return StepRequest_PgCleanup
+func (x *DeploymentStepType_PGCleanup) TypeKey() DeploymentStepTypeKey {
+	return DeploymentStep_PgCleanup
 }
-func (x *StepRequestType_PGMigrate) TypeKey() StepRequestTypeKey {
-	return StepRequest_PgMigrate
+func (x *DeploymentStepType_PGMigrate) TypeKey() DeploymentStepTypeKey {
+	return DeploymentStep_PgMigrate
 }
 
-type IsStepRequestType_Type = isStepRequestType_Type
+type IsDeploymentStepType_Type = isDeploymentStepType_Type
 type IsCFStackInput_Template = isCFStackInput_Template
 type IsCloudFormationStackParameter_Source = isCloudFormationStackParameter_Source
 
@@ -200,6 +203,7 @@ func (x *CloudFormationStackParameterType) TypeKey() (CloudFormationStackParamet
 
 type IsCloudFormationStackParameterTypeWrappedType interface {
 	TypeKey() CloudFormationStackParameterTypeKey
+	proto.Message
 }
 
 func (x *CloudFormationStackParameterType) Set(val IsCloudFormationStackParameterTypeWrappedType) {
@@ -228,131 +232,6 @@ func (x *CloudFormationStackParameterType_DesiredCount) TypeKey() CloudFormation
 }
 
 type IsCloudFormationStackParameterType_Type = isCloudFormationStackParameterType_Type
-
-// StepStatus
-const (
-	StepStatus_UNSPECIFIED StepStatus = 0
-	StepStatus_BLOCKED     StepStatus = 1
-	StepStatus_READY       StepStatus = 2
-	StepStatus_ACTIVE      StepStatus = 3
-	StepStatus_DONE        StepStatus = 4
-	StepStatus_FAILED      StepStatus = 5
-)
-
-var (
-	StepStatus_name_short = map[int32]string{
-		0: "UNSPECIFIED",
-		1: "BLOCKED",
-		2: "READY",
-		3: "ACTIVE",
-		4: "DONE",
-		5: "FAILED",
-	}
-	StepStatus_value_short = map[string]int32{
-		"UNSPECIFIED": 0,
-		"BLOCKED":     1,
-		"READY":       2,
-		"ACTIVE":      3,
-		"DONE":        4,
-		"FAILED":      5,
-	}
-	StepStatus_value_either = map[string]int32{
-		"UNSPECIFIED":             0,
-		"STEP_STATUS_UNSPECIFIED": 0,
-		"BLOCKED":                 1,
-		"STEP_STATUS_BLOCKED":     1,
-		"READY":                   2,
-		"STEP_STATUS_READY":       2,
-		"ACTIVE":                  3,
-		"STEP_STATUS_ACTIVE":      3,
-		"DONE":                    4,
-		"STEP_STATUS_DONE":        4,
-		"FAILED":                  5,
-		"STEP_STATUS_FAILED":      5,
-	}
-)
-
-// ShortString returns the un-prefixed string representation of the enum value
-func (x StepStatus) ShortString() string {
-	return StepStatus_name_short[int32(x)]
-}
-func (x StepStatus) Value() (driver.Value, error) {
-	return []uint8(x.ShortString()), nil
-}
-func (x *StepStatus) Scan(value interface{}) error {
-	var strVal string
-	switch vt := value.(type) {
-	case []uint8:
-		strVal = string(vt)
-	case string:
-		strVal = vt
-	default:
-		return fmt.Errorf("invalid type %T", value)
-	}
-	val := StepStatus_value_either[strVal]
-	*x = StepStatus(val)
-	return nil
-}
-
-// StepOutcome
-const (
-	StepOutcome_UNSPECIFIED StepOutcome = 0
-	StepOutcome_NOP         StepOutcome = 1
-	StepOutcome_DOWNTIME    StepOutcome = 2
-	StepOutcome_BEFORE      StepOutcome = 3
-	StepOutcome_PARALLEL    StepOutcome = 4
-)
-
-var (
-	StepOutcome_name_short = map[int32]string{
-		0: "UNSPECIFIED",
-		1: "NOP",
-		2: "DOWNTIME",
-		3: "BEFORE",
-		4: "PARALLEL",
-	}
-	StepOutcome_value_short = map[string]int32{
-		"UNSPECIFIED": 0,
-		"NOP":         1,
-		"DOWNTIME":    2,
-		"BEFORE":      3,
-		"PARALLEL":    4,
-	}
-	StepOutcome_value_either = map[string]int32{
-		"UNSPECIFIED":              0,
-		"STEP_OUTCOME_UNSPECIFIED": 0,
-		"NOP":                      1,
-		"STEP_OUTCOME_NOP":         1,
-		"DOWNTIME":                 2,
-		"STEP_OUTCOME_DOWNTIME":    2,
-		"BEFORE":                   3,
-		"STEP_OUTCOME_BEFORE":      3,
-		"PARALLEL":                 4,
-		"STEP_OUTCOME_PARALLEL":    4,
-	}
-)
-
-// ShortString returns the un-prefixed string representation of the enum value
-func (x StepOutcome) ShortString() string {
-	return StepOutcome_name_short[int32(x)]
-}
-func (x StepOutcome) Value() (driver.Value, error) {
-	return []uint8(x.ShortString()), nil
-}
-func (x *StepOutcome) Scan(value interface{}) error {
-	var strVal string
-	switch vt := value.(type) {
-	case []uint8:
-		strVal = string(vt)
-	case string:
-		strVal = vt
-	default:
-		return fmt.Errorf("invalid type %T", value)
-	}
-	val := StepOutcome_value_either[strVal]
-	*x = StepOutcome(val)
-	return nil
-}
 
 // StepPhase
 const (

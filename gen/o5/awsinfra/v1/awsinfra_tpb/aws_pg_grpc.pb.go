@@ -21,7 +21,6 @@ const _ = grpc.SupportPackageIsVersion7
 
 const (
 	PostgresRequestTopic_UpsertPostgresDatabase_FullMethodName  = "/o5.aws.infra.v1.topic.PostgresRequestTopic/UpsertPostgresDatabase"
-	PostgresRequestTopic_MigratePostgresDatabase_FullMethodName = "/o5.aws.infra.v1.topic.PostgresRequestTopic/MigratePostgresDatabase"
 	PostgresRequestTopic_CleanupPostgresDatabase_FullMethodName = "/o5.aws.infra.v1.topic.PostgresRequestTopic/CleanupPostgresDatabase"
 )
 
@@ -30,7 +29,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type PostgresRequestTopicClient interface {
 	UpsertPostgresDatabase(ctx context.Context, in *UpsertPostgresDatabaseMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	MigratePostgresDatabase(ctx context.Context, in *MigratePostgresDatabaseMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// rpc MigratePostgresDatabase(MigratePostgresDatabaseMessage) returns (google.protobuf.Empty) {}
 	CleanupPostgresDatabase(ctx context.Context, in *CleanupPostgresDatabaseMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
@@ -51,15 +50,6 @@ func (c *postgresRequestTopicClient) UpsertPostgresDatabase(ctx context.Context,
 	return out, nil
 }
 
-func (c *postgresRequestTopicClient) MigratePostgresDatabase(ctx context.Context, in *MigratePostgresDatabaseMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
-	err := c.cc.Invoke(ctx, PostgresRequestTopic_MigratePostgresDatabase_FullMethodName, in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *postgresRequestTopicClient) CleanupPostgresDatabase(ctx context.Context, in *CleanupPostgresDatabaseMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, PostgresRequestTopic_CleanupPostgresDatabase_FullMethodName, in, out, opts...)
@@ -74,7 +64,7 @@ func (c *postgresRequestTopicClient) CleanupPostgresDatabase(ctx context.Context
 // for forward compatibility
 type PostgresRequestTopicServer interface {
 	UpsertPostgresDatabase(context.Context, *UpsertPostgresDatabaseMessage) (*emptypb.Empty, error)
-	MigratePostgresDatabase(context.Context, *MigratePostgresDatabaseMessage) (*emptypb.Empty, error)
+	// rpc MigratePostgresDatabase(MigratePostgresDatabaseMessage) returns (google.protobuf.Empty) {}
 	CleanupPostgresDatabase(context.Context, *CleanupPostgresDatabaseMessage) (*emptypb.Empty, error)
 	mustEmbedUnimplementedPostgresRequestTopicServer()
 }
@@ -85,9 +75,6 @@ type UnimplementedPostgresRequestTopicServer struct {
 
 func (UnimplementedPostgresRequestTopicServer) UpsertPostgresDatabase(context.Context, *UpsertPostgresDatabaseMessage) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpsertPostgresDatabase not implemented")
-}
-func (UnimplementedPostgresRequestTopicServer) MigratePostgresDatabase(context.Context, *MigratePostgresDatabaseMessage) (*emptypb.Empty, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method MigratePostgresDatabase not implemented")
 }
 func (UnimplementedPostgresRequestTopicServer) CleanupPostgresDatabase(context.Context, *CleanupPostgresDatabaseMessage) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CleanupPostgresDatabase not implemented")
@@ -123,24 +110,6 @@ func _PostgresRequestTopic_UpsertPostgresDatabase_Handler(srv interface{}, ctx c
 	return interceptor(ctx, in, info, handler)
 }
 
-func _PostgresRequestTopic_MigratePostgresDatabase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MigratePostgresDatabaseMessage)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(PostgresRequestTopicServer).MigratePostgresDatabase(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: PostgresRequestTopic_MigratePostgresDatabase_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(PostgresRequestTopicServer).MigratePostgresDatabase(ctx, req.(*MigratePostgresDatabaseMessage))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _PostgresRequestTopic_CleanupPostgresDatabase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CleanupPostgresDatabaseMessage)
 	if err := dec(in); err != nil {
@@ -169,10 +138,6 @@ var PostgresRequestTopic_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpsertPostgresDatabase",
 			Handler:    _PostgresRequestTopic_UpsertPostgresDatabase_Handler,
-		},
-		{
-			MethodName: "MigratePostgresDatabase",
-			Handler:    _PostgresRequestTopic_MigratePostgresDatabase_Handler,
 		},
 		{
 			MethodName: "CleanupPostgresDatabase",

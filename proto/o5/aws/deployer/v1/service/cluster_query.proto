@@ -8,8 +8,6 @@ import "j5/list/v1/annotations.proto";
 import "j5/list/v1/page.proto";
 import "j5/list/v1/query.proto";
 import "o5/aws/deployer/v1/cluster.proto";
-import "o5/aws/deployer/v1/environment.proto";
-import "o5/aws/deployer/v1/stack.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb";
 

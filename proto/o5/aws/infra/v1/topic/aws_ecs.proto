@@ -24,6 +24,7 @@ message RunECSTaskMessage {
   string task_definition = 2;
   int32 count = 3;
   string cluster = 4;
+  ECSTaskNetworkType network = 5;
 }
 
 message ECSTaskStatusMessage {
@@ -69,5 +70,16 @@ message ECSTaskEventType {
 
   message Stopped {
     string reason = 1;
+  }
+}
+
+message ECSTaskNetworkType {
+  oneof type {
+    AWSVPC awsvpc = 1;
+  }
+
+  message AWSVPC {
+    repeated string security_groups = 1;
+    repeated string subnets = 2;
   }
 }
