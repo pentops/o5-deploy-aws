@@ -299,7 +299,7 @@ func TestLocalRun(t *testing.T) {
 			t.Fatalf("expected MigratePostgresDatabaseMessage")
 		}
 
-		t.Equal("ecs-cluster", msg.Cluster)
+		t.Equal("ecs-cluster", msg.Context.Cluster)
 
 		infra.StepResult(msg.Request, &awsdeployer_pb.DeploymentEventType_StepResult{
 			Result: &drss_pb.StepResult{
