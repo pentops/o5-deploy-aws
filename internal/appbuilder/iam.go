@@ -112,9 +112,9 @@ func (pb *PolicyBuilder) BuildRole(familyName string) *iam.Role {
 		ManagedPolicyArns: pb.managedPolicyARNs,
 		Policies:          rolePolicies,
 		RoleName: cloudformation.JoinPtr("-", []string{
+			"ecs-task",
 			cloudformation.Ref("AWS::StackName"),
 			familyName,
-			"assume-role",
 		}),
 	}
 	return role

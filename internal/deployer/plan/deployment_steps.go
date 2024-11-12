@@ -56,18 +56,25 @@ func buildPlan(ctx context.Context, plan *planbuild.DeploymentPlan) error {
 			return fmt.Errorf("cannot migrate databases without a stack")
 		}
 		discovery := plan.NOPDiscovery()
-		plan.MigrateDatabases(ctx, discovery)
-		return nil
+		_, err := plan.MigrateDatabases(ctx, discovery)
+		return err
 	}
 
 	if plan.Deployment.Flags.QuickMode {
 		if plan.StackStatus != nil {
 			infraMigrate := plan.CFUpdate(1)
-			plan.MigrateDatabases(ctx, infraMigrate)
+			_, err := plan.MigrateDatabases(ctx, infraMigrate)
+			if err != nil {
+				return err
+			}
+
 		} else {
 			update := plan.CFCreateEmpty().
 				Then(plan.CFUpdate(0))
-			plan.MigrateDatabases(ctx, update)
+			_, err := plan.MigrateDatabases(ctx, update)
+			if err != nil {
+				return err
+			}
 		}
 		return nil
 	}
@@ -77,14 +84,20 @@ func buildPlan(ctx context.Context, plan *planbuild.DeploymentPlan) error {
 	if plan.StackStatus != nil {
 		infraReady := plan.ScaleDown().
 			Then(plan.CFUpdate(0))
-		dbSteps := plan.MigrateDatabases(ctx, infraReady)
+		dbSteps, err := plan.MigrateDatabases(ctx, infraReady)
+		if err != nil {
+			return err
+		}
 		plan.ScaleUp().
 			DependsOn(infraReady).
 			DependsOn(dbSteps...)
 	} else {
 		infraReady := plan.CFCreateEmpty().
 			Then(plan.CFUpdate(0))
-		dbSteps := plan.MigrateDatabases(ctx, infraReady)
+		dbSteps, err := plan.MigrateDatabases(ctx, infraReady)
+		if err != nil {
+			return err
+		}
 		plan.ScaleUp().
 			DependsOn(infraReady).
 			DependsOn(dbSteps...)

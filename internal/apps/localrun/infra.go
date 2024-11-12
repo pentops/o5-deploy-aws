@@ -68,6 +68,10 @@ func ecsEvent(msg *awsinfra_tpb.ECSTaskStatusMessage, err error) (*awsdeployer_p
 		return nil, fmt.Errorf("ecsEvent: msg and error are nil")
 	}
 
+	if msg.Request == nil {
+		return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
+	}
+
 	event, err := service.ECSTaskStatusToEvent(msg)
 	if err != nil {
 		return nil, err
@@ -82,6 +86,9 @@ func dbEvent(msg *awsinfra_tpb.PostgresDatabaseStatusMessage, err error) (*awsde
 	}
 	if msg.Request == nil {
 		return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
+	}
+	if msg.Request.Context == nil {
+		return nil, fmt.Errorf("missing request.Context in %s", msg.ProtoReflect().Descriptor().FullName())
 	}
 	event, err := service.PostgresMigrationToEvent(msg)
 	if err != nil {

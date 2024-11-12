@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	ecs_types "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/pentops/log.go/log"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/apps/aws/awsapi"
 	"github.com/pentops/o5-deploy-aws/internal/apps/aws/tokenstore"
@@ -32,9 +33,9 @@ func NewECSWorker(db tokenstore.DBLite, ecsClient awsapi.ECSAPI) (*ECSWorker, er
 
 func RunTaskInput(msg *awsinfra_tpb.RunECSTaskMessage) (*ecs.RunTaskInput, error) {
 	var network *types.NetworkConfiguration
-	if msg.Network != nil {
-		switch nt := msg.Network.Get().(type) {
-		case *awsinfra_tpb.ECSTaskNetworkType_AWSVPC:
+	if msg.Context.Network != nil {
+		switch nt := msg.Context.Network.Get().(type) {
+		case *awsinfra_pb.ECSTaskNetworkType_AWSVPC:
 			network = &types.NetworkConfiguration{
 				AwsvpcConfiguration: &types.AwsVpcConfiguration{
 					SecurityGroups: nt.SecurityGroups,
@@ -43,12 +44,12 @@ func RunTaskInput(msg *awsinfra_tpb.RunECSTaskMessage) (*ecs.RunTaskInput, error
 			}
 
 		default:
-			return nil, fmt.Errorf("unsupported network type: %T", msg.Network)
+			return nil, fmt.Errorf("unsupported network type: %T", msg.Context.Network)
 		}
 	}
 	return &ecs.RunTaskInput{
 		TaskDefinition:       aws.String(msg.TaskDefinition),
-		Cluster:              aws.String(msg.Cluster),
+		Cluster:              aws.String(msg.Context.Cluster),
 		Count:                aws.Int32(1),
 		NetworkConfiguration: network,
 	}, nil

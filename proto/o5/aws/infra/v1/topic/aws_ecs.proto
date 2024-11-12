@@ -6,25 +6,34 @@ import "buf/validate/validate.proto";
 import "google/protobuf/empty.proto";
 import "j5/messaging/v1/annotations.proto";
 import "j5/messaging/v1/reqres.proto";
+import "o5/aws/infra/v1/ecs.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb";
 
 service ECSRequestTopic {
   option (j5.messaging.v1.config).request.name = "o5-aws-command";
   rpc RunECSTask(RunECSTaskMessage) returns (google.protobuf.Empty) {}
+  rpc SetECSScale(SetECSScaleMessage) returns (google.protobuf.Empty) {}
 }
 
 service ECSReplyTopic {
   option (j5.messaging.v1.config).reply.name = "o5-aws-command";
   rpc ECSTaskStatus(ECSTaskStatusMessage) returns (google.protobuf.Empty) {}
+  rpc ECSDeploymentStatus(ECSDeploymentStatusMessage) returns (google.protobuf.Empty) {}
 }
 
 message RunECSTaskMessage {
   j5.messaging.v1.RequestMetadata request = 1;
   string task_definition = 2;
   int32 count = 3;
-  string cluster = 4;
-  ECSTaskNetworkType network = 5;
+  o5.aws.infra.v1.ECSTaskContext context = 5;
+}
+
+message SetECSScaleMessage {
+  j5.messaging.v1.RequestMetadata request = 1;
+  string cluster = 2;
+  string service = 3;
+  int32 desired_count = 4;
 }
 
 message ECSTaskStatusMessage {
@@ -73,13 +82,7 @@ message ECSTaskEventType {
   }
 }
 
-message ECSTaskNetworkType {
-  oneof type {
-    AWSVPC awsvpc = 1;
-  }
-
-  message AWSVPC {
-    repeated string security_groups = 1;
-    repeated string subnets = 2;
-  }
+message ECSDeploymentStatusMessage {
+  j5.messaging.v1.RequestMetadata request = 1;
+  string event_id = 2 [(buf.validate.field).string.uuid = true];
 }

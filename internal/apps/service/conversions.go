@@ -20,6 +20,10 @@ func PostgresMigrationToEvent(msg *awsinfra_tpb.PostgresDatabaseStatusMessage) (
 		return nil, err
 	}
 
+	if stepContext.Phase != awsdeployer_pb.StepPhase_STEPS || stepContext.StepId == nil {
+		return nil, fmt.Errorf("DB Migration context expects STEPS and an ID")
+	}
+
 	event := &awsdeployer_pb.DeploymentPSMEventSpec{
 		Keys: &awsdeployer_pb.DeploymentKeys{
 			DeploymentId: stepContext.DeploymentId,
@@ -35,10 +39,6 @@ func PostgresMigrationToEvent(msg *awsinfra_tpb.PostgresDatabaseStatusMessage) (
 				},
 			},
 		},
-	}
-
-	if stepContext.Phase != awsdeployer_pb.StepPhase_STEPS || stepContext.StepId == nil {
-		return nil, fmt.Errorf("DB Migration context expects STEPS and an ID")
 	}
 
 	stepStatus := &awsdeployer_pb.DeploymentEventType_StepResult{
@@ -67,16 +67,38 @@ func PostgresMigrationToEvent(msg *awsinfra_tpb.PostgresDatabaseStatusMessage) (
 
 func ECSTaskStatusToEvent(msg *awsinfra_tpb.ECSTaskStatusMessage) (*awsdeployer_pb.DeploymentPSMEventSpec, error) {
 
-	taskContext := &awsinfra_tpb.MigrationTaskContext{}
-	if err := proto.Unmarshal(msg.Request.Context, taskContext); err != nil {
+	stepContext := &awsdeployer_pb.StepContext{}
+	if err := proto.Unmarshal(msg.Request.Context, stepContext); err != nil {
 		return nil, err
 	}
 
-	replyMessage := &awsinfra_tpb.PostgresDatabaseStatusMessage{
-		Request:     taskContext.Upstream,
-		EventId:     msg.EventId,
-		MigrationId: taskContext.MigrationId,
+	if stepContext.Phase != awsdeployer_pb.StepPhase_STEPS || stepContext.StepId == nil {
+		return nil, fmt.Errorf("DB Migration context expects STEPS and an ID")
 	}
+
+	event := &awsdeployer_pb.DeploymentPSMEventSpec{
+		Keys: &awsdeployer_pb.DeploymentKeys{
+			DeploymentId: stepContext.DeploymentId,
+		},
+		EventID:   msg.EventId,
+		Timestamp: time.Now(),
+		Cause: &psm_j5pb.Cause{
+			Type: &psm_j5pb.Cause_ExternalEvent{
+				ExternalEvent: &psm_j5pb.ExternalEventCause{
+					SystemName: "deployer-postgres",
+					EventName:  "PostgresDatabaseStatus",
+					ExternalId: &msg.EventId,
+				},
+			},
+		},
+	}
+
+	stepStatus := &awsdeployer_pb.DeploymentEventType_StepResult{
+		Result: &drss_pb.StepResult{
+			StepId: *stepContext.StepId,
+		},
+	}
+	event.Event = stepStatus
 
 	switch et := msg.Event.Type.(type) {
 	case *awsinfra_tpb.ECSTaskEventType_Pending_, *awsinfra_tpb.ECSTaskEventType_Running_:
@@ -85,29 +107,27 @@ func ECSTaskStatusToEvent(msg *awsinfra_tpb.ECSTaskStatusMessage) (*awsdeployer_
 
 	case *awsinfra_tpb.ECSTaskEventType_Exited_:
 		if et.Exited.ExitCode == 0 {
-			replyMessage.Status = awsinfra_tpb.PostgresStatus_DONE
+			stepStatus.Result.Status = drss_pb.StepStatus_DONE
 		} else {
-			replyMessage.Status = awsinfra_tpb.PostgresStatus_ERROR
-			replyMessage.Error = aws.String(fmt.Sprintf("task exited with code %d", et.Exited.ExitCode))
+			stepStatus.Result.Status = drss_pb.StepStatus_FAILED
+			stepStatus.Result.Error = aws.String(fmt.Sprintf("task exited with code %d", et.Exited.ExitCode))
 		}
 
 	case *awsinfra_tpb.ECSTaskEventType_Failed_:
-		replyMessage.Status = awsinfra_tpb.PostgresStatus_ERROR
-		replyMessage.Error = aws.String(et.Failed.Reason)
+		stepStatus.Result.Status = drss_pb.StepStatus_FAILED
+		stepStatus.Result.Error = aws.String(et.Failed.Reason)
 		if et.Failed.ContainerName != nil {
-			replyMessage.Error = aws.String(fmt.Sprintf("%s: %s", *et.Failed.ContainerName, et.Failed.Reason))
+			stepStatus.Result.Error = aws.String(fmt.Sprintf("%s: %s", *et.Failed.ContainerName, et.Failed.Reason))
 		}
 
 	case *awsinfra_tpb.ECSTaskEventType_Stopped_:
-		replyMessage.Status = awsinfra_tpb.PostgresStatus_ERROR
-		replyMessage.Error = aws.String(fmt.Sprintf("ECS Task Stopped: %s", et.Stopped.Reason))
+		stepStatus.Result.Status = drss_pb.StepStatus_FAILED
+		stepStatus.Result.Error = aws.String(fmt.Sprintf("ECS Task Stopped: %s", et.Stopped.Reason))
 
 	default:
 		return nil, fmt.Errorf("unknown ECS Status Event type: %T", et)
 	}
-	// TODO: This is a legacy double-adapt, the event should be built
-	// directly from the ECS message.
-	return PostgresMigrationToEvent(replyMessage)
+	return event, nil
 }
 
 func StackStatusToEvent(msg *awsinfra_tpb.StackStatusChangedMessage) (*awsdeployer_pb.DeploymentPSMEventSpec, error) {
@@ -252,4 +272,33 @@ func ChangeSetStatusToEvent(msg *awsinfra_tpb.ChangeSetStatusChangedMessage) (*a
 	event.Event = stepStatus
 
 	return event, nil
+}
+
+func ECSDeploymentStatusToEvent(msg *awsinfra_tpb.ECSDeploymentStatusMessage) (*awsdeployer_pb.DeploymentPSMEventSpec, error) {
+
+	stepContext := &awsdeployer_pb.StepContext{}
+	if err := proto.Unmarshal(msg.Request.Context, stepContext); err != nil {
+		return nil, err
+	}
+
+	event := &awsdeployer_pb.DeploymentPSMEventSpec{
+		Keys: &awsdeployer_pb.DeploymentKeys{
+			DeploymentId: stepContext.DeploymentId,
+		},
+		EventID:   msg.EventId,
+		Timestamp: time.Now(),
+		Cause: &psm_j5pb.Cause{
+			Type: &psm_j5pb.Cause_ExternalEvent{
+				ExternalEvent: &psm_j5pb.ExternalEventCause{
+					SystemName: "deployer",
+					EventName:  "DeploymentStatusChanged",
+					ExternalId: &msg.EventId,
+				},
+			},
+		},
+	}
+
+	_ = event
+	return nil, fmt.Errorf("not implemented")
+
 }

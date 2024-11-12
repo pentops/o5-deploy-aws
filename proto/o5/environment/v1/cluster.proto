@@ -55,6 +55,8 @@ message ECSCluster {
   string default_registry = 3;
 
   repeated string subnet_ids = 5;
+
+  string base_security_group_id = 6;
 }
 
 message ALBIngress {

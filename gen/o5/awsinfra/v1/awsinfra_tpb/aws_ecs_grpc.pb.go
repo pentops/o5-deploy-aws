@@ -20,7 +20,8 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	ECSRequestTopic_RunECSTask_FullMethodName = "/o5.aws.infra.v1.topic.ECSRequestTopic/RunECSTask"
+	ECSRequestTopic_RunECSTask_FullMethodName  = "/o5.aws.infra.v1.topic.ECSRequestTopic/RunECSTask"
+	ECSRequestTopic_SetECSScale_FullMethodName = "/o5.aws.infra.v1.topic.ECSRequestTopic/SetECSScale"
 )
 
 // ECSRequestTopicClient is the client API for ECSRequestTopic service.
@@ -28,6 +29,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ECSRequestTopicClient interface {
 	RunECSTask(ctx context.Context, in *RunECSTaskMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	SetECSScale(ctx context.Context, in *SetECSScaleMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type eCSRequestTopicClient struct {
@@ -47,11 +49,21 @@ func (c *eCSRequestTopicClient) RunECSTask(ctx context.Context, in *RunECSTaskMe
 	return out, nil
 }
 
+func (c *eCSRequestTopicClient) SetECSScale(ctx context.Context, in *SetECSScaleMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ECSRequestTopic_SetECSScale_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ECSRequestTopicServer is the server API for ECSRequestTopic service.
 // All implementations must embed UnimplementedECSRequestTopicServer
 // for forward compatibility
 type ECSRequestTopicServer interface {
 	RunECSTask(context.Context, *RunECSTaskMessage) (*emptypb.Empty, error)
+	SetECSScale(context.Context, *SetECSScaleMessage) (*emptypb.Empty, error)
 	mustEmbedUnimplementedECSRequestTopicServer()
 }
 
@@ -61,6 +73,9 @@ type UnimplementedECSRequestTopicServer struct {
 
 func (UnimplementedECSRequestTopicServer) RunECSTask(context.Context, *RunECSTaskMessage) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RunECSTask not implemented")
+}
+func (UnimplementedECSRequestTopicServer) SetECSScale(context.Context, *SetECSScaleMessage) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SetECSScale not implemented")
 }
 func (UnimplementedECSRequestTopicServer) mustEmbedUnimplementedECSRequestTopicServer() {}
 
@@ -93,6 +108,24 @@ func _ECSRequestTopic_RunECSTask_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ECSRequestTopic_SetECSScale_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetECSScaleMessage)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ECSRequestTopicServer).SetECSScale(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ECSRequestTopic_SetECSScale_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ECSRequestTopicServer).SetECSScale(ctx, req.(*SetECSScaleMessage))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ECSRequestTopic_ServiceDesc is the grpc.ServiceDesc for ECSRequestTopic service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -104,13 +137,18 @@ var ECSRequestTopic_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "RunECSTask",
 			Handler:    _ECSRequestTopic_RunECSTask_Handler,
 		},
+		{
+			MethodName: "SetECSScale",
+			Handler:    _ECSRequestTopic_SetECSScale_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "o5/aws/infra/v1/topic/aws_ecs.proto",
 }
 
 const (
-	ECSReplyTopic_ECSTaskStatus_FullMethodName = "/o5.aws.infra.v1.topic.ECSReplyTopic/ECSTaskStatus"
+	ECSReplyTopic_ECSTaskStatus_FullMethodName       = "/o5.aws.infra.v1.topic.ECSReplyTopic/ECSTaskStatus"
+	ECSReplyTopic_ECSDeploymentStatus_FullMethodName = "/o5.aws.infra.v1.topic.ECSReplyTopic/ECSDeploymentStatus"
 )
 
 // ECSReplyTopicClient is the client API for ECSReplyTopic service.
@@ -118,6 +156,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ECSReplyTopicClient interface {
 	ECSTaskStatus(ctx context.Context, in *ECSTaskStatusMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ECSDeploymentStatus(ctx context.Context, in *ECSDeploymentStatusMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type eCSReplyTopicClient struct {
@@ -137,11 +176,21 @@ func (c *eCSReplyTopicClient) ECSTaskStatus(ctx context.Context, in *ECSTaskStat
 	return out, nil
 }
 
+func (c *eCSReplyTopicClient) ECSDeploymentStatus(ctx context.Context, in *ECSDeploymentStatusMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, ECSReplyTopic_ECSDeploymentStatus_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ECSReplyTopicServer is the server API for ECSReplyTopic service.
 // All implementations must embed UnimplementedECSReplyTopicServer
 // for forward compatibility
 type ECSReplyTopicServer interface {
 	ECSTaskStatus(context.Context, *ECSTaskStatusMessage) (*emptypb.Empty, error)
+	ECSDeploymentStatus(context.Context, *ECSDeploymentStatusMessage) (*emptypb.Empty, error)
 	mustEmbedUnimplementedECSReplyTopicServer()
 }
 
@@ -151,6 +200,9 @@ type UnimplementedECSReplyTopicServer struct {
 
 func (UnimplementedECSReplyTopicServer) ECSTaskStatus(context.Context, *ECSTaskStatusMessage) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ECSTaskStatus not implemented")
+}
+func (UnimplementedECSReplyTopicServer) ECSDeploymentStatus(context.Context, *ECSDeploymentStatusMessage) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ECSDeploymentStatus not implemented")
 }
 func (UnimplementedECSReplyTopicServer) mustEmbedUnimplementedECSReplyTopicServer() {}
 
@@ -183,6 +235,24 @@ func _ECSReplyTopic_ECSTaskStatus_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ECSReplyTopic_ECSDeploymentStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ECSDeploymentStatusMessage)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ECSReplyTopicServer).ECSDeploymentStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ECSReplyTopic_ECSDeploymentStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ECSReplyTopicServer).ECSDeploymentStatus(ctx, req.(*ECSDeploymentStatusMessage))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ECSReplyTopic_ServiceDesc is the grpc.ServiceDesc for ECSReplyTopic service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -193,6 +263,10 @@ var ECSReplyTopic_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ECSTaskStatus",
 			Handler:    _ECSReplyTopic_ECSTaskStatus_Handler,
+		},
+		{
+			MethodName: "ECSDeploymentStatus",
+			Handler:    _ECSReplyTopic_ECSDeploymentStatus_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

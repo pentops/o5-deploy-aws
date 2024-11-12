@@ -21,7 +21,11 @@ func PullAndParse(ctx context.Context, filename string, into proto.Message) erro
 	if err != nil {
 		return fmt.Errorf("reading file %s: %w", filename, err)
 	}
-	return Parse(filename, data, into)
+	err = Parse(filename, data, into)
+	if err != nil {
+		return fmt.Errorf("parsing file %s: %w", filename, err)
+	}
+	return nil
 }
 
 func Parse(filename string, data []byte, into proto.Message) error {

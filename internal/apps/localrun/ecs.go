@@ -10,6 +10,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	cw_types "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
 	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/google/uuid"
@@ -63,7 +64,7 @@ func (d *ecsRunner) runECSTask(ctx context.Context, ecsMsg *awsinfra_tpb.RunECST
 	for {
 		state, err := ecsClient.DescribeTasks(ctx, &ecs.DescribeTasksInput{
 			Tasks:   []string{*task.Tasks[0].TaskArn},
-			Cluster: aws.String(ecsMsg.Cluster),
+			Cluster: aws.String(ecsMsg.Context.Cluster),
 		})
 		if err != nil {
 			return err
@@ -199,6 +200,11 @@ func tailLogStream(ctx context.Context, client awsapi.CloudWatchLogsAPI, logGrou
 			if errors.Is(err, context.Canceled) {
 				log.Debug(ctx, "context canceled, stopping log tail")
 				return
+			}
+
+			notFound := &cw_types.ResourceNotFoundException{}
+			if errors.As(err, &notFound) {
+				continue
 			}
 
 			log.WithError(ctx, err).Error("error getting log events")

@@ -167,3 +167,17 @@ func (dw *DeployerWorker) ECSTaskStatus(ctx context.Context, msg *awsinfra_tpb.E
 
 	return &emptypb.Empty{}, dw.doDeploymentEvent(ctx, event)
 }
+
+func (dw *DeployerWorker) ECSDeploymentStatus(ctx context.Context, msg *awsinfra_tpb.ECSDeploymentStatusMessage) (*emptypb.Empty, error) {
+
+	event, err := ECSDeploymentStatusToEvent(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	if event == nil {
+		return &emptypb.Empty{}, nil
+	}
+
+	return &emptypb.Empty{}, dw.doDeploymentEvent(ctx, event)
+}

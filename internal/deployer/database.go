@@ -40,7 +40,20 @@ func buildDatabaseSpecs(databases []*awsdeployer_pb.PostgresDatabaseResource, aw
 				Type: &awsdeployer_pb.PostgresMigrateSpec_Ecs{
 					Ecs: &awsdeployer_pb.PostgresMigrateSpec_ECS{
 						TaskOutputName: *db.MigrationTaskOutputName,
-						SubnetIds:      awsCluster.EcsCluster.SubnetIds,
+						TaskContext: &awsinfra_pb.ECSTaskContext{
+							Cluster: awsCluster.EcsCluster.ClusterName,
+							Network: &awsinfra_pb.ECSTaskNetworkType{
+								Type: &awsinfra_pb.ECSTaskNetworkType_Awsvpc{
+									Awsvpc: &awsinfra_pb.ECSTaskNetworkType_AWSVPC{
+										SecurityGroups: []string{
+											host.ClientSecurityGroupId,
+											awsCluster.EcsCluster.BaseSecurityGroupId,
+										},
+										Subnets: awsCluster.EcsCluster.SubnetIds,
+									},
+								},
+							},
+						},
 					},
 				},
 			}
