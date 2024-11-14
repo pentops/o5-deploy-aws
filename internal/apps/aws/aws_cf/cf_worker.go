@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
@@ -33,44 +34,15 @@ func (cf *InfraWorker) eventOut(ctx context.Context, msg o5msg.Message) error {
 	return cf.db.PublishEvent(ctx, msg)
 }
 
-func (cf *InfraWorker) HandleCloudFormationEvent(ctx context.Context, fields map[string]string) error {
+func (cf *InfraWorker) HandleStackStatusChangeEvent(ctx context.Context, eventID string, event *StackStatusChangeEvent) error {
 
-	eventID, ok := fields["EventId"]
-	if !ok {
-		return fmt.Errorf("missing EventId")
-	}
+	stackID := event.StackID
+	arnParts := strings.Split(stackID, ":")
+	resource := arnParts[len(arnParts)-1]
+	resourceParts := strings.Split(resource, "/")
+	stackName := resourceParts[1]
 
-	/*
-		timestamp, ok := fields["Timestamp"]
-		if !ok {
-			return fmt.Errorf("missing Timestamp")
-		}*/
-
-	resourceType, ok := fields["ResourceType"]
-	if !ok {
-		return fmt.Errorf("missing ResourceType")
-	}
-
-	if resourceType != "AWS::CloudFormation::Stack" {
-		return nil
-	}
-
-	stackName, ok := fields["StackName"]
-	if !ok {
-		return fmt.Errorf("missing StackName")
-	}
-
-	clientToken, ok := fields["ClientRequestToken"]
-	if !ok {
-		return fmt.Errorf("missing ClientRequestToken")
-	}
-
-	resourceStatus, ok := fields["ResourceStatus"]
-	if !ok {
-		return fmt.Errorf("missing ResourceStatus")
-	}
-
-	lifecycle, err := stackLifecycle(types.StackStatus(resourceStatus))
+	lifecycle, err := stackLifecycle(types.StackStatus(event.StatusDetails.Status))
 	if err != nil {
 		return err
 	}
@@ -91,7 +63,7 @@ func (cf *InfraWorker) HandleCloudFormationEvent(ctx context.Context, fields map
 		outputs = mapOutputs(stack.Outputs)
 	}
 
-	requestMetadata, err := cf.db.ClientTokenToRequest(ctx, clientToken)
+	requestMetadata, err := cf.db.ClientTokenToRequest(ctx, event.ClientRequestToken)
 	if errors.Is(err, tokenstore.RequestTokenNotFound) {
 		return nil
 	} else if err != nil {
@@ -102,7 +74,7 @@ func (cf *InfraWorker) HandleCloudFormationEvent(ctx context.Context, fields map
 		Request:   requestMetadata,
 		EventId:   eventID,
 		StackName: stackName,
-		Status:    resourceStatus,
+		Status:    event.StatusDetails.Status,
 		Outputs:   outputs,
 		Lifecycle: lifecycle,
 	}); err != nil {

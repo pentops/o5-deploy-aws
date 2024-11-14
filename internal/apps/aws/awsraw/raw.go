@@ -7,13 +7,14 @@ import (
 	"strings"
 
 	"github.com/pentops/log.go/log"
+	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_cf"
 	"github.com/pentops/o5-deploy-aws/internal/apps/aws/aws_ecs"
 	"github.com/pentops/o5-messaging/gen/o5/messaging/v1/messaging_tpb"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type RawWorkerCFHandler interface {
-	HandleCloudFormationEvent(ctx context.Context, payload map[string]string) error
+	HandleStackStatusChangeEvent(ctx context.Context, eventID string, event *aws_cf.StackStatusChangeEvent) error
 }
 
 type RawWorkerECSHandler interface {
@@ -39,15 +40,7 @@ func (worker *RawMessageWorker) Raw(ctx context.Context, msg *messaging_tpb.RawM
 	log.WithField(ctx, "topic", msg.Topic).Debug("RawMessage")
 
 	if strings.HasSuffix(msg.Topic, "-o5-infra") {
-
-		if msg.Payload[0] == '{' {
-			if err := worker.HandleInfraJSON(ctx, msg.Payload); err != nil {
-				return nil, err
-			}
-			return &emptypb.Empty{}, nil
-		}
-
-		if err := worker.HandleInfraNonJSON(ctx, msg.Payload); err != nil {
+		if err := worker.HandleEventBridgeEvent(ctx, msg.Payload); err != nil {
 			return nil, err
 		}
 		return &emptypb.Empty{}, nil
@@ -56,7 +49,7 @@ func (worker *RawMessageWorker) Raw(ctx context.Context, msg *messaging_tpb.RawM
 	return nil, fmt.Errorf("unknown topic: %s", msg.Topic)
 }
 
-func (worker *RawMessageWorker) HandleInfraJSON(ctx context.Context, payload []byte) error {
+func (worker *RawMessageWorker) HandleEventBridgeEvent(ctx context.Context, payload []byte) error {
 	infraEvent := &InfraEvent{}
 	if err := json.Unmarshal(payload, infraEvent); err == nil && infraEvent.Valid() {
 		log.WithFields(ctx, map[string]interface{}{
@@ -74,17 +67,6 @@ func (worker *RawMessageWorker) HandleInfraJSON(ctx context.Context, payload []b
 		return nil
 	}
 	return fmt.Errorf("unknown JSON-like message: %s", string(payload))
-}
-
-func (worker *RawMessageWorker) HandleInfraNonJSON(ctx context.Context, payload []byte) error {
-	fields, err := parseAWSRawMessage(payload)
-	if err != nil {
-		return err
-	}
-	if err := worker.cfHandler.HandleCloudFormationEvent(ctx, fields); err != nil {
-		return err
-	}
-	return nil
 }
 
 func parseAWSRawMessage(raw []byte) (map[string]string, error) {
@@ -127,6 +109,16 @@ func (worker *RawMessageWorker) handleAWSInfraEvent(ctx context.Context, infraEv
 		}
 
 		if err := worker.ecsHandler.HandleECSTaskEvent(ctx, infraEvent.ID, taskEvent); err != nil {
+			return fmt.Errorf("failed to handle ECS task event: %w", err)
+		}
+		return nil
+	} else if infraEvent.Source == "aws.cloudformation" && infraEvent.DetailType == "CloudFormation Stack Status Change" {
+		cloudformationEvent := &aws_cf.StackStatusChangeEvent{}
+		if err := json.Unmarshal(infraEvent.Detail, cloudformationEvent); err != nil {
+			return err
+		}
+
+		if err := worker.cfHandler.HandleStackStatusChangeEvent(ctx, infraEvent.ID, cloudformationEvent); err != nil {
 			return fmt.Errorf("failed to handle ECS task event: %w", err)
 		}
 		return nil
