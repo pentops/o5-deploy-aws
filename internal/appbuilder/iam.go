@@ -282,6 +282,7 @@ func (pb *PolicyBuilder) Build(familyName string) []iam.Role_Policy {
 					Effect: "Allow",
 					Action: []string{
 						"s3:ListBucket",
+						"s3:GetBucketLocation",
 					},
 					Resource: pb.s3ReadWriteAcl,
 				}, {
@@ -308,6 +309,7 @@ func (pb *PolicyBuilder) Build(familyName string) []iam.Role_Policy {
 					Effect: "Allow",
 					Action: []string{
 						"s3:ListBucket",
+						"s3:GetBucketLocation",
 					},
 					Resource: pb.s3ReadWrite,
 				}, {
@@ -333,6 +335,7 @@ func (pb *PolicyBuilder) Build(familyName string) []iam.Role_Policy {
 					Effect: "Allow",
 					Action: []string{
 						"s3:ListBucket",
+						"s3:GetBucketLocation",
 					},
 					Resource: pb.s3ReadOnly,
 				}, {
@@ -357,6 +360,7 @@ func (pb *PolicyBuilder) Build(familyName string) []iam.Role_Policy {
 					Effect: "Allow",
 					Action: []string{
 						"s3:ListBucket",
+						"s3:GetBucketLocation",
 					},
 					Resource: pb.s3WriteOnly,
 				}, {

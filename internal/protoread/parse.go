@@ -3,6 +3,7 @@ package protoread
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -11,13 +12,57 @@ import (
 
 	"buf.build/go/protoyaml"
 
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bufbuild/protovalidate-go"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
+type s3API interface {
+	GetObject(context.Context, *s3.GetObjectInput, ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+}
+
+var s3Client s3API
+
+func getS3Client(ctx context.Context) (s3API, error) {
+	if s3Client != nil {
+		return s3Client, nil
+	}
+	awsConfig, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load configuration: %w", err)
+	}
+	s3Client = s3.NewFromConfig(awsConfig)
+	return s3Client, nil
+}
+
+func readFile(ctx context.Context, path string) ([]byte, error) {
+	if strings.HasPrefix(path, "s3://") {
+		client, err := getS3Client(ctx)
+		if err != nil {
+			return nil, err
+		}
+		bucket := strings.TrimPrefix(path, "s3://")
+		parts := strings.SplitN(bucket, "/", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid s3 path: %s", path)
+		}
+		res, err := client.GetObject(ctx, &s3.GetObjectInput{
+			Bucket: &parts[0],
+			Key:    &parts[1],
+		})
+		if err != nil {
+			return nil, fmt.Errorf("get object: %w", err)
+		}
+
+		return io.ReadAll(res.Body)
+	}
+	return os.ReadFile(path)
+}
+
 func PullAndParse(ctx context.Context, filename string, into proto.Message) error {
-	data, err := os.ReadFile(filename)
+	data, err := readFile(ctx, filename)
 	if err != nil {
 		return fmt.Errorf("reading file %s: %w", filename, err)
 	}

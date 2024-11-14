@@ -73,5 +73,26 @@ func (tr TemplateRef) RefPtr() *string {
 }
 
 func Join(sep string, parts ...any) TemplateRef {
-	return TemplateRef(cloudformation.Join(sep, parts))
+	if len(parts) == 1 {
+		part := parts[0]
+		switch part := part.(type) {
+		case []string:
+			return TemplateRef(cloudformation.Join(sep, part))
+		}
+	}
+
+	partStrings := make([]string, len(parts))
+
+	for i, part := range parts {
+		switch part := part.(type) {
+		case string:
+			partStrings[i] = part
+		case TemplateRef:
+			partStrings[i] = string(part)
+		default:
+			partStrings[i] = fmt.Sprintf("%v", part)
+		}
+	}
+
+	return TemplateRef(cloudformation.Join(sep, partStrings))
 }
