@@ -127,7 +127,10 @@ func NewStackEventer() (*awsdeployer_pb.StackPSM, error) {
 		}))
 
 	// MIGRATING --> AVAILABLE : DeploymentCompleted
-	sm.From(awsdeployer_pb.StackStatus_MIGRATING).
+	sm.From(
+		awsdeployer_pb.StackStatus_MIGRATING,
+		awsdeployer_pb.StackStatus_AVAILABLE,
+	).
 		OnEvent(awsdeployer_pb.StackPSMEventDeploymentCompleted).
 		SetStatus(awsdeployer_pb.StackStatus_AVAILABLE).
 		Mutate(awsdeployer_pb.StackPSMMutation(func(

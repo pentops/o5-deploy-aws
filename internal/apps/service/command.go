@@ -123,6 +123,7 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *awsdeploye
 	return &awsdeployer_spb.TriggerDeploymentResponse{
 		DeploymentId:  req.DeploymentId,
 		EnvironmentId: environmentID.environmentID,
+		ClusterId:     environmentID.clusterID,
 	}, nil
 }
 
