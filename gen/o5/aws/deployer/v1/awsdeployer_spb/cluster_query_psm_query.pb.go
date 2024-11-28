@@ -3,7 +3,9 @@
 package awsdeployer_spb
 
 import (
+	context "context"
 	psm "github.com/pentops/protostate/psm"
+	sqrlx "github.com/pentops/sqrlx.go/sqrlx"
 )
 
 // State Query Service for %sCluster
@@ -68,4 +70,46 @@ func DefaultClusterPSMQuerySpec(tableSpec psm.QueryTableSpec) ClusterPSMQuerySpe
 			return filter, nil
 		},
 	}
+}
+
+type ClusterQueryServiceImpl struct {
+	db       sqrlx.Transactor
+	querySet *ClusterPSMQuerySet
+	UnsafeClusterQueryServiceServer
+}
+
+var _ ClusterQueryServiceServer = &ClusterQueryServiceImpl{}
+
+func NewClusterQueryServiceImpl(db sqrlx.Transactor, querySet *ClusterPSMQuerySet) *ClusterQueryServiceImpl {
+	return &ClusterQueryServiceImpl{
+		db:       db,
+		querySet: querySet,
+	}
+}
+
+func (s *ClusterQueryServiceImpl) GetCluster(ctx context.Context, req *GetClusterRequest) (*GetClusterResponse, error) {
+	resObject := &GetClusterResponse{}
+	err := s.querySet.Get(ctx, s.db, req, resObject)
+	if err != nil {
+		return nil, err
+	}
+	return resObject, nil
+}
+
+func (s *ClusterQueryServiceImpl) ListClusters(ctx context.Context, req *ListClustersRequest) (*ListClustersResponse, error) {
+	resObject := &ListClustersResponse{}
+	err := s.querySet.List(ctx, s.db, req, resObject)
+	if err != nil {
+		return nil, err
+	}
+	return resObject, nil
+}
+
+func (s *ClusterQueryServiceImpl) ListClusterEvents(ctx context.Context, req *ListClusterEventsRequest) (*ListClusterEventsResponse, error) {
+	resObject := &ListClusterEventsResponse{}
+	err := s.querySet.ListEvents(ctx, s.db, req, resObject)
+	if err != nil {
+		return nil, err
+	}
+	return resObject, nil
 }

@@ -101,6 +101,19 @@ func (msg *RunECSTaskMessage) O5MessageHeader() o5msg.Header {
 		Headers:          map[string]string{},
 		DestinationTopic: "o5-aws-command_request",
 	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
 	return header
 }
 
@@ -124,6 +137,19 @@ func (msg *SetECSScaleMessage) O5MessageHeader() o5msg.Header {
 		GrpcMethod:       "SetECSScale",
 		Headers:          map[string]string{},
 		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
 	}
 	return header
 }

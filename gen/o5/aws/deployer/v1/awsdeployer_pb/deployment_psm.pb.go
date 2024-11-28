@@ -69,10 +69,16 @@ func (msg *DeploymentKeys) PSMFullName() string {
 }
 func (msg *DeploymentKeys) PSMKeyValues() (map[string]string, error) {
 	keyset := map[string]string{
-		"deployment_id":  msg.DeploymentId,
-		"stack_id":       msg.StackId,
-		"environment_id": msg.EnvironmentId,
-		"cluster_id":     msg.ClusterId,
+		"deployment_id": msg.DeploymentId,
+	}
+	if msg.StackId != "" {
+		keyset["stack_id"] = msg.StackId
+	}
+	if msg.EnvironmentId != "" {
+		keyset["environment_id"] = msg.EnvironmentId
+	}
+	if msg.ClusterId != "" {
+		keyset["cluster_id"] = msg.ClusterId
 	}
 	return keyset, nil
 }

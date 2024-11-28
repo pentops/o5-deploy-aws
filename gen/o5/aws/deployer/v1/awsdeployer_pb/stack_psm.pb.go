@@ -63,9 +63,13 @@ func (msg *StackKeys) PSMFullName() string {
 }
 func (msg *StackKeys) PSMKeyValues() (map[string]string, error) {
 	keyset := map[string]string{
-		"stack_id":       msg.StackId,
-		"environment_id": msg.EnvironmentId,
-		"cluster_id":     msg.ClusterId,
+		"stack_id": msg.StackId,
+	}
+	if msg.EnvironmentId != "" {
+		keyset["environment_id"] = msg.EnvironmentId
+	}
+	if msg.ClusterId != "" {
+		keyset["cluster_id"] = msg.ClusterId
 	}
 	return keyset, nil
 }
