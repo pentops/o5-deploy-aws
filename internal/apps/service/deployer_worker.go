@@ -2,16 +2,20 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/pentops/j5/gen/j5/state/v1/psm_j5pb"
+	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/apps/service/internal/states"
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
+	"github.com/pentops/o5-messaging/outbox"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -63,14 +67,42 @@ type appStack struct {
 }
 
 func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *awsdeployer_tpb.RequestDeploymentMessage) (*emptypb.Empty, error) {
+	tryHandleError := func(causeErr error) (*emptypb.Empty, error) {
+		if msg.Request == nil {
+			return nil, causeErr
+		}
+
+		reply := &awsdeployer_tpb.DeploymentStatusMessage{
+			Request:      msg.Request,
+			DeploymentId: msg.DeploymentId,
+			Status:       awsdeployer_tpb.DeploymentStatus_FAILED,
+			Message:      fmt.Errorf("Pre-Deployment Error: %s", causeErr).Error(),
+		}
+
+		err := dw.lookup.db.Transact(ctx, &sqrlx.TxOptions{
+			ReadOnly:  false,
+			Retryable: true,
+			Isolation: sql.LevelReadCommitted,
+		}, func(ctx context.Context, tx sqrlx.Transaction) error {
+			return outbox.Send(ctx, tx, reply)
+		})
+		if err != nil {
+			log.WithError(ctx, err).Error("Failed to send deployment status outbox message")
+			return nil, causeErr
+		}
+
+		return &emptypb.Empty{}, nil
+
+	}
+
 	appID, err := dw.lookup.lookupAppStack(ctx, msg.EnvironmentId, msg.Application.Name)
 	if err != nil {
-		return nil, err
+		return tryHandleError(err)
 	}
 
 	spec, err := dw.specBuilder.BuildSpec(ctx, msg, appID.cluster, appID.environment)
 	if err != nil {
-		return nil, err
+		return tryHandleError(err)
 	}
 
 	createDeploymentEvent := &awsdeployer_pb.DeploymentPSMEventSpec{
