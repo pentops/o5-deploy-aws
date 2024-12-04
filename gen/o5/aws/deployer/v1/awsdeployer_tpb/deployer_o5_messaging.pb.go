@@ -81,6 +81,19 @@ func (msg *RequestDeploymentMessage) O5MessageHeader() o5msg.Header {
 		Headers:          map[string]string{},
 		DestinationTopic: "o5-deployer-input_request",
 	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
 	return header
 }
 

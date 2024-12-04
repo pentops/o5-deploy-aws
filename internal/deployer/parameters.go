@@ -1,14 +1,14 @@
 package deployer
 
 import (
-	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
-	"github.com/pentops/o5-deploy-aws/internal/cf/app"
+	"github.com/pentops/o5-deploy-aws/internal/appbuilder"
 )
 
 const (
@@ -19,62 +19,110 @@ type ParameterResolver interface {
 	ResolveParameter(param *awsdeployer_pb.Parameter) (*awsdeployer_pb.CloudFormationStackParameter, error)
 }
 
-func BuildParameterResolver(ctx context.Context, cluster *environment_pb.Cluster, environment *environment_pb.Environment) (*deployerResolver, error) {
+type parameterInput struct {
+	cluster     *environment_pb.Cluster
+	dbDeps      []*awsdeployer_pb.PostgresSpec
+	environment *environment_pb.Environment
+}
 
-	awsEnv := environment.GetAws()
+func buildParameterResolver(input parameterInput) (*deployerResolver, error) {
+
+	awsEnv := input.environment.GetAws()
 	if awsEnv == nil {
 		return nil, errors.New("AWS Deployer requires the type of environment provider to be AWS")
 	}
 
-	ecsCluster := cluster.GetEcsCluster()
-
-	hostHeader := "*.*"
-	if awsEnv.HostHeader != nil {
-		hostHeader = *awsEnv.HostHeader
+	ecsCluster := input.cluster.GetAws()
+	if ecsCluster == nil {
+		return nil, errors.New("AWS Deployer requires the type of cluster provider to be AWS")
 	}
-
-	crossEnvs := map[string]*environment_pb.AWSLink{}
-
-	for _, envLink := range awsEnv.EnvironmentLinks {
-		crossEnvs[envLink.LookupName] = envLink
-	}
-
-	sidecarImageName := DefaultO5SidecarImageName
-	if ecsCluster.SidecarImageRepo != nil {
-		sidecarImageName = *ecsCluster.SidecarImageRepo
-	}
-
-	sidecarImageVersion := ecsCluster.SidecarImageVersion
-	sidecarFullImage := fmt.Sprintf("%s:%s", sidecarImageName, sidecarImageVersion)
 
 	namedPolicies := map[string]string{}
 	for _, policy := range awsEnv.IamPolicies {
 		namedPolicies[policy.Name] = policy.PolicyArn
 	}
 
+	crossEnvs := map[string]*environment_pb.AWSLink{}
+	for _, envLink := range awsEnv.EnvironmentLinks {
+		crossEnvs[envLink.LookupName] = envLink
+	}
+
+	databaseHosts := map[string]*environment_pb.RDSHost{}
+	for _, host := range ecsCluster.RdsHosts {
+		databaseHosts[host.ServerGroupName] = host
+	}
+
+	postgresSpecs := map[string]*awsdeployer_pb.PostgresSpec{}
+	for _, dbDep := range input.dbDeps {
+		postgresSpecs[dbDep.AppKey] = dbDep
+	}
+
+	wellKnown, err := buildWellKnown(input.cluster, input.environment)
+	if err != nil {
+		return nil, err
+	}
+
 	dr := &deployerResolver{
-		wellKnown: map[string]string{
-			app.ListenerARNParameter:          ecsCluster.ListenerArn,
-			app.HostHeaderParameter:           hostHeader,
-			app.ECSClusterParameter:           ecsCluster.EcsClusterName,
-			app.ECSRepoParameter:              ecsCluster.EcsRepo,
-			app.ECSTaskExecutionRoleParameter: ecsCluster.EcsTaskExecutionRole,
-			app.EnvNameParameter:              environment.FullName,
-			app.ClusterNameParameter:          cluster.Name,
-			app.VPCParameter:                  ecsCluster.VpcId,
-			app.MetaDeployAssumeRoleParameter: strings.Join(ecsCluster.O5DeployerGrantRoles, ","),
-			app.JWKSParameter:                 strings.Join(environment.TrustJwks, ","),
-			app.SNSPrefixParameter:            fmt.Sprintf("arn:aws:sns:%s:%s:%s", ecsCluster.AwsRegion, ecsCluster.AwsAccount, environment.FullName),
-			app.S3BucketNamespaceParameter:    ecsCluster.GlobalNamespace,
-			app.O5SidecarImageParameter:       sidecarFullImage,
-			app.CORSOriginParameter:           strings.Join(environment.CorsOrigins, ","),
-			app.EventBusARNParameter:          ecsCluster.EventBusArn,
-		},
-		custom:        environment.Vars,
+		wellKnown:     wellKnown,
+		custom:        input.environment.Vars,
 		crossEnvs:     crossEnvs,
 		namedPolicies: namedPolicies,
+		databaseHosts: databaseHosts,
+		postgresSpecs: postgresSpecs,
 	}
 	return dr, nil
+}
+
+func buildWellKnown(cluster *environment_pb.Cluster, environment *environment_pb.Environment) (map[string]string, error) {
+
+	awsEnv := environment.GetAws()
+	if awsEnv == nil {
+		return nil, errors.New("AWS Deployer requires the type of environment provider to be AWS")
+	}
+
+	ecsCluster := cluster.GetAws()
+	if ecsCluster == nil {
+		return nil, errors.New("AWS Deployer requires the type of cluster provider to be AWS")
+	}
+
+	hostHeader := "*.*"
+	if awsEnv.HostHeader != nil {
+		hostHeader = *awsEnv.HostHeader
+	}
+
+	sidecarImageName := DefaultO5SidecarImageName
+	if ecsCluster.O5Sidecar == nil {
+		return nil, errors.New("O5Sidecar is required for AWS Deployer")
+	}
+	if ecsCluster.O5Sidecar.ImageRepo != nil {
+		sidecarImageName = *ecsCluster.O5Sidecar.ImageRepo
+	}
+	sidecarImageVersion := ecsCluster.O5Sidecar.ImageVersion
+
+	sidecarFullImage := fmt.Sprintf("%s:%s", sidecarImageName, sidecarImageVersion)
+
+	wellKnown := map[string]string{
+		appbuilder.ListenerARNParameter:          ecsCluster.AlbIngress.ListenerArn,
+		appbuilder.HostHeaderParameter:           hostHeader,
+		appbuilder.ECSClusterParameter:           ecsCluster.EcsCluster.ClusterName,
+		appbuilder.ECSRepoParameter:              ecsCluster.EcsCluster.DefaultRegistry,
+		appbuilder.ECSTaskExecutionRoleParameter: ecsCluster.EcsCluster.TaskExecutionRole,
+		appbuilder.VPCParameter:                  ecsCluster.VpcId,
+		appbuilder.MetaDeployAssumeRoleParameter: ecsCluster.O5Deployer.AssumeRoleArn,
+		appbuilder.SNSPrefixParameter:            fmt.Sprintf("arn:aws:sns:%s:%s:%s", ecsCluster.AwsRegion, ecsCluster.AwsAccount, environment.FullName),
+		appbuilder.S3BucketNamespaceParameter:    ecsCluster.GlobalNamespace,
+		appbuilder.O5SidecarImageParameter:       sidecarFullImage,
+
+		appbuilder.LoadBalancerSecurityGroup: ecsCluster.AlbIngress.SecurityGroupId,
+		appbuilder.SubnetIDsParameter:        strings.Join(ecsCluster.EcsCluster.SubnetIds, ","),
+		appbuilder.EventBusARNParameter:      ecsCluster.EventBridge.EventBusArn,
+		appbuilder.JWKSParameter:             strings.Join(environment.TrustJwks, ","),
+		appbuilder.CORSOriginParameter:       strings.Join(environment.CorsOrigins, ","),
+		appbuilder.ClusterNameParameter:      cluster.Name,
+		appbuilder.EnvNameParameter:          environment.FullName,
+	}
+	return wellKnown, nil
+
 }
 
 type deployerResolver struct {
@@ -82,6 +130,8 @@ type deployerResolver struct {
 	namedPolicies map[string]string
 	custom        []*environment_pb.CustomVariable
 	crossEnvs     map[string]*environment_pb.AWSLink
+	postgresSpecs map[string]*awsdeployer_pb.PostgresSpec
+	databaseHosts map[string]*environment_pb.RDSHost
 }
 
 func (rr *deployerResolver) ResolveParameter(param *awsdeployer_pb.Parameter) (*awsdeployer_pb.CloudFormationStackParameter, error) {
@@ -151,6 +201,59 @@ func (rr *deployerResolver) ResolveParameter(param *awsdeployer_pb.Parameter) (*
 		}
 		value = arn
 
+	case *awsdeployer_pb.ParameterSourceType_Aurora_:
+		spec, ok := rr.postgresSpecs[ps.Aurora.AppKey]
+		if !ok {
+			return nil, fmt.Errorf("unknown postgres DB (aurora): %s", ps.Aurora.AppKey)
+		}
+		aurora := spec.AppConnection.GetAurora()
+		if aurora == nil {
+			return nil, fmt.Errorf("database %s is not an aurora database but is used in parameter %s", ps.Aurora.AppKey, param.Name)
+		}
+
+		host := aurora.Conn
+		switch ps.Aurora.Part {
+		case awsdeployer_pb.ParameterSourceType_Aurora_PART_JSON:
+
+			if host.Port == 0 {
+				host.Port = 5432
+			}
+			jsonValue, err := json.Marshal(&AuroraIAMParameterValue{
+				Endpoint: fmt.Sprintf("%s:%d", host.Endpoint, host.Port),
+				DbName:   host.DbName,
+				DbUser:   host.DbUser,
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			value = string(jsonValue)
+		case awsdeployer_pb.ParameterSourceType_Aurora_PART_ENDPOINT:
+			value = host.Endpoint
+
+		case awsdeployer_pb.ParameterSourceType_Aurora_PART_IDENTIFIER:
+			value = host.Identifier
+
+		case awsdeployer_pb.ParameterSourceType_Aurora_PART_DBNAME:
+			value = host.DbName
+
+		default:
+			return nil, fmt.Errorf("unknown aurora part: %v", ps.Aurora.Part)
+		}
+
+	case *awsdeployer_pb.ParameterSourceType_DatabaseServer_:
+		host, ok := rr.databaseHosts[ps.DatabaseServer.ServerGroup]
+		if !ok {
+			return nil, fmt.Errorf("unknown aurora server group: %s", ps.DatabaseServer.ServerGroup)
+		}
+
+		switch ps.DatabaseServer.Part {
+		case awsdeployer_pb.ParameterSourceType_DatabaseServer_PART_CLIENT_SECURITY_GROUP:
+			value = host.ClientSecurityGroupId
+		default:
+			return nil, fmt.Errorf("unknown database part: %v", ps.DatabaseServer.Part)
+		}
+
 	default:
 		return nil, fmt.Errorf("unknown parameter source (%v) %s", param.Source, param.Name)
 	}
@@ -162,6 +265,12 @@ func (rr *deployerResolver) ResolveParameter(param *awsdeployer_pb.Parameter) (*
 		},
 	}, nil
 
+}
+
+type AuroraIAMParameterValue struct {
+	Endpoint string `json:"endpoint"` // Address and Port
+	DbName   string `json:"dbName"`
+	DbUser   string `json:"dbUser"`
 }
 
 func (dr *deployerResolver) CustomEnvVar(name string) (string, bool) {

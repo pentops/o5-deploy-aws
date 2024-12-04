@@ -35,14 +35,19 @@ plugins:
   - base: go
     name: go-sugar
     docker:
-      image: ghcr.io/pentops/protoc-gen-go-sugar:19495b5f5ac3fd3964a03031396d83f1bc1341ca
+      image: ghcr.io/pentops/protoc-gen-go-sugar:b1e769eeea97192209ab5a4e8fc560bf72ce5ba7
 
   - base: go
     name: go-o5-messaging
     docker:
-      image: ghcr.io/pentops/protoc-gen-go-o5-messaging:81b197123419ac73734af5062d4a0d15d43ab92b
+      image: ghcr.io/pentops/protoc-gen-go-o5-messaging:68b2fdd8a093fc5ee01568ae04cb99014d034b87
 
   - base: go
     name: go-psm
     docker:
-      image: ghcr.io/pentops/protoc-gen-go-protostate:0cd7da8dfca418cd0afb8ea5e6a3bd4b741576c9
+      image: ghcr.io/pentops/protoc-gen-go-protostate:89487e2fca11e0b392c6587809bdd1a01404bf51
+
+pluginOverrides:
+  - name: go-sugar
+    local:
+      cmd: protoc-gen-go-sugar

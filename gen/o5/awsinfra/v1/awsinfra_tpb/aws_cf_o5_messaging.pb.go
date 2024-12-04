@@ -201,6 +201,19 @@ func (msg *CreateNewStackMessage) O5MessageHeader() o5msg.Header {
 		Headers:          map[string]string{},
 		DestinationTopic: "o5-aws-command_request",
 	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
 	return header
 }
 
@@ -224,6 +237,19 @@ func (msg *UpdateStackMessage) O5MessageHeader() o5msg.Header {
 		GrpcMethod:       "UpdateStack",
 		Headers:          map[string]string{},
 		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
 	}
 	return header
 }
@@ -249,6 +275,19 @@ func (msg *CreateChangeSetMessage) O5MessageHeader() o5msg.Header {
 		Headers:          map[string]string{},
 		DestinationTopic: "o5-aws-command_request",
 	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
 	return header
 }
 
@@ -272,6 +311,19 @@ func (msg *ApplyChangeSetMessage) O5MessageHeader() o5msg.Header {
 		GrpcMethod:       "ApplyChangeSet",
 		Headers:          map[string]string{},
 		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
 	}
 	return header
 }
@@ -297,6 +349,19 @@ func (msg *ScaleStackMessage) O5MessageHeader() o5msg.Header {
 		Headers:          map[string]string{},
 		DestinationTopic: "o5-aws-command_request",
 	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
 	return header
 }
 
@@ -321,6 +386,19 @@ func (msg *CancelStackUpdateMessage) O5MessageHeader() o5msg.Header {
 		Headers:          map[string]string{},
 		DestinationTopic: "o5-aws-command_request",
 	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
 	return header
 }
 
@@ -344,6 +422,19 @@ func (msg *StabalizeStackMessage) O5MessageHeader() o5msg.Header {
 		GrpcMethod:       "StabalizeStack",
 		Headers:          map[string]string{},
 		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
 	}
 	return header
 }

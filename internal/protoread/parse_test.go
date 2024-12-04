@@ -1,7 +1,7 @@
 package protoread
 
 import (
-	"fmt"
+	"errors"
 	"testing"
 )
 
@@ -22,9 +22,9 @@ func TestFindTokenError(t *testing.T) {
 	}
 
 	for _, tt := range tc {
-		err := findTokenError([]byte(tt.data), fmt.Errorf(tt.err))
+		err := findTokenError([]byte(tt.data), errors.New(tt.err))
 		if err == nil {
-			t.Errorf("expected error, got nil")
+			t.Error("expected error, got nil")
 		}
 
 		t.Log(err)

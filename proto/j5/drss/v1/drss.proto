@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package j5.drss.v1;
+
+option go_package = "github.com/pentops/o5-deploy-aws/gen/j5/drss/v1/drss_pb";
+
+message StepMeta {
+  string step_id = 1;
+  string name = 2;
+  StepStatus status = 3;
+  optional string error = 6;
+  repeated string depends_on = 7;
+}
+
+enum StepStatus {
+  STEP_STATUS_UNSPECIFIED = 0;
+  STEP_STATUS_BLOCKED = 1;
+  STEP_STATUS_READY = 2;
+  STEP_STATUS_ACTIVE = 3;
+  STEP_STATUS_DONE = 4;
+  STEP_STATUS_FAILED = 5;
+}
+
+message StepResult {
+  string step_id = 1;
+  StepStatus status = 2;
+  optional string error = 3;
+}

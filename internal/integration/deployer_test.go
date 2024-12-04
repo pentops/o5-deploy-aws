@@ -2,22 +2,77 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/google/uuid"
 	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
+	"github.com/pentops/o5-deploy-aws/gen/j5/drss/v1/drss_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
-	"github.com/pentops/o5-deploy-aws/internal/states"
-	"github.com/pentops/o5-deploy-aws/internal/states/plan/planbuild"
+	"github.com/pentops/o5-deploy-aws/internal/deployer/plan/planbuild"
 	"github.com/pentops/realms/authtest"
 
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 )
+
+func tValidApp(name string) *application_pb.Application {
+	return &application_pb.Application{
+		Name: name,
+		Runtimes: []*application_pb.Runtime{{
+			Name: "main",
+			Containers: []*application_pb.Container{{
+				Name: "main",
+				Source: &application_pb.Container_Image_{
+					Image: &application_pb.Container_Image{
+						Name: "image",
+					},
+				},
+			}},
+		}},
+	}
+}
+
+func tValidCombinedCluster(clusterName, envName string) *environment_pb.CombinedConfig {
+	return &environment_pb.CombinedConfig{
+		Name: clusterName,
+		Provider: &environment_pb.CombinedConfig_Aws{
+			Aws: tValidAWSCluster(),
+		},
+		Environments: []*environment_pb.Environment{{
+			FullName: fmt.Sprintf("%s-%s", clusterName, envName),
+			Provider: &environment_pb.Environment_Aws{
+				Aws: &environment_pb.AWSEnvironment{
+					HostHeader: aws.String("host"),
+				},
+			},
+		}},
+	}
+}
+
+func tValidAWSCluster() *environment_pb.AWSCluster {
+	return &environment_pb.AWSCluster{
+		EcsCluster: &environment_pb.ECSCluster{
+			ClusterName: "cluster",
+		},
+		O5Sidecar: &environment_pb.O5Sidecar{
+			ImageVersion: "version1",
+		},
+		AlbIngress: &environment_pb.ALBIngress{
+			ListenerArn: "listener",
+		},
+		EventBridge: &environment_pb.EventBridge{
+			EventBusArn: "bus",
+		},
+		O5Deployer: &environment_pb.O5Deployer{
+			AssumeRoleArn: "role",
+		},
+	}
+}
 
 func TestDeploymentFlow(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -28,7 +83,7 @@ func TestDeploymentFlow(t *testing.T) {
 	// Trigger the deployment by pushing to the configured branch
 	request := &awsdeployer_tpb.RequestDeploymentMessage{
 		DeploymentId: uuid.NewString(),
-		Application:  &application_pb.Application{Name: "app"},
+		Application:  tValidApp("app"),
 		Version:      "1",
 	}
 
@@ -41,10 +96,8 @@ func TestDeploymentFlow(t *testing.T) {
 			Src: &awsdeployer_spb.UpsertClusterRequest_Config{
 				Config: &environment_pb.CombinedConfig{
 					Name: "cluster",
-					Provider: &environment_pb.CombinedConfig_EcsCluster{
-						EcsCluster: &environment_pb.ECSCluster{
-							EcsClusterName: "cluster",
-						},
+					Provider: &environment_pb.CombinedConfig_Aws{
+						Aws: tValidAWSCluster(),
 					},
 				},
 			},
@@ -70,14 +123,6 @@ func TestDeploymentFlow(t *testing.T) {
 		envConfitured := t.PopEnvironmentEvent(t, awsdeployer_pb.EnvironmentPSMEventConfigured, awsdeployer_pb.EnvironmentStatus_ACTIVE)
 		environmentID = envConfitured.Event.Keys.EnvironmentId
 
-		/*
-			_, err = t.DeployerCommand.UpsertStack(ctx, &awsdeployer_spb.UpsertStackRequest{
-				StackId: "cluster-env-app",
-			})
-			t.NoError(err)
-
-			t.PopStackEvent(t, awsdeployer_pb.StackPSMEventConfigured, awsdeployer_pb.StackStatus_AVAILABLE)
-		*/
 		request.EnvironmentId = environmentID
 	})
 
@@ -128,10 +173,10 @@ func TestDeploymentFlow(t *testing.T) {
 
 		deploymentState := t.AssertDeploymentStatus(t, request.DeploymentId, awsdeployer_pb.DeploymentStatus_RUNNING)
 
-		assertStepStatus(t, deploymentState, map[string]awsdeployer_pb.StepStatus{
-			planbuild.StepCFCreateEmpty: awsdeployer_pb.StepStatus_ACTIVE,
-			planbuild.StepCFUpdate:      awsdeployer_pb.StepStatus_BLOCKED,
-			planbuild.StepScaleUp:       awsdeployer_pb.StepStatus_BLOCKED,
+		assertStepStatus(t, deploymentState, map[string]drss_pb.StepStatus{
+			planbuild.StepCFCreateEmpty: drss_pb.StepStatus_ACTIVE,
+			planbuild.StepCFUpdate:      drss_pb.StepStatus_BLOCKED,
+			planbuild.StepScaleUp:       drss_pb.StepStatus_BLOCKED,
 		})
 	})
 
@@ -168,10 +213,10 @@ func TestDeploymentFlow(t *testing.T) {
 
 		deploymentState := t.AssertDeploymentStatus(t, request.DeploymentId, awsdeployer_pb.DeploymentStatus_RUNNING)
 
-		assertStepStatus(t, deploymentState, map[string]awsdeployer_pb.StepStatus{
-			planbuild.StepCFCreateEmpty: awsdeployer_pb.StepStatus_DONE,
-			planbuild.StepCFUpdate:      awsdeployer_pb.StepStatus_ACTIVE,
-			planbuild.StepScaleUp:       awsdeployer_pb.StepStatus_BLOCKED,
+		assertStepStatus(t, deploymentState, map[string]drss_pb.StepStatus{
+			planbuild.StepCFCreateEmpty: drss_pb.StepStatus_DONE,
+			planbuild.StepCFUpdate:      drss_pb.StepStatus_ACTIVE,
+			planbuild.StepScaleUp:       drss_pb.StepStatus_BLOCKED,
 		})
 
 		migrateRequest := &awsinfra_tpb.UpdateStackMessage{
@@ -204,10 +249,10 @@ func TestDeploymentFlow(t *testing.T) {
 
 		deploymentState := t.AssertDeploymentStatus(t, request.DeploymentId, awsdeployer_pb.DeploymentStatus_RUNNING)
 
-		assertStepStatus(t, deploymentState, map[string]awsdeployer_pb.StepStatus{
-			planbuild.StepCFCreateEmpty: awsdeployer_pb.StepStatus_DONE,
-			planbuild.StepCFUpdate:      awsdeployer_pb.StepStatus_DONE,
-			planbuild.StepScaleUp:       awsdeployer_pb.StepStatus_ACTIVE,
+		assertStepStatus(t, deploymentState, map[string]drss_pb.StepStatus{
+			planbuild.StepCFCreateEmpty: drss_pb.StepStatus_DONE,
+			planbuild.StepCFUpdate:      drss_pb.StepStatus_DONE,
+			planbuild.StepScaleUp:       drss_pb.StepStatus_ACTIVE,
 		})
 
 		scaleUpRequest := &awsinfra_tpb.ScaleStackMessage{
@@ -256,9 +301,7 @@ func TestStackLock(t *testing.T) {
 	defer ss.RunSteps(t)
 
 	var environmentID string
-	appDef := &application_pb.Application{
-		Name: "app",
-	}
+	var stackID string
 
 	firstDeploymentID := uuid.NewString()
 	secondDeploymentID := uuid.NewString()
@@ -268,41 +311,20 @@ func TestStackLock(t *testing.T) {
 		_, err := t.DeployerCommand.UpsertCluster(ctx, &awsdeployer_spb.UpsertClusterRequest{
 			ClusterId: "cluster",
 			Src: &awsdeployer_spb.UpsertClusterRequest_Config{
-				Config: &environment_pb.CombinedConfig{
-					Name: "cluster",
-					Provider: &environment_pb.CombinedConfig_EcsCluster{
-						EcsCluster: &environment_pb.ECSCluster{
-							EcsClusterName: "cluster",
-						},
-					},
-				},
+				Config: tValidCombinedCluster("cluster", "env"),
 			},
 		})
 		t.NoError(err)
 
-		res, err := t.DeployerCommand.UpsertEnvironment(ctx, &awsdeployer_spb.UpsertEnvironmentRequest{
-			EnvironmentId: "env",
-			ClusterId:     "cluster",
-			Src: &awsdeployer_spb.UpsertEnvironmentRequest_Config{
-				Config: &environment_pb.Environment{
-					FullName: "env",
-					Provider: &environment_pb.Environment_Aws{
-						Aws: &environment_pb.AWSEnvironment{
-							HostHeader: aws.String("host"),
-						},
-					},
-				},
-			},
-		})
 		t.NoError(err)
-		environmentID = res.State.Keys.EnvironmentId
-		t.PopEnvironmentEvent(t, awsdeployer_pb.EnvironmentPSMEventConfigured, awsdeployer_pb.EnvironmentStatus_ACTIVE)
+		env := t.PopEnvironmentEvent(t, awsdeployer_pb.EnvironmentPSMEventConfigured, awsdeployer_pb.EnvironmentStatus_ACTIVE)
+		environmentID = env.Event.Keys.EnvironmentId
 	})
 
 	ss.Step("Request and begin first deployment", func(ctx context.Context, t UniverseAsserter) {
 		firstDeploymentRequest := &awsdeployer_tpb.RequestDeploymentMessage{
 			DeploymentId:  firstDeploymentID,
-			Application:   appDef,
+			Application:   tValidApp("app"),
 			Version:       "1",
 			EnvironmentId: environmentID,
 			Flags: &awsdeployer_pb.DeploymentFlags{
@@ -316,14 +338,15 @@ func TestStackLock(t *testing.T) {
 		}
 
 		t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEventCreated, awsdeployer_pb.DeploymentStatus_QUEUED)
-		t.PopStackEvent(t, awsdeployer_pb.StackPSMEventDeploymentRequested, awsdeployer_pb.StackStatus_AVAILABLE)
+		stackEvt := t.PopStackEvent(t, awsdeployer_pb.StackPSMEventDeploymentRequested, awsdeployer_pb.StackStatus_AVAILABLE)
 		t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEventTriggered, awsdeployer_pb.DeploymentStatus_TRIGGERED)
 		t.PopStackEvent(t, awsdeployer_pb.StackPSMEventRunDeployment, awsdeployer_pb.StackStatus_MIGRATING)
 
 		t.AWSStack.ExpectStabalizeStack(t)
+		stackID = stackEvt.Event.Keys.StackId
 
 		t.AssertDeploymentStatus(t, firstDeploymentID, awsdeployer_pb.DeploymentStatus_WAITING)
-		t.AssertStackStatus(t, states.StackID("env", "app"),
+		t.AssertStackStatus(t, stackID,
 			awsdeployer_pb.StackStatus_MIGRATING,
 			[]string{})
 
@@ -339,7 +362,7 @@ func TestStackLock(t *testing.T) {
 		t.AWSStack.ExpectCreateStack(t)
 
 		t.AssertDeploymentStatus(t, firstDeploymentID, awsdeployer_pb.DeploymentStatus_RUNNING)
-		t.AssertStackStatus(t, states.StackID("env", "app"),
+		t.AssertStackStatus(t, stackID,
 			awsdeployer_pb.StackStatus_MIGRATING,
 			[]string{})
 
@@ -351,7 +374,7 @@ func TestStackLock(t *testing.T) {
 	ss.Step("Request a second deployment", func(ctx context.Context, t UniverseAsserter) {
 		secondDeploymentRequest := &awsdeployer_tpb.RequestDeploymentMessage{
 			DeploymentId:  secondDeploymentID,
-			Application:   appDef,
+			Application:   tValidApp("app"),
 			Version:       "2",
 			EnvironmentId: environmentID,
 		}
@@ -363,7 +386,7 @@ func TestStackLock(t *testing.T) {
 		}
 
 		t.AssertDeploymentStatus(t, secondDeploymentRequest.DeploymentId, awsdeployer_pb.DeploymentStatus_QUEUED)
-		t.AssertStackStatus(t, states.StackID("env", "app"),
+		t.AssertStackStatus(t, stackID,
 			awsdeployer_pb.StackStatus_MIGRATING,
 			[]string{secondDeploymentRequest.DeploymentId})
 
@@ -380,9 +403,9 @@ func TestStackLock(t *testing.T) {
 		// Stack: CREATING --> STABLE --> MIGRATING
 		t.AWSStack.StackCreateComplete(t)
 		ss := t.AssertDeploymentStatus(t, firstDeploymentID, awsdeployer_pb.DeploymentStatus_RUNNING)
-		assertStepStatus(t, ss, map[string]awsdeployer_pb.StepStatus{
-			planbuild.StepCFCreateEmpty: awsdeployer_pb.StepStatus_DONE,
-			planbuild.StepCFUpdate:      awsdeployer_pb.StepStatus_ACTIVE,
+		assertStepStatus(t, ss, map[string]drss_pb.StepStatus{
+			planbuild.StepCFCreateEmpty: drss_pb.StepStatus_DONE,
+			planbuild.StepCFUpdate:      drss_pb.StepStatus_ACTIVE,
 		})
 
 		t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEventStepResult, awsdeployer_pb.DeploymentStatus_RUNNING)
@@ -392,12 +415,12 @@ func TestStackLock(t *testing.T) {
 		t.AWSStack.StackUpdateComplete(t)
 
 		ss = t.AssertDeploymentStatus(t, firstDeploymentID, awsdeployer_pb.DeploymentStatus_DONE)
-		assertStepStatus(t, ss, map[string]awsdeployer_pb.StepStatus{
-			planbuild.StepCFCreateEmpty: awsdeployer_pb.StepStatus_DONE,
-			planbuild.StepCFUpdate:      awsdeployer_pb.StepStatus_DONE,
+		assertStepStatus(t, ss, map[string]drss_pb.StepStatus{
+			planbuild.StepCFCreateEmpty: drss_pb.StepStatus_DONE,
+			planbuild.StepCFUpdate:      drss_pb.StepStatus_DONE,
 		})
 
-		t.AssertStackStatus(t, states.StackID("env", "app"),
+		t.AssertStackStatus(t, stackID,
 			awsdeployer_pb.StackStatus_MIGRATING,
 			[]string{})
 
@@ -426,7 +449,7 @@ func TestStackLock(t *testing.T) {
 		t.AWSStack.ExpectCreateStack(t)
 
 		t.AssertDeploymentStatus(t, secondDeploymentID, awsdeployer_pb.DeploymentStatus_RUNNING)
-		t.AssertStackStatus(t, states.StackID("env", "app"),
+		t.AssertStackStatus(t, stackID,
 			awsdeployer_pb.StackStatus_MIGRATING,
 			[]string{})
 
@@ -449,7 +472,7 @@ func TestStackLock(t *testing.T) {
 		t.NoError(err)
 
 		t.AssertDeploymentStatus(t, secondDeploymentID, awsdeployer_pb.DeploymentStatus_TERMINATED)
-		t.AssertStackStatus(t, states.StackID("env", "app"),
+		t.AssertStackStatus(t, stackID,
 			awsdeployer_pb.StackStatus_AVAILABLE,
 			[]string{})
 
@@ -463,7 +486,7 @@ func TestStackLock(t *testing.T) {
 
 		thirdDeploymentRequest := &awsdeployer_tpb.RequestDeploymentMessage{
 			DeploymentId:  uuid.NewString(),
-			Application:   appDef,
+			Application:   tValidApp("app"),
 			Version:       "3",
 			EnvironmentId: environmentID,
 		}
@@ -474,7 +497,7 @@ func TestStackLock(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		t.AssertStackStatus(t, states.StackID("env", "app"),
+		t.AssertStackStatus(t, stackID,
 			awsdeployer_pb.StackStatus_MIGRATING,
 			[]string{})
 
@@ -498,8 +521,8 @@ func TestStackLock(t *testing.T) {
 		t.PopDeploymentEvent(t, awsdeployer_pb.DeploymentPSMEventStepResult, awsdeployer_pb.DeploymentStatus_TERMINATED)
 		fullState := t.AssertDeploymentStatus(t, secondDeploymentID, awsdeployer_pb.DeploymentStatus_TERMINATED)
 		upsertStep := fullState.Data.Steps[0]
-		if upsertStep.Status != awsdeployer_pb.StepStatus_DONE {
-			t.Fatalf("expected step status DONE, got %s", upsertStep.Status)
+		if upsertStep.Meta.Status != drss_pb.StepStatus_DONE {
+			t.Fatalf("expected step status DONE, got %s", upsertStep.Meta.Status)
 		}
 
 	})

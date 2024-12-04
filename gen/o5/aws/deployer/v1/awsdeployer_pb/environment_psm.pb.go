@@ -60,7 +60,9 @@ func (msg *EnvironmentKeys) PSMFullName() string {
 func (msg *EnvironmentKeys) PSMKeyValues() (map[string]string, error) {
 	keyset := map[string]string{
 		"environment_id": msg.EnvironmentId,
-		"cluster_id":     msg.ClusterId,
+	}
+	if msg.ClusterId != "" {
+		keyset["cluster_id"] = msg.ClusterId
 	}
 	return keyset, nil
 }

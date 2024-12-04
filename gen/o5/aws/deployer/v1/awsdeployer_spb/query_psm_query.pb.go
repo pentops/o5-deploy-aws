@@ -3,7 +3,9 @@
 package awsdeployer_spb
 
 import (
+	context "context"
 	psm "github.com/pentops/protostate/psm"
+	sqrlx "github.com/pentops/sqrlx.go/sqrlx"
 )
 
 // State Query Service for %sDeployment
@@ -70,6 +72,48 @@ func DefaultDeploymentPSMQuerySpec(tableSpec psm.QueryTableSpec) DeploymentPSMQu
 	}
 }
 
+type DeploymentQueryServiceImpl struct {
+	db       sqrlx.Transactor
+	querySet *DeploymentPSMQuerySet
+	UnsafeDeploymentQueryServiceServer
+}
+
+var _ DeploymentQueryServiceServer = &DeploymentQueryServiceImpl{}
+
+func NewDeploymentQueryServiceImpl(db sqrlx.Transactor, querySet *DeploymentPSMQuerySet) *DeploymentQueryServiceImpl {
+	return &DeploymentQueryServiceImpl{
+		db:       db,
+		querySet: querySet,
+	}
+}
+
+func (s *DeploymentQueryServiceImpl) GetDeployment(ctx context.Context, req *GetDeploymentRequest) (*GetDeploymentResponse, error) {
+	resObject := &GetDeploymentResponse{}
+	err := s.querySet.Get(ctx, s.db, req, resObject)
+	if err != nil {
+		return nil, err
+	}
+	return resObject, nil
+}
+
+func (s *DeploymentQueryServiceImpl) ListDeployments(ctx context.Context, req *ListDeploymentsRequest) (*ListDeploymentsResponse, error) {
+	resObject := &ListDeploymentsResponse{}
+	err := s.querySet.List(ctx, s.db, req, resObject)
+	if err != nil {
+		return nil, err
+	}
+	return resObject, nil
+}
+
+func (s *DeploymentQueryServiceImpl) ListDeploymentEvents(ctx context.Context, req *ListDeploymentEventsRequest) (*ListDeploymentEventsResponse, error) {
+	resObject := &ListDeploymentEventsResponse{}
+	err := s.querySet.ListEvents(ctx, s.db, req, resObject)
+	if err != nil {
+		return nil, err
+	}
+	return resObject, nil
+}
+
 // State Query Service for %sStack
 // QuerySet is the query set for the Stack service.
 
@@ -134,6 +178,48 @@ func DefaultStackPSMQuerySpec(tableSpec psm.QueryTableSpec) StackPSMQuerySpec {
 	}
 }
 
+type StackQueryServiceImpl struct {
+	db       sqrlx.Transactor
+	querySet *StackPSMQuerySet
+	UnsafeStackQueryServiceServer
+}
+
+var _ StackQueryServiceServer = &StackQueryServiceImpl{}
+
+func NewStackQueryServiceImpl(db sqrlx.Transactor, querySet *StackPSMQuerySet) *StackQueryServiceImpl {
+	return &StackQueryServiceImpl{
+		db:       db,
+		querySet: querySet,
+	}
+}
+
+func (s *StackQueryServiceImpl) GetStack(ctx context.Context, req *GetStackRequest) (*GetStackResponse, error) {
+	resObject := &GetStackResponse{}
+	err := s.querySet.Get(ctx, s.db, req, resObject)
+	if err != nil {
+		return nil, err
+	}
+	return resObject, nil
+}
+
+func (s *StackQueryServiceImpl) ListStacks(ctx context.Context, req *ListStacksRequest) (*ListStacksResponse, error) {
+	resObject := &ListStacksResponse{}
+	err := s.querySet.List(ctx, s.db, req, resObject)
+	if err != nil {
+		return nil, err
+	}
+	return resObject, nil
+}
+
+func (s *StackQueryServiceImpl) ListStackEvents(ctx context.Context, req *ListStackEventsRequest) (*ListStackEventsResponse, error) {
+	resObject := &ListStackEventsResponse{}
+	err := s.querySet.ListEvents(ctx, s.db, req, resObject)
+	if err != nil {
+		return nil, err
+	}
+	return resObject, nil
+}
+
 // State Query Service for %sEnvironment
 // QuerySet is the query set for the Environment service.
 
@@ -196,4 +282,46 @@ func DefaultEnvironmentPSMQuerySpec(tableSpec psm.QueryTableSpec) EnvironmentPSM
 			return filter, nil
 		},
 	}
+}
+
+type EnvironmentQueryServiceImpl struct {
+	db       sqrlx.Transactor
+	querySet *EnvironmentPSMQuerySet
+	UnsafeEnvironmentQueryServiceServer
+}
+
+var _ EnvironmentQueryServiceServer = &EnvironmentQueryServiceImpl{}
+
+func NewEnvironmentQueryServiceImpl(db sqrlx.Transactor, querySet *EnvironmentPSMQuerySet) *EnvironmentQueryServiceImpl {
+	return &EnvironmentQueryServiceImpl{
+		db:       db,
+		querySet: querySet,
+	}
+}
+
+func (s *EnvironmentQueryServiceImpl) GetEnvironment(ctx context.Context, req *GetEnvironmentRequest) (*GetEnvironmentResponse, error) {
+	resObject := &GetEnvironmentResponse{}
+	err := s.querySet.Get(ctx, s.db, req, resObject)
+	if err != nil {
+		return nil, err
+	}
+	return resObject, nil
+}
+
+func (s *EnvironmentQueryServiceImpl) ListEnvironments(ctx context.Context, req *ListEnvironmentsRequest) (*ListEnvironmentsResponse, error) {
+	resObject := &ListEnvironmentsResponse{}
+	err := s.querySet.List(ctx, s.db, req, resObject)
+	if err != nil {
+		return nil, err
+	}
+	return resObject, nil
+}
+
+func (s *EnvironmentQueryServiceImpl) ListEnvironmentEvents(ctx context.Context, req *ListEnvironmentEventsRequest) (*ListEnvironmentEventsResponse, error) {
+	resObject := &ListEnvironmentEventsResponse{}
+	err := s.querySet.ListEvents(ctx, s.db, req, resObject)
+	if err != nil {
+		return nil, err
+	}
+	return resObject, nil
 }

@@ -3,12 +3,13 @@ syntax = "proto3";
 package o5.aws.deployer.v1;
 
 import "buf/validate/validate.proto";
+import "j5/drss/v1/drss.proto";
 import "j5/ext/v1/annotations.proto";
 import "j5/list/v1/annotations.proto";
-import "o5/aws/deployer/v1/pgmigrate.proto";
-import "o5/aws/deployer/v1/steps.proto";
 import "j5/messaging/v1/reqres.proto";
 import "j5/state/v1/metadata.proto";
+import "o5/aws/deployer/v1/postgres.proto";
+import "o5/aws/deployer/v1/steps.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb";
 
@@ -43,12 +44,15 @@ message DeploymentStateData {
   // when set, publishes deployment events back to the requester
   j5.messaging.v1.RequestMetadata request = 1;
 
-  DeploymentSpec spec = 2;
+  DeploymentSpec spec = 2 [(buf.validate.field).required = true];
   repeated DeploymentStep steps = 3;
 }
 
 message DeploymentSpec {
-  string app_name = 1 [(j5.list.v1.field).string.foreign_key.unique_string.filtering.filterable = true];
+  string app_name = 1 [
+    (j5.list.v1.field).string.foreign_key.unique_string.filtering.filterable = true,
+    (buf.validate.field).string.pattern = "^[a-z0-9-]+$"
+  ];
 
   string version = 2 [(j5.list.v1.field).string.foreign_key.unique_string.filtering.filterable = true];
 
@@ -153,10 +157,8 @@ message DeploymentEventType {
   }
 
   message StepResult {
-    string step_id = 1;
-    StepStatus status = 2;
+    j5.drss.v1.StepResult result = 1;
     StepOutputType output = 3;
-    optional string error = 4;
   }
 
   message RunStep {

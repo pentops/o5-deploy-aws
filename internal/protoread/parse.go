@@ -1,61 +1,94 @@
 package protoread
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"buf.build/go/protoyaml"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bufbuild/protovalidate-go"
-	"github.com/goccy/go-yaml"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
+type s3API interface {
+	GetObject(context.Context, *s3.GetObjectInput, ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+}
+
+var s3Client s3API
+
+func getS3Client(ctx context.Context) (s3API, error) {
+	if s3Client != nil {
+		return s3Client, nil
+	}
+	awsConfig, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load configuration: %w", err)
+	}
+	s3Client = s3.NewFromConfig(awsConfig)
+	return s3Client, nil
+}
+
+func readFile(ctx context.Context, path string) ([]byte, error) {
+	if strings.HasPrefix(path, "s3://") {
+		client, err := getS3Client(ctx)
+		if err != nil {
+			return nil, err
+		}
+		bucket := strings.TrimPrefix(path, "s3://")
+		parts := strings.SplitN(bucket, "/", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid s3 path: %s", path)
+		}
+		res, err := client.GetObject(ctx, &s3.GetObjectInput{
+			Bucket: &parts[0],
+			Key:    &parts[1],
+		})
+		if err != nil {
+			return nil, fmt.Errorf("get object: %w", err)
+		}
+
+		return io.ReadAll(res.Body)
+	}
+	return os.ReadFile(path)
+}
+
 func PullAndParse(ctx context.Context, filename string, into proto.Message) error {
-	data, err := os.ReadFile(filename)
+	data, err := readFile(ctx, filename)
 	if err != nil {
 		return fmt.Errorf("reading file %s: %w", filename, err)
 	}
-	return Parse(filename, data, into)
+	err = Parse(filename, data, into)
+	if err != nil {
+		return fmt.Errorf("parsing file %s: %w", filename, err)
+	}
+	return nil
 }
 
 func Parse(filename string, data []byte, into proto.Message) error {
 	fileSuffix := filepath.Ext(filename)
 	switch fileSuffix {
 	case ".json":
+		err := protojson.Unmarshal(data, into)
+		if err != nil {
+			return findTokenError(data, err)
+		}
 
 	case ".yaml", ".yml":
-		dec := yaml.NewDecoder(bytes.NewBuffer(data), yaml.UseOrderedMap())
-
-		var v map[string]interface{}
-		if err := dec.Decode(&v); err != nil {
-			return fmt.Errorf("unmarshalling YAML %s %w", filename, err)
+		if err := protoyaml.Unmarshal(data, into); err != nil {
+			return err
 		}
-
-		jsonBytes, err := yaml.MarshalWithOptions(v, yaml.JSON())
-		if err != nil {
-			return fmt.Errorf("failed to marshal with json option: %w", err)
-		}
-		out := &bytes.Buffer{}
-		if err := json.Indent(out, jsonBytes, "", "  "); err != nil {
-			return fmt.Errorf("failed to indent json: %w", err)
-		}
-
-		data = out.Bytes()
 
 	default:
 		return fmt.Errorf("unknown file type: %s", fileSuffix)
-	}
-
-	err := protojson.Unmarshal(data, into)
-	if err != nil {
-		return findTokenError(data, err)
 	}
 
 	// should usually be cached, but this is used rarely.

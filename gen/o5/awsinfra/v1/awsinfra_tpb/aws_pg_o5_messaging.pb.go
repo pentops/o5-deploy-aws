@@ -22,14 +22,6 @@ func (msg *UpsertPostgresDatabaseMessage) GetJ5RequestMetadata() *messaging_j5pb
 }
 
 // Expose Request Metadata
-func (msg *MigratePostgresDatabaseMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
-	msg.Request = md
-}
-func (msg *MigratePostgresDatabaseMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
-	return msg.Request
-}
-
-// Expose Request Metadata
 func (msg *CleanupPostgresDatabaseMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
 	msg.Request = md
 }
@@ -48,10 +40,6 @@ func NewPostgresRequestTopicTxSender[C any](sender o5msg.TxSender[C]) *PostgresR
 			{
 				Name:    "UpsertPostgresDatabase",
 				Message: (*UpsertPostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
-			},
-			{
-				Name:    "MigratePostgresDatabase",
-				Message: (*MigratePostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
 			},
 			{
 				Name:    "CleanupPostgresDatabase",
@@ -75,10 +63,6 @@ func NewPostgresRequestTopicCollector[C any](collector o5msg.Collector[C]) *Post
 				Message: (*UpsertPostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
 			},
 			{
-				Name:    "MigratePostgresDatabase",
-				Message: (*MigratePostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
-			},
-			{
 				Name:    "CleanupPostgresDatabase",
 				Message: (*CleanupPostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
 			},
@@ -100,10 +84,6 @@ func NewPostgresRequestTopicPublisher(publisher o5msg.Publisher) *PostgresReques
 				Message: (*UpsertPostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
 			},
 			{
-				Name:    "MigratePostgresDatabase",
-				Message: (*MigratePostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
-			},
-			{
 				Name:    "CleanupPostgresDatabase",
 				Message: (*CleanupPostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
 			},
@@ -121,6 +101,19 @@ func (msg *UpsertPostgresDatabaseMessage) O5MessageHeader() o5msg.Header {
 		Headers:          map[string]string{},
 		DestinationTopic: "o5-aws-command_request",
 	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
 	return header
 }
 
@@ -136,30 +129,6 @@ func (publish PostgresRequestTopicPublisher) UpsertPostgresDatabase(ctx context.
 	return publish.publisher.Publish(ctx, msg)
 }
 
-// Method: MigratePostgresDatabase
-
-func (msg *MigratePostgresDatabaseMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.PostgresRequestTopic",
-		GrpcMethod:       "MigratePostgresDatabase",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_request",
-	}
-	return header
-}
-
-func (send PostgresRequestTopicTxSender[C]) MigratePostgresDatabase(ctx context.Context, sendContext C, msg *MigratePostgresDatabaseMessage) error {
-	return send.sender.Send(ctx, sendContext, msg)
-}
-
-func (collect PostgresRequestTopicCollector[C]) MigratePostgresDatabase(sendContext C, msg *MigratePostgresDatabaseMessage) {
-	collect.collector.Collect(sendContext, msg)
-}
-
-func (publish PostgresRequestTopicPublisher) MigratePostgresDatabase(ctx context.Context, msg *MigratePostgresDatabaseMessage) error {
-	return publish.publisher.Publish(ctx, msg)
-}
-
 // Method: CleanupPostgresDatabase
 
 func (msg *CleanupPostgresDatabaseMessage) O5MessageHeader() o5msg.Header {
@@ -168,6 +137,19 @@ func (msg *CleanupPostgresDatabaseMessage) O5MessageHeader() o5msg.Header {
 		GrpcMethod:       "CleanupPostgresDatabase",
 		Headers:          map[string]string{},
 		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
 	}
 	return header
 }
