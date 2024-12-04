@@ -129,7 +129,7 @@ func (dw *DeployerWorker) RequestDeployment(ctx context.Context, msg *awsdeploye
 	}
 
 	if _, err := dw.deploymentEventer.Transition(ctx, createDeploymentEvent); err != nil {
-		return nil, err
+		return tryHandleError(err)
 	}
 
 	return &emptypb.Empty{}, nil
