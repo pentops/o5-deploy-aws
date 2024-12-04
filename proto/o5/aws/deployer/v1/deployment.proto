@@ -18,6 +18,7 @@ message DeploymentKeys {
 
   string deployment_id = 1 [
     (buf.validate.field).string.uuid = true,
+    (j5.ext.v1.field).key = {},
     (j5.ext.v1.key).primary_key = true
   ];
 
