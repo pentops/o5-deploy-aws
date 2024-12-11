@@ -53,7 +53,22 @@ type RDSHost struct {
 	AuthType environment_pb.RDSAuthTypeKey
 }
 
+func updateApp(app *application_pb.Application) {
+	for _, db := range app.Databases {
+		pg := db.GetPostgres()
+		if pg == nil {
+			continue
+		}
+
+		if pg.DbName != "" && pg.DbNameSuffix == "" {
+			pg.DbNameSuffix = pg.DbName
+		}
+		pg.DbName = ""
+	}
+}
+
 func BuildApplication(spec AppInput) (*BuiltApplication, error) {
+	updateApp(spec.Application)
 	app := spec.Application
 
 	bb, resourceBuilder, err := NewBuilder(spec)

@@ -81,6 +81,9 @@ message Database {
     // This is prefixed with {env_name}_{app_name}_ in all cases.
     string db_name_suffix = 1;
 
+    // DEPRECATED: use db_name_suffix
+    string db_name = 10;
+
     // default is 'default' - identifies which database server from the
     // environment config this belongs with.
     // Matches o5.environment.v1.RDSHost.server_group_name
