@@ -164,14 +164,16 @@ func (rs *RuntimeService) AddTemplateResources(template *cflib.TemplateBuilder) 
 		},
 		PropagateTags: cflib.String("TASK_DEFINITION"),
 
-		NetworkConfiguration: &ecs.Service_NetworkConfiguration{
-			AwsvpcConfiguration: &ecs.Service_AwsVpcConfiguration{
-				SecurityGroups: securityGroups,
-			},
-		},
+		/*
+			NetworkConfiguration: &ecs.Service_NetworkConfiguration{
+
+				AwsvpcConfiguration: &ecs.Service_AwsVpcConfiguration{
+					SecurityGroups: securityGroups,
+				},
+			},*/
 	})
 
-	service.Override("NetworkConfiguration.AwsvpcConfiguration.Subnets", cloudformation.Split(",", cloudformation.Ref(SubnetIDsParameter)))
+	//service.Override("NetworkConfiguration.AwsvpcConfiguration.Subnets", cloudformation.Split(",", cloudformation.Ref(SubnetIDsParameter)))
 
 	for _, target := range rs.TargetGroups {
 		lb := target.attachment
@@ -271,7 +273,7 @@ func (rs *RuntimeService) LazyTargetGroup(protocol application_pb.RouteProtocol,
 			HttpCode: cflib.String("200,401,404"),
 		},
 		Tags:       sourceTags(),
-		TargetType: cflib.String("ip"),
+		TargetType: cflib.String("instance"),
 	}
 	switch protocol {
 	case application_pb.RouteProtocol_ROUTE_PROTOCOL_HTTP:

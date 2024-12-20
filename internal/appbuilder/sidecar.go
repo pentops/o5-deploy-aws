@@ -16,10 +16,12 @@ import (
 type SidecarBuilder struct {
 	container *ecs.TaskDefinition_ContainerDefinition
 
-	policy     *PolicyBuilder
-	isRequired bool
+	policy      *PolicyBuilder
+	isRequired  bool
+	servePublic bool
 
 	serviceEndpoints map[string]struct{}
+	links            map[string]struct{}
 	proxyDBs         map[string]struct{}
 	outboxDBs        map[string]struct{}
 
@@ -59,6 +61,7 @@ func NewSidecarBuilder(appName string, policy *PolicyBuilder) *SidecarBuilder {
 		serviceEndpoints: make(map[string]struct{}),
 		proxyDBs:         make(map[string]struct{}),
 		outboxDBs:        make(map[string]struct{}),
+		links:            make(map[string]struct{}),
 
 		dbEndpoints: make(map[string]DatabaseRef),
 	}
@@ -98,6 +101,8 @@ func (sb *SidecarBuilder) Build() (*ecs.TaskDefinition_ContainerDefinition, erro
 			return nil, fmt.Errorf("outbox database %s is not a proxy and has no secret", db.Name())
 		}
 	}
+
+	sb.container.Links = append(sb.container.Links, maps.Keys(sb.links)...)
 
 	return sb.container, nil
 }
@@ -169,6 +174,10 @@ func (sb *SidecarBuilder) SubscribeSQS(urlRef cflib.TemplateRef, arnRef cflib.Te
 }
 
 func (sb *SidecarBuilder) ServePublic() {
+	if sb.servePublic {
+		return
+	}
+	sb.servePublic = true
 	sb.isRequired = true
 	sb.mustSetEnv("PUBLIC_ADDR", ":8888")
 	sb.mustSetEnv("JWKS", cloudformation.Ref(JWKSParameter))
@@ -178,11 +187,11 @@ func (sb *SidecarBuilder) ServePublic() {
 	})
 }
 
-func (sb *SidecarBuilder) AddAppEndpoint(_ string, port int64) {
-	// ignore container name, endpoint uses localhost in awsvpc mode
+func (sb *SidecarBuilder) AddAppEndpoint(container string, port int64) {
 	sb.isRequired = true
-	addr := fmt.Sprintf("localhost:%d", port)
+	addr := fmt.Sprintf("%s:%d", container, port)
 	sb.serviceEndpoints[addr] = struct{}{}
+	sb.links[container] = struct{}{}
 }
 
 func (sb *SidecarBuilder) ServeAdapter() {

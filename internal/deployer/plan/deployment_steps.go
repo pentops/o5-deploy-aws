@@ -3,6 +3,7 @@ package plan
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	"github.com/pentops/o5-deploy-aws/gen/j5/drss/v1/drss_pb"
@@ -194,8 +195,23 @@ func StepNext(ctx context.Context, tb Chainer, steps []*awsdeployer_pb.Deploymen
 	}
 	switch outcome {
 	case strategy.StepNextFail:
+		errors := make([]string, 0)
+		for _, step := range stepMap {
+			sm := step.GetMeta()
+
+			switch sm.Status {
+			case drss_pb.StepStatus_FAILED:
+				if sm.Error != nil {
+					errors = append(errors, fmt.Sprintf("Step %s: %s", sm.Name, *sm.Error))
+				} else {
+					errors = append(errors, fmt.Sprintf("Step %s failed", sm.Name))
+				}
+			}
+
+		}
+
 		tb.ChainEvent(&awsdeployer_pb.DeploymentEventType_Error{
-			Error: "Deployment steps failed",
+			Error: strings.Join(errors, "\n"),
 		})
 
 	case strategy.StepNextDone:
