@@ -169,6 +169,7 @@ func (sb *SidecarBuilder) PublishToEventBridge() {
 func (sb *SidecarBuilder) SubscribeSQS(urlRef cflib.TemplateRef, arnRef cflib.TemplateRef) error {
 	sb.policy.AddSQSSubscribe(arnRef)
 	sb.isRequired = true
+	sb.PublishToEventBridge() // for dead letters
 	return sb.setEnv("SQS_URL", urlRef.Ref())
 
 }
