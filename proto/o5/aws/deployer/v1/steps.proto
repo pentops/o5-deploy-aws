@@ -43,6 +43,7 @@ message DeploymentStepType {
     PGEvaluate pg_evaluate = 7;
     PGCleanup pg_cleanup = 8;
     PGMigrate pg_migrate = 9;
+    PGDestroy pg_destroy = 10;
   }
 
   message EvalJoin {
@@ -76,6 +77,10 @@ message DeploymentStepType {
     string infra_output_step_id = 2;
 
     bool rotate_credentials = 3;
+  }
+
+  message PGDestroy {
+    PostgresSpec spec = 1;
   }
 
   message PGEvaluate {

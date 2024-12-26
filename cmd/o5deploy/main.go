@@ -296,6 +296,8 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 	SlowMode        bool `flag:"slow" description:"Default is to run the quick flag"`
 	InfraOnly       bool `flag:"infra-only" description:"Deploy with scale at 0"`
 	DBOnly          bool `flag:"db-only" description:"Only migrate database"`
+	DBRecreate      bool `flag:"db-recreate" description:"Destroy and Recreate database"`
+	DBDestroy       bool `flag:"db-destroy" description:"Destroy database"`
 	ImportResources bool `flag:"import-resources" description:"Import resources, implies infra-only"`
 }) error {
 
@@ -365,6 +367,8 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 			InfraOnly:         cfg.InfraOnly,
 			CancelUpdates:     cfg.CancelUpdate,
 			DbOnly:            cfg.DBOnly,
+			DestroyDatabase:   cfg.DBDestroy,
+			RecreateDatabase:  cfg.DBRecreate,
 			ImportResources:   cfg.ImportResources,
 		},
 	})

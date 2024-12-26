@@ -41,6 +41,7 @@ type DeploymentSteps interface {
 	RunPGUpsert(deps StepBaton, req *awsdeployer_pb.DeploymentStepType_PGUpsert) (Outcome, error)
 	RunPGMigrate(deps StepBaton, req *awsdeployer_pb.DeploymentStepType_PGMigrate) (Outcome, error)
 	RunPGCleanup(deps StepBaton, req *awsdeployer_pb.DeploymentStepType_PGCleanup) (Outcome, error)
+	RunPGDestroy(deps StepBaton, req *awsdeployer_pb.DeploymentStepType_PGDestroy) (Outcome, error)
 }
 
 type StepBaton interface {
@@ -69,6 +70,8 @@ func RunDeploymentSteps(steps DeploymentSteps, thisStep strategy.Step[
 		return steps.RunPGMigrate(deps, st)
 	case *awsdeployer_pb.DeploymentStepType_PGCleanup:
 		return steps.RunPGCleanup(deps, st)
+	case *awsdeployer_pb.DeploymentStepType_PGDestroy:
+		return steps.RunPGDestroy(deps, st)
 	default:
 		return nil, fmt.Errorf("unexpected step type: %T", st)
 	}

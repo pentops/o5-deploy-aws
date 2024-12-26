@@ -166,6 +166,12 @@ func (cf *InfraAdapter) HandleMessage(ctx context.Context, msg proto.Message) (*
 		}
 		return dbEvent(cf.CleanupPostgresDatabase(ctx, msg))
 
+	case *awsinfra_tpb.DestroyPostgresDatabaseMessage:
+		if msg.Request == nil {
+			return nil, fmt.Errorf("missing request in %s", msg.ProtoReflect().Descriptor().FullName())
+		}
+		return dbEvent(cf.DestroyPostgresDatabase(ctx, msg))
+
 	}
 
 	return nil, fmt.Errorf("unknown side effect message type: %T", msg)
@@ -334,6 +340,12 @@ func (cf *InfraAdapter) UpsertPostgresDatabase(ctx context.Context, msg *awsinfr
 func (cf *InfraAdapter) CleanupPostgresDatabase(ctx context.Context, msg *awsinfra_tpb.CleanupPostgresDatabaseMessage) (*awsinfra_tpb.PostgresDatabaseStatusMessage, error) {
 	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context) error {
 		return cf.dbClient.CleanupPostgresDatabase(ctx, msg.MigrationId, msg)
+	})
+}
+
+func (cf *InfraAdapter) DestroyPostgresDatabase(ctx context.Context, msg *awsinfra_tpb.DestroyPostgresDatabaseMessage) (*awsinfra_tpb.PostgresDatabaseStatusMessage, error) {
+	return cf.runPostgresCallback(ctx, msg, func(ctx context.Context) error {
+		return cf.dbClient.DestroyPostgresDatabase(ctx, msg.MigrationId, msg)
 	})
 }
 

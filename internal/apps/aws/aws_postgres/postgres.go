@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -74,6 +75,15 @@ func (d *DBMigrator) CleanupPostgresDatabase(ctx context.Context, migrationID st
 		return err
 	}
 	return d.fixPostgresOwnership(ctx, connSpec, msg.DbName)
+}
+
+func (d *DBMigrator) DestroyPostgresDatabase(ctx context.Context, migrationID string, msg *awsinfra_tpb.DestroyPostgresDatabaseMessage) error {
+	connSpec, err := d.buildSpec(ctx, msg.AdminHost)
+	if err != nil {
+		return err
+	}
+
+	return d.destroyPostgresDatabase(ctx, connSpec, msg.DbName)
 }
 
 type DBSecret struct {
@@ -349,6 +359,37 @@ func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, spec DBSpec, dbNa
 
 	return nil
 
+}
+
+func (d *DBMigrator) destroyPostgresDatabase(ctx context.Context, spec DBSpec, dbName string) error {
+	rootConn, err := spec.OpenRoot(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Kill all connections to the database
+	_, err = rootConn.ExecContext(ctx, fmt.Sprintf(`SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE pg_stat_activity.datname = '%s' AND pid <> pg_backend_pid()`, dbName))
+	if err != nil {
+		return fmt.Errorf("killing sessions: %w", err)
+	}
+
+	_, err = rootConn.ExecContext(ctx, fmt.Sprintf(`DROP DATABASE %s`, dbName))
+	if err != nil {
+		msg := err.Error()
+		if !strings.Contains(msg, "does not exist") {
+			return err
+		}
+	}
+
+	_, err = rootConn.ExecContext(ctx, fmt.Sprintf(`DROP ROLE %s`, dbName))
+	if err != nil {
+		msg := err.Error()
+		if !strings.Contains(msg, "does not exist") {
+			return err
+		}
+	}
+
+	return nil
 }
 
 var reSafeRoleName = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)

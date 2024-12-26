@@ -72,6 +72,7 @@ const (
 	DeploymentStep_PgEvaluate DeploymentStepTypeKey = "pgEvaluate"
 	DeploymentStep_PgCleanup  DeploymentStepTypeKey = "pgCleanup"
 	DeploymentStep_PgMigrate  DeploymentStepTypeKey = "pgMigrate"
+	DeploymentStep_PgDestroy  DeploymentStepTypeKey = "pgDestroy"
 )
 
 func (x *DeploymentStepType) TypeKey() (DeploymentStepTypeKey, bool) {
@@ -94,6 +95,8 @@ func (x *DeploymentStepType) TypeKey() (DeploymentStepTypeKey, bool) {
 		return DeploymentStep_PgCleanup, true
 	case *DeploymentStepType_PgMigrate:
 		return DeploymentStep_PgMigrate, true
+	case *DeploymentStepType_PgDestroy:
+		return DeploymentStep_PgDestroy, true
 	default:
 		return "", false
 	}
@@ -124,6 +127,8 @@ func (x *DeploymentStepType) Set(val IsDeploymentStepTypeWrappedType) {
 		x.Type = &DeploymentStepType_PgCleanup{PgCleanup: v}
 	case *DeploymentStepType_PGMigrate:
 		x.Type = &DeploymentStepType_PgMigrate{PgMigrate: v}
+	case *DeploymentStepType_PGDestroy:
+		x.Type = &DeploymentStepType_PgDestroy{PgDestroy: v}
 	}
 }
 func (x *DeploymentStepType) Get() IsDeploymentStepTypeWrappedType {
@@ -146,6 +151,8 @@ func (x *DeploymentStepType) Get() IsDeploymentStepTypeWrappedType {
 		return v.PgCleanup
 	case *DeploymentStepType_PgMigrate:
 		return v.PgMigrate
+	case *DeploymentStepType_PgDestroy:
+		return v.PgDestroy
 	default:
 		return nil
 	}
@@ -176,6 +183,9 @@ func (x *DeploymentStepType_PGCleanup) TypeKey() DeploymentStepTypeKey {
 }
 func (x *DeploymentStepType_PGMigrate) TypeKey() DeploymentStepTypeKey {
 	return DeploymentStep_PgMigrate
+}
+func (x *DeploymentStepType_PGDestroy) TypeKey() DeploymentStepTypeKey {
+	return DeploymentStep_PgDestroy
 }
 
 type IsDeploymentStepType_Type = isDeploymentStepType_Type

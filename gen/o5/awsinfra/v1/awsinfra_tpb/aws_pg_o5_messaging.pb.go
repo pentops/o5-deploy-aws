@@ -29,6 +29,14 @@ func (msg *CleanupPostgresDatabaseMessage) GetJ5RequestMetadata() *messaging_j5p
 	return msg.Request
 }
 
+// Expose Request Metadata
+func (msg *DestroyPostgresDatabaseMessage) SetJ5RequestMetadata(md *messaging_j5pb.RequestMetadata) {
+	msg.Request = md
+}
+func (msg *DestroyPostgresDatabaseMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
+	return msg.Request
+}
+
 type PostgresRequestTopicTxSender[C any] struct {
 	sender o5msg.TxSender[C]
 }
@@ -44,6 +52,10 @@ func NewPostgresRequestTopicTxSender[C any](sender o5msg.TxSender[C]) *PostgresR
 			{
 				Name:    "CleanupPostgresDatabase",
 				Message: (*CleanupPostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
+			},
+			{
+				Name:    "DestroyPostgresDatabase",
+				Message: (*DestroyPostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
 			},
 		},
 	})
@@ -66,6 +78,10 @@ func NewPostgresRequestTopicCollector[C any](collector o5msg.Collector[C]) *Post
 				Name:    "CleanupPostgresDatabase",
 				Message: (*CleanupPostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
 			},
+			{
+				Name:    "DestroyPostgresDatabase",
+				Message: (*DestroyPostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
+			},
 		},
 	})
 	return &PostgresRequestTopicCollector[C]{collector: collector}
@@ -86,6 +102,10 @@ func NewPostgresRequestTopicPublisher(publisher o5msg.Publisher) *PostgresReques
 			{
 				Name:    "CleanupPostgresDatabase",
 				Message: (*CleanupPostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
+			},
+			{
+				Name:    "DestroyPostgresDatabase",
+				Message: (*DestroyPostgresDatabaseMessage).ProtoReflect(nil).Descriptor(),
 			},
 		},
 	})
@@ -163,6 +183,43 @@ func (collect PostgresRequestTopicCollector[C]) CleanupPostgresDatabase(sendCont
 }
 
 func (publish PostgresRequestTopicPublisher) CleanupPostgresDatabase(ctx context.Context, msg *CleanupPostgresDatabaseMessage) error {
+	return publish.publisher.Publish(ctx, msg)
+}
+
+// Method: DestroyPostgresDatabase
+
+func (msg *DestroyPostgresDatabaseMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.PostgresRequestTopic",
+		GrpcMethod:       "DestroyPostgresDatabase",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
+	return header
+}
+
+func (send PostgresRequestTopicTxSender[C]) DestroyPostgresDatabase(ctx context.Context, sendContext C, msg *DestroyPostgresDatabaseMessage) error {
+	return send.sender.Send(ctx, sendContext, msg)
+}
+
+func (collect PostgresRequestTopicCollector[C]) DestroyPostgresDatabase(sendContext C, msg *DestroyPostgresDatabaseMessage) {
+	collect.collector.Collect(sendContext, msg)
+}
+
+func (publish PostgresRequestTopicPublisher) DestroyPostgresDatabase(ctx context.Context, msg *DestroyPostgresDatabaseMessage) error {
 	return publish.publisher.Publish(ctx, msg)
 }
 

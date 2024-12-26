@@ -57,10 +57,11 @@ type busDetailPattern struct {
 }
 
 type singlePattern struct {
-	DestinationTopic []string `json:"destinationTopic,omitempty"`
-	GRPCService      []string `json:"grpcService,omitempty"`
-	GRPCMethod       []string `json:"grpcMethod,omitempty"`
-	SourceEnv        []string `json:"sourceEnv,omitempty"`
+	DestinationTopic []string    `json:"destinationTopic,omitempty"`
+	GRPCService      []string    `json:"grpcService,omitempty"`
+	GRPCMethod       []string    `json:"grpcMethod,omitempty"`
+	SourceEnv        []string    `json:"sourceEnv,omitempty"`
+	Reply            interface{} `json:"reply,omitempty"`
 }
 
 func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subscriptionPlan, error) {
@@ -193,10 +194,27 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 			continue
 		}
 
+		fullNameRef := cloudformation.Join("/", []string{
+			cloudformation.Ref(EnvNameParameter),
+			appName,
+		})
+
+		replyTo := map[string]interface{}{
+			"replyTo": []interface{}{
+				map[string]interface{}{"exists": false},
+				fullNameRef,
+			},
+		}
+
 		var detailPattern busDetailPattern
 		if len(rulePatterns) == 1 {
-			detailPattern.singlePattern = &rulePatterns[0]
+			pattern := &rulePatterns[0]
+			pattern.Reply = replyTo
+			detailPattern.singlePattern = pattern
 		} else {
+			rulePatterns = append(rulePatterns, singlePattern{
+				Reply: replyTo,
+			})
 			detailPattern.Or = rulePatterns
 		}
 

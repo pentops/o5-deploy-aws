@@ -88,6 +88,12 @@ message DeploymentFlags {
   bool infra_only = 5;
 
   bool import_resources = 6;
+
+  // Destroy the database
+  bool destroy_database = 7;
+
+  // Destory and recreate the database
+  bool recreate_database = 8;
 }
 
 enum DeploymentStatus {

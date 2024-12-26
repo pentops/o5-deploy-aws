@@ -26,6 +26,7 @@ const (
 	StepPgUpsert      = "DB.Upsert"
 	StepPgMigrate     = "DB.Migrate"
 	StepPgCleanup     = "DB.Cleanup"
+	StepPgDestroy     = "DB.Destroy"
 )
 
 func QualifiedStep(parts ...string) string {
@@ -192,10 +193,55 @@ func (plan *DeploymentPlan) MigrateDatabases(ctx context.Context, infraReadyStep
 		finalSteps = append(finalSteps, lastStep)
 	}
 	return finalSteps, nil
-
 }
 
-func (plan *DeploymentPlan) UpsertDatabase(db *awsdeployer_pb.PostgresSpec, infraReadyStep *PlanStep) (*PlanStep, error) {
+func (plan *DeploymentPlan) DestroyDatabases(ctx context.Context, infraReadyStep *PlanStep) ([]*PlanStep, error) {
+	finalSteps := make([]*PlanStep, 0)
+	for _, db := range plan.Deployment.Databases {
+
+		ctx = log.WithFields(ctx, map[string]interface{}{
+			"database": db.AppKey,
+		})
+		log.Debug(ctx, "Destroy Database")
+
+		destroyStep := plan.addStep(QualifiedStep(StepPgDestroy, db.AppKey),
+			&awsdeployer_pb.DeploymentStepType_PGDestroy{
+				Spec: db,
+			},
+		).DependsOn(infraReadyStep)
+
+		finalSteps = append(finalSteps, destroyStep)
+	}
+	return finalSteps, nil
+}
+
+func (plan *DeploymentPlan) RecreateDatabases(ctx context.Context, infraReadyStep *PlanStep) ([]*PlanStep, error) {
+	finalSteps := make([]*PlanStep, 0)
+	for _, db := range plan.Deployment.Databases {
+
+		ctx = log.WithFields(ctx, map[string]interface{}{
+			"database": db.AppKey,
+		})
+		log.Debug(ctx, "Recreate Database")
+
+		destroyStep := plan.addStep(QualifiedStep(StepPgDestroy, db.AppKey),
+			&awsdeployer_pb.DeploymentStepType_PGDestroy{
+				Spec: db,
+			},
+		).DependsOn(infraReadyStep)
+
+		upsertStep, err := plan.UpsertDatabase(db, infraReadyStep, destroyStep)
+		if err != nil {
+			return nil, err
+		}
+
+		finalSteps = append(finalSteps, upsertStep)
+	}
+
+	return finalSteps, nil
+}
+
+func (plan *DeploymentPlan) UpsertDatabase(db *awsdeployer_pb.PostgresSpec, infraReadyStep *PlanStep, extraDepends ...*PlanStep) (*PlanStep, error) {
 
 	upsertStep := plan.addStep(QualifiedStep(StepPgUpsert, db.AppKey),
 		&awsdeployer_pb.DeploymentStepType_PGUpsert{
@@ -204,6 +250,10 @@ func (plan *DeploymentPlan) UpsertDatabase(db *awsdeployer_pb.PostgresSpec, infr
 			RotateCredentials: plan.Deployment.Flags.RotateCredentials,
 		},
 	).DependsOn(infraReadyStep)
+
+	for _, dep := range extraDepends {
+		upsertStep.DependsOn(dep)
+	}
 
 	if db.Migrate == nil {
 		return upsertStep, nil
@@ -302,6 +352,14 @@ func (ds *StepBuild) RunPGMigrate(sb awsdeployer_step_pb.StepBaton, req *awsdepl
 
 func (ds *StepBuild) RunPGCleanup(sb awsdeployer_step_pb.StepBaton, req *awsdeployer_pb.DeploymentStepType_PGCleanup) (awsdeployer_step_pb.Outcome, error) {
 	return awsdeployer_step_pb.Request(&awsinfra_tpb.CleanupPostgresDatabaseMessage{
+		MigrationId: sb.GetID(),
+		DbName:      req.Spec.FullDbName,
+		AdminHost:   req.Spec.AdminConnection,
+	})
+}
+
+func (ds *StepBuild) RunPGDestroy(sb awsdeployer_step_pb.StepBaton, req *awsdeployer_pb.DeploymentStepType_PGDestroy) (awsdeployer_step_pb.Outcome, error) {
+	return awsdeployer_step_pb.Request(&awsinfra_tpb.DestroyPostgresDatabaseMessage{
 		MigrationId: sb.GetID(),
 		DbName:      req.Spec.FullDbName,
 		AdminHost:   req.Spec.AdminConnection,

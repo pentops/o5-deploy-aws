@@ -146,8 +146,9 @@ message Subscription {
   // Subscribes only to the method, if not set, subscribes to all methods
   optional string grpc_method = 5;
 
-  // For request-reply replies, filters to the reply.reply_to field
-  optional string reply_to = 6;
+  // For request-reply replies, filters to the reply.reply_to field to the
+  // running env/app
+  bool is_reply = 6;
 
   // The payload is not the standard messaging payload
   // It should be parsed into a o5.messaging.v1.topic.RawMessage

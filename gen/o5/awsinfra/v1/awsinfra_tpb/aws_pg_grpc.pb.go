@@ -22,6 +22,7 @@ const _ = grpc.SupportPackageIsVersion7
 const (
 	PostgresRequestTopic_UpsertPostgresDatabase_FullMethodName  = "/o5.aws.infra.v1.topic.PostgresRequestTopic/UpsertPostgresDatabase"
 	PostgresRequestTopic_CleanupPostgresDatabase_FullMethodName = "/o5.aws.infra.v1.topic.PostgresRequestTopic/CleanupPostgresDatabase"
+	PostgresRequestTopic_DestroyPostgresDatabase_FullMethodName = "/o5.aws.infra.v1.topic.PostgresRequestTopic/DestroyPostgresDatabase"
 )
 
 // PostgresRequestTopicClient is the client API for PostgresRequestTopic service.
@@ -29,8 +30,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type PostgresRequestTopicClient interface {
 	UpsertPostgresDatabase(ctx context.Context, in *UpsertPostgresDatabaseMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	// rpc MigratePostgresDatabase(MigratePostgresDatabaseMessage) returns (google.protobuf.Empty) {}
 	CleanupPostgresDatabase(ctx context.Context, in *CleanupPostgresDatabaseMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	DestroyPostgresDatabase(ctx context.Context, in *DestroyPostgresDatabaseMessage, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type postgresRequestTopicClient struct {
@@ -59,13 +60,22 @@ func (c *postgresRequestTopicClient) CleanupPostgresDatabase(ctx context.Context
 	return out, nil
 }
 
+func (c *postgresRequestTopicClient) DestroyPostgresDatabase(ctx context.Context, in *DestroyPostgresDatabaseMessage, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, PostgresRequestTopic_DestroyPostgresDatabase_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PostgresRequestTopicServer is the server API for PostgresRequestTopic service.
 // All implementations must embed UnimplementedPostgresRequestTopicServer
 // for forward compatibility
 type PostgresRequestTopicServer interface {
 	UpsertPostgresDatabase(context.Context, *UpsertPostgresDatabaseMessage) (*emptypb.Empty, error)
-	// rpc MigratePostgresDatabase(MigratePostgresDatabaseMessage) returns (google.protobuf.Empty) {}
 	CleanupPostgresDatabase(context.Context, *CleanupPostgresDatabaseMessage) (*emptypb.Empty, error)
+	DestroyPostgresDatabase(context.Context, *DestroyPostgresDatabaseMessage) (*emptypb.Empty, error)
 	mustEmbedUnimplementedPostgresRequestTopicServer()
 }
 
@@ -78,6 +88,9 @@ func (UnimplementedPostgresRequestTopicServer) UpsertPostgresDatabase(context.Co
 }
 func (UnimplementedPostgresRequestTopicServer) CleanupPostgresDatabase(context.Context, *CleanupPostgresDatabaseMessage) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CleanupPostgresDatabase not implemented")
+}
+func (UnimplementedPostgresRequestTopicServer) DestroyPostgresDatabase(context.Context, *DestroyPostgresDatabaseMessage) (*emptypb.Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DestroyPostgresDatabase not implemented")
 }
 func (UnimplementedPostgresRequestTopicServer) mustEmbedUnimplementedPostgresRequestTopicServer() {}
 
@@ -128,6 +141,24 @@ func _PostgresRequestTopic_CleanupPostgresDatabase_Handler(srv interface{}, ctx 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PostgresRequestTopic_DestroyPostgresDatabase_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DestroyPostgresDatabaseMessage)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PostgresRequestTopicServer).DestroyPostgresDatabase(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PostgresRequestTopic_DestroyPostgresDatabase_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PostgresRequestTopicServer).DestroyPostgresDatabase(ctx, req.(*DestroyPostgresDatabaseMessage))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PostgresRequestTopic_ServiceDesc is the grpc.ServiceDesc for PostgresRequestTopic service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -142,6 +173,10 @@ var PostgresRequestTopic_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CleanupPostgresDatabase",
 			Handler:    _PostgresRequestTopic_CleanupPostgresDatabase_Handler,
+		},
+		{
+			MethodName: "DestroyPostgresDatabase",
+			Handler:    _PostgresRequestTopic_DestroyPostgresDatabase_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -35,6 +35,7 @@ func NewPostgresMigrateWorker(db DBLite, migrator IDBMigrator) *PostgresMigrateW
 type IDBMigrator interface {
 	UpsertPostgresDatabase(ctx context.Context, migrationID string, msg *awsinfra_tpb.UpsertPostgresDatabaseMessage) error
 	CleanupPostgresDatabase(ctx context.Context, migrationID string, msg *awsinfra_tpb.CleanupPostgresDatabaseMessage) error
+	DestroyPostgresDatabase(ctx context.Context, migrationID string, msg *awsinfra_tpb.DestroyPostgresDatabaseMessage) error
 }
 
 type pgRequest interface {
@@ -102,44 +103,8 @@ func (d *PostgresMigrateWorker) CleanupPostgresDatabase(ctx context.Context, msg
 	})
 }
 
-/*
-func (d *PostgresMigrateWorker) MigratePostgresDatabase(ctx context.Context, msg *awsinfra_tpb.MigratePostgresDatabaseMessage) (*emptypb.Empty, error) {
-
-	request := msg.GetRequest()
-	if request == nil {
-		return nil, fmt.Errorf("request is nil")
-	}
-
-	if err := d.db.PublishEvent(ctx, &awsinfra_tpb.PostgresDatabaseStatusMessage{
-		Request:     request,
-		MigrationId: msg.GetMigrationId(),
-		Status:      awsinfra_tpb.PostgresStatus_STARTED,
-		EventId:     uuid.NewSHA1(migrationNamespace, []byte(fmt.Sprintf("migrate-%s-started", msg.MigrationId))).String(),
-	}); err != nil {
-		return nil, err
-	}
-
-	taskContext := &awsinfra_tpb.MigrationTaskContext{
-		Upstream:    msg.Request,
-		MigrationId: msg.MigrationId,
-	}
-	taskContextBytes, err := proto.Marshal(taskContext)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := d.db.PublishEvent(ctx, &awsinfra_tpb.RunECSTaskMessage{
-		Request: &messaging_j5pb.RequestMetadata{
-			Context: taskContextBytes,
-			ReplyTo: "deployer",
-		},
-		TaskDefinition: msg.MigrationTaskArn,
-		Cluster:        msg.EcsClusterName,
-		Count:          1,
-	}); err != nil {
-		return nil, err
-	}
-	return &emptypb.Empty{}, nil
+func (d *PostgresMigrateWorker) DestroyPostgresDatabase(ctx context.Context, msg *awsinfra_tpb.DestroyPostgresDatabaseMessage) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, d.runCallback(ctx, msg, "destroy", func(ctx context.Context) error {
+		return d.migrator.DestroyPostgresDatabase(ctx, msg.MigrationId, msg)
+	})
 }
-
-*/

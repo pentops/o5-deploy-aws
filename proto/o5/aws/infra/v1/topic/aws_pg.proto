@@ -13,8 +13,8 @@ option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfr
 service PostgresRequestTopic {
   option (j5.messaging.v1.config).request.name = "o5-aws-command";
   rpc UpsertPostgresDatabase(UpsertPostgresDatabaseMessage) returns (google.protobuf.Empty) {}
-  //rpc MigratePostgresDatabase(MigratePostgresDatabaseMessage) returns (google.protobuf.Empty) {}
   rpc CleanupPostgresDatabase(CleanupPostgresDatabaseMessage) returns (google.protobuf.Empty) {}
+  rpc DestroyPostgresDatabase(DestroyPostgresDatabaseMessage) returns (google.protobuf.Empty) {}
 }
 
 service PostgresReplyTopic {
@@ -37,16 +37,12 @@ message CleanupPostgresDatabaseMessage {
   string db_name = 4;
 }
 
-/*
-   message MigratePostgresDatabaseMessage {
-     j5.messaging.v1.RequestMetadata request = 1;
-     string migration_id = 2 [(buf.validate.field).string.uuid = true];
-
-     string migration_task_arn = 3;
-     string secret_arn = 4;
-     string ecs_cluster_name = 5;
-     ECSTaskNetworkType network = 5;
-   }*/
+message DestroyPostgresDatabaseMessage {
+  j5.messaging.v1.RequestMetadata request = 1;
+  string migration_id = 2 [(buf.validate.field).string.uuid = true];
+  o5.aws.infra.v1.RDSHostType admin_host = 3;
+  string db_name = 4;
+}
 
 message PostgresDatabaseStatusMessage {
   j5.messaging.v1.RequestMetadata request = 1;
