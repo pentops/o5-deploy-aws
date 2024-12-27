@@ -206,15 +206,16 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 			},
 		}
 
+		for idx, rule := range rulePatterns {
+			rule.Reply = replyTo
+			rulePatterns[idx] = rule
+		}
+
 		var detailPattern busDetailPattern
 		if len(rulePatterns) == 1 {
 			pattern := &rulePatterns[0]
-			pattern.Reply = replyTo
 			detailPattern.singlePattern = pattern
 		} else {
-			rulePatterns = append(rulePatterns, singlePattern{
-				Reply: replyTo,
-			})
 			detailPattern.Or = rulePatterns
 		}
 

@@ -52,24 +52,29 @@ func buildPlan(ctx context.Context, plan *planbuild.DeploymentPlan) error {
 		return nil
 	}
 
-	if plan.Deployment.Flags.DestroyDatabase || plan.Deployment.Flags.RecreateDatabase {
+	if plan.Deployment.Flags.DestroyDatabase {
 		if plan.StackStatus == nil {
 			return fmt.Errorf("cannot destroy databases without a stack")
 		}
 
 		infraReady := plan.ScaleDown()
-		last, err := plan.DestroyDatabases(ctx, infraReady)
+		_, err := plan.DestroyDatabases(ctx, infraReady)
 		if err != nil {
 			return err
 		}
 
-		if plan.Deployment.Flags.DestroyDatabase {
-			return nil
-			// otherwise flow through which will update and recreate
-		}
-
-		plan.ScaleUp().DependsOn(last...)
 		return nil
+	}
+
+	if plan.Deployment.Flags.RecreateDatabase {
+		infraReady := plan.ScaleDown()
+		reCreate, err := plan.RecreateDatabases(ctx, infraReady)
+		if err != nil {
+			return err
+		}
+		plan.ScaleUp().DependsOn(reCreate...)
+		return nil
+
 	}
 
 	if plan.Deployment.Flags.DbOnly {
