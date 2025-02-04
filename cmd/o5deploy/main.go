@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -63,6 +65,13 @@ func runMigrate(ctx context.Context, config struct {
 	return nil
 }
 
+func printDBStats(dbc *sql.DB) {
+	for {
+		<-time.After(30 * time.Second)
+		fmt.Printf("db stats %+v", dbc.Stats())
+	}
+}
+
 func runServe(ctx context.Context, cfg struct {
 	GRPCPort int `env:"GRPC_PORT" default:"8081"`
 
@@ -89,6 +98,9 @@ func runServe(ctx context.Context, cfg struct {
 	if err != nil {
 		return err
 	}
+
+	go printDBStats(dbConn)
+
 	db := sqrlx.NewPostgres(dbConn)
 
 	middleware := service.GRPCMiddleware()
