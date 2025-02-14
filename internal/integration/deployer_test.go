@@ -526,5 +526,4 @@ func TestStackLock(t *testing.T) {
 		}
 
 	})
-
 }

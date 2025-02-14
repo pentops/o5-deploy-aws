@@ -65,7 +65,6 @@ type singlePattern struct {
 }
 
 func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subscriptionPlan, error) {
-
 	plan := &subscriptionPlan{
 		namePrefix:       fmt.Sprintf("%s_%s", appName, spec.Name),
 		targetContainers: make(map[string]struct{}),
@@ -79,7 +78,6 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 	rulesByEnv[""] = localEnvRules
 
 	for _, sub := range spec.Subscriptions {
-
 		if strings.HasPrefix(sub.Name, "o5-infra/") {
 			topicName := sub.Name[len("o5-infra/"):]
 			snsTopicARN := cloudformation.Join("", []string{
@@ -154,7 +152,6 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 	}
 
 	for envGroup, rules := range rulesByEnv {
-
 		rulePatterns := make([]singlePattern, 0)
 
 		if len(rules.topics) > 0 {
@@ -225,7 +222,6 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 				Detail: detailPattern,
 			},
 		})
-
 	}
 
 	return plan, nil

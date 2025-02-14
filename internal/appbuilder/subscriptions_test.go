@@ -145,11 +145,13 @@ func TestEventBusRules(t *testing.T) {
 			if len(got.eventBusSubscriptions) != len(tc.want) {
 				t.Errorf("expected %d rules, got %d", len(tc.want), len(got.eventBusSubscriptions))
 			}
+
 			for idx := range tc.want {
 				if idx >= len(got.eventBusSubscriptions) {
 					t.Errorf("extra rule %d rules, got %d", len(tc.want), len(got.eventBusSubscriptions))
 					continue
 				}
+
 				gotAsJSON, err := json.Marshal(got.eventBusSubscriptions[idx].eventPattern)
 				if err != nil {
 					t.Fatal(err)
@@ -164,7 +166,6 @@ func TestEventBusRules(t *testing.T) {
 				assertJSONMapEqual(t, []string{"$"}, tc.want[idx], gotAsMap)
 			}
 		})
-
 	}
 
 }
