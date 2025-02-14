@@ -384,9 +384,11 @@ func (j *Join) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return err
 	}
+
 	if len(raw.Vals) != 2 {
 		return nil
 	}
+
 	j.Delim = raw.Vals[0].(string)
 	for _, v := range raw.Vals[1].([]interface{}) {
 		j.Vals = append(j.Vals, v.(string))
@@ -407,11 +409,14 @@ func (g *GetAtt) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return err
 	}
+
 	if len(raw.Vals) != 2 {
 		return nil
 	}
+
 	g.Resource = raw.Vals[0]
 	g.Attribute = raw.Vals[1]
+
 	return nil
 }
 
@@ -426,13 +431,17 @@ func assertJSONEqual(t *testing.T, path []string, expected, got interface{}) {
 		if !ok {
 			t.Errorf("at %s: expected slice, got %T", strings.Join(path, "."), got)
 		}
+
 		assertJSONArrayEqual(t, path, expected, gotSlice)
+
 	case map[string]interface{}:
 		gotMap, ok := got.(map[string]interface{})
 		if !ok {
 			t.Errorf("at %s: expected map, got %T", strings.Join(path, "."), got)
 		}
+
 		assertJSONMapEqual(t, path, expected, gotMap)
+
 	default:
 		if !reflect.DeepEqual(expected, got) {
 			t.Errorf("at %s: DEEP expected %#v (%T), got %#v (%T)", strings.Join(path, "."), expected, expected, got, got)
@@ -450,6 +459,7 @@ func assertJSONArrayEqual(t *testing.T, path []string, expected, got []interface
 			t.Errorf("at %s: index %d out of range", strings.Join(path, "."), ii)
 			continue
 		}
+
 		gotVal := got[ii]
 		assertJSONEqual(t, append(path, strconv.Itoa(ii)), val, gotVal)
 	}
