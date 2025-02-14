@@ -14,6 +14,11 @@ func TestEventBusRules(t *testing.T) {
 		testAppName = ""
 
 		localEnvRef = cloudformation.Ref(EnvNameParameter)
+
+		fullNameRef = cloudformation.Join("/", []string{
+			cloudformation.Ref(EnvNameParameter),
+			testAppName,
+		})
 	)
 
 	for _, tc := range []struct {
@@ -37,6 +42,14 @@ func TestEventBusRules(t *testing.T) {
 				"detail": map[string]interface{}{
 					"sourceEnv":        []interface{}{localEnvRef},
 					"destinationTopic": []interface{}{"test"},
+					"reply": map[string]interface{}{
+						"replyTo": []interface{}{
+							map[string]interface{}{
+								"exists": false,
+							},
+							fullNameRef,
+						},
+					},
 				},
 			}},
 		},
@@ -51,6 +64,14 @@ func TestEventBusRules(t *testing.T) {
 			want: []map[string]interface{}{{
 				"detail": map[string]interface{}{
 					"destinationTopic": []interface{}{"test"},
+					"reply": map[string]interface{}{
+						"replyTo": []interface{}{
+							map[string]interface{}{
+								"exists": false,
+							},
+							fullNameRef,
+						},
+					},
 				},
 			}},
 		},
@@ -67,6 +88,14 @@ func TestEventBusRules(t *testing.T) {
 				"detail": map[string]interface{}{
 					"sourceEnv":        []interface{}{localEnvRef},
 					"destinationTopic": []interface{}{"test", "test2"},
+					"reply": map[string]interface{}{
+						"replyTo": []interface{}{
+							map[string]interface{}{
+								"exists": false,
+							},
+							fullNameRef,
+						},
+					},
 				},
 			}},
 		},
@@ -81,6 +110,14 @@ func TestEventBusRules(t *testing.T) {
 				"detail": map[string]interface{}{
 					"sourceEnv":   []interface{}{localEnvRef},
 					"grpcService": []interface{}{"foo.v1.Bar"},
+					"reply": map[string]interface{}{
+						"replyTo": []interface{}{
+							map[string]interface{}{
+								"exists": false,
+							},
+							fullNameRef,
+						},
+					},
 				},
 			}},
 		},
@@ -96,6 +133,14 @@ func TestEventBusRules(t *testing.T) {
 					"sourceEnv":   []interface{}{localEnvRef},
 					"grpcService": []interface{}{"foo.v1.Bar"},
 					"grpcMethod":  []interface{}{"Baz"},
+					"reply": map[string]interface{}{
+						"replyTo": []interface{}{
+							map[string]interface{}{
+								"exists": false,
+							},
+							fullNameRef,
+						},
+					},
 				},
 			}},
 		},
@@ -113,6 +158,14 @@ func TestEventBusRules(t *testing.T) {
 					"sourceEnv":   []interface{}{localEnvRef},
 					"grpcService": []interface{}{"foo.v1.Bar"},
 					"grpcMethod":  []interface{}{"Baz", "Qux"},
+					"reply": map[string]interface{}{
+						"replyTo": []interface{}{
+							map[string]interface{}{
+								"exists": false,
+							},
+							fullNameRef,
+						},
+					},
 				},
 			}},
 		},
@@ -131,11 +184,27 @@ func TestEventBusRules(t *testing.T) {
 						map[string]interface{}{
 							"sourceEnv":   []interface{}{localEnvRef},
 							"grpcService": []interface{}{"foo.v1.Qux"},
+							"reply": map[string]interface{}{
+								"replyTo": []interface{}{
+									map[string]interface{}{
+										"exists": false,
+									},
+									fullNameRef,
+								},
+							},
 						},
 						map[string]interface{}{
 							"sourceEnv":   []interface{}{localEnvRef},
 							"grpcService": []interface{}{"foo.v1.Bar"},
 							"grpcMethod":  []interface{}{"Baz"},
+							"reply": map[string]interface{}{
+								"replyTo": []interface{}{
+									map[string]interface{}{
+										"exists": false,
+									},
+									fullNameRef,
+								},
+							},
 						},
 					},
 				},
