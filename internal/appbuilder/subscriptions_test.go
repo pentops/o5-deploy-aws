@@ -10,126 +10,207 @@ import (
 )
 
 func TestEventBusRules(t *testing.T) {
+	var (
+		testAppName = ""
 
-	var localEnvRef = cloudformation.Ref(EnvNameParameter)
+		localEnvRef = cloudformation.Ref(EnvNameParameter)
+
+		fullNameRef = cloudformation.Join("/", []string{
+			cloudformation.Ref(EnvNameParameter),
+			testAppName,
+		})
+	)
+
 	for _, tc := range []struct {
 		name  string
 		want  []map[string]interface{}
 		input *application_pb.Runtime
-	}{{
-		name:  "no rules",
-		want:  nil,
-		input: &application_pb.Runtime{},
-	}, {
-		name: "one topic rule",
-		input: &application_pb.Runtime{
-			Subscriptions: []*application_pb.Subscription{{
-				Name: "test",
-			}},
+	}{
+		{
+			name:  "no rules",
+			want:  nil,
+			input: &application_pb.Runtime{},
 		},
-		want: []map[string]interface{}{{
-			"detail": map[string]interface{}{
-				"sourceEnv":        []interface{}{localEnvRef},
-				"destinationTopic": []interface{}{"test"},
+		{
+			name: "one topic rule",
+			input: &application_pb.Runtime{
+				Subscriptions: []*application_pb.Subscription{{
+					Name: "test",
+				}},
 			},
-		}},
-	}, {
-
-		name: "wildcard env",
-		input: &application_pb.Runtime{
-			Subscriptions: []*application_pb.Subscription{{
-				Name:    "test",
-				EnvName: proto.String("*"),
-			}},
-		},
-		want: []map[string]interface{}{{
-			"detail": map[string]interface{}{
-				"destinationTopic": []interface{}{"test"},
-			},
-		}},
-	}, {
-		name: "two topic rules",
-		input: &application_pb.Runtime{
-			Subscriptions: []*application_pb.Subscription{{
-				Name: "test",
-			}, {
-				Name: "test2",
-			}},
-		},
-		want: []map[string]interface{}{{
-			"detail": map[string]interface{}{
-				"sourceEnv":        []interface{}{localEnvRef},
-				"destinationTopic": []interface{}{"test", "test2"},
-			},
-		}},
-	}, {
-		name: "one service rule",
-		input: &application_pb.Runtime{
-			Subscriptions: []*application_pb.Subscription{{
-				Name: "/foo.v1.Bar",
-			}},
-		},
-		want: []map[string]interface{}{{
-			"detail": map[string]interface{}{
-				"sourceEnv":   []interface{}{localEnvRef},
-				"grpcService": []interface{}{"foo.v1.Bar"},
-			},
-		}},
-	}, {
-		name: "one method rule",
-		input: &application_pb.Runtime{
-			Subscriptions: []*application_pb.Subscription{{
-				Name: "/foo.v1.Bar/Baz",
-			}},
-		},
-		want: []map[string]interface{}{{
-			"detail": map[string]interface{}{
-				"sourceEnv":   []interface{}{localEnvRef},
-				"grpcService": []interface{}{"foo.v1.Bar"},
-				"grpcMethod":  []interface{}{"Baz"},
-			},
-		}},
-	}, {
-		name: "group methods by service",
-		input: &application_pb.Runtime{
-			Subscriptions: []*application_pb.Subscription{{
-				Name: "/foo.v1.Bar/Baz",
-			}, {
-				Name: "/foo.v1.Bar/Qux",
-			}},
-		},
-		want: []map[string]interface{}{{
-			"detail": map[string]interface{}{
-				"sourceEnv":   []interface{}{localEnvRef},
-				"grpcService": []interface{}{"foo.v1.Bar"},
-				"grpcMethod":  []interface{}{"Baz", "Qux"},
-			},
-		}},
-	}, {
-		name: "one service and method rule",
-		input: &application_pb.Runtime{
-			Subscriptions: []*application_pb.Subscription{{
-				Name: "/foo.v1.Bar/Baz",
-			}, {
-				Name: "/foo.v1.Qux",
-			}},
-		},
-		want: []map[string]interface{}{{
-			"detail": map[string]interface{}{
-				"$or": []interface{}{
-					map[string]interface{}{
-						"sourceEnv":   []interface{}{localEnvRef},
-						"grpcService": []interface{}{"foo.v1.Qux"},
-					},
-					map[string]interface{}{
-						"sourceEnv":   []interface{}{localEnvRef},
-						"grpcService": []interface{}{"foo.v1.Bar"},
-						"grpcMethod":  []interface{}{"Baz"},
+			want: []map[string]interface{}{{
+				"detail": map[string]interface{}{
+					"sourceEnv":        []interface{}{localEnvRef},
+					"destinationTopic": []interface{}{"test"},
+					"reply": map[string]interface{}{
+						"replyTo": []interface{}{
+							map[string]interface{}{
+								"exists": false,
+							},
+							fullNameRef,
+						},
 					},
 				},
+			}},
+		},
+		{
+			name: "wildcard env",
+			input: &application_pb.Runtime{
+				Subscriptions: []*application_pb.Subscription{{
+					Name:    "test",
+					EnvName: proto.String("*"),
+				}},
 			},
-		}},
-	}} {
+			want: []map[string]interface{}{{
+				"detail": map[string]interface{}{
+					"destinationTopic": []interface{}{"test"},
+					"reply": map[string]interface{}{
+						"replyTo": []interface{}{
+							map[string]interface{}{
+								"exists": false,
+							},
+							fullNameRef,
+						},
+					},
+				},
+			}},
+		},
+		{
+			name: "two topic rules",
+			input: &application_pb.Runtime{
+				Subscriptions: []*application_pb.Subscription{{
+					Name: "test",
+				}, {
+					Name: "test2",
+				}},
+			},
+			want: []map[string]interface{}{{
+				"detail": map[string]interface{}{
+					"sourceEnv":        []interface{}{localEnvRef},
+					"destinationTopic": []interface{}{"test", "test2"},
+					"reply": map[string]interface{}{
+						"replyTo": []interface{}{
+							map[string]interface{}{
+								"exists": false,
+							},
+							fullNameRef,
+						},
+					},
+				},
+			}},
+		},
+		{
+			name: "one service rule",
+			input: &application_pb.Runtime{
+				Subscriptions: []*application_pb.Subscription{{
+					Name: "/foo.v1.Bar",
+				}},
+			},
+			want: []map[string]interface{}{{
+				"detail": map[string]interface{}{
+					"sourceEnv":   []interface{}{localEnvRef},
+					"grpcService": []interface{}{"foo.v1.Bar"},
+					"reply": map[string]interface{}{
+						"replyTo": []interface{}{
+							map[string]interface{}{
+								"exists": false,
+							},
+							fullNameRef,
+						},
+					},
+				},
+			}},
+		},
+		{
+			name: "one method rule",
+			input: &application_pb.Runtime{
+				Subscriptions: []*application_pb.Subscription{{
+					Name: "/foo.v1.Bar/Baz",
+				}},
+			},
+			want: []map[string]interface{}{{
+				"detail": map[string]interface{}{
+					"sourceEnv":   []interface{}{localEnvRef},
+					"grpcService": []interface{}{"foo.v1.Bar"},
+					"grpcMethod":  []interface{}{"Baz"},
+					"reply": map[string]interface{}{
+						"replyTo": []interface{}{
+							map[string]interface{}{
+								"exists": false,
+							},
+							fullNameRef,
+						},
+					},
+				},
+			}},
+		},
+		{
+			name: "group methods by service",
+			input: &application_pb.Runtime{
+				Subscriptions: []*application_pb.Subscription{{
+					Name: "/foo.v1.Bar/Baz",
+				}, {
+					Name: "/foo.v1.Bar/Qux",
+				}},
+			},
+			want: []map[string]interface{}{{
+				"detail": map[string]interface{}{
+					"sourceEnv":   []interface{}{localEnvRef},
+					"grpcService": []interface{}{"foo.v1.Bar"},
+					"grpcMethod":  []interface{}{"Baz", "Qux"},
+					"reply": map[string]interface{}{
+						"replyTo": []interface{}{
+							map[string]interface{}{
+								"exists": false,
+							},
+							fullNameRef,
+						},
+					},
+				},
+			}},
+		},
+		{
+			name: "one service and method rule",
+			input: &application_pb.Runtime{
+				Subscriptions: []*application_pb.Subscription{{
+					Name: "/foo.v1.Bar/Baz",
+				}, {
+					Name: "/foo.v1.Qux",
+				}},
+			},
+			want: []map[string]interface{}{{
+				"detail": map[string]interface{}{
+					"$or": []interface{}{
+						map[string]interface{}{
+							"sourceEnv":   []interface{}{localEnvRef},
+							"grpcService": []interface{}{"foo.v1.Qux"},
+							"reply": map[string]interface{}{
+								"replyTo": []interface{}{
+									map[string]interface{}{
+										"exists": false,
+									},
+									fullNameRef,
+								},
+							},
+						},
+						map[string]interface{}{
+							"sourceEnv":   []interface{}{localEnvRef},
+							"grpcService": []interface{}{"foo.v1.Bar"},
+							"grpcMethod":  []interface{}{"Baz"},
+							"reply": map[string]interface{}{
+								"replyTo": []interface{}{
+									map[string]interface{}{
+										"exists": false,
+									},
+									fullNameRef,
+								},
+							},
+						},
+					},
+				},
+			}},
+		},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if len(tc.input.Containers) == 0 {
 				tc.input.Containers = []*application_pb.Container{{
@@ -137,7 +218,7 @@ func TestEventBusRules(t *testing.T) {
 				}}
 			}
 
-			got, err := buildSubscriptionPlan("", tc.input)
+			got, err := buildSubscriptionPlan(testAppName, tc.input)
 			if err != nil {
 				t.Fatal(err)
 			}
