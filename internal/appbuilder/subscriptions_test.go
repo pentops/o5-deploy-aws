@@ -10,8 +10,12 @@ import (
 )
 
 func TestEventBusRules(t *testing.T) {
+	var (
+		testAppName = ""
 
-	var localEnvRef = cloudformation.Ref(EnvNameParameter)
+		localEnvRef = cloudformation.Ref(EnvNameParameter)
+	)
+
 	for _, tc := range []struct {
 		name  string
 		want  []map[string]interface{}
@@ -137,7 +141,7 @@ func TestEventBusRules(t *testing.T) {
 				}}
 			}
 
-			got, err := buildSubscriptionPlan("", tc.input)
+			got, err := buildSubscriptionPlan(testAppName, tc.input)
 			if err != nil {
 				t.Fatal(err)
 			}
