@@ -43,6 +43,10 @@ message Blobstore {
   // not be created in the stack for the current application, but permissions
   // will be granted.
   BlobstoreRef ref = 3;
+
+  // Specifies whether the bucket is configured to emit events to the default
+  // event bus. Will have no impact if the blobstore is a reference.
+  bool emit_events = 4;
 }
 
 message BlobstoreRef {
