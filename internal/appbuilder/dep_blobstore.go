@@ -86,10 +86,19 @@ func mapBlobstore(bb *Builder, blobstoreDef *application_pb.Blobstore) (*bucketI
 			cloudformation.Ref(AWSRegionParameter),
 			cloudformation.Ref(S3BucketNamespaceParameter),
 		)
-		bucket := cflib.NewResource(blobstoreDef.Name, &s3.Bucket{
+
+		cfg := &s3.Bucket{
 			AWSCloudFormationDeletionPolicy: policies.DeletionPolicy("Retain"),
 			BucketName:                      bucketName.RefPtr(),
-		})
+			NotificationConfiguration: &s3.Bucket_NotificationConfiguration{
+				EventBridgeConfiguration: &s3.Bucket_EventBridgeConfiguration{
+					EventBridgeEnabled: blobstoreDef.EmitEvents,
+				},
+			},
+		}
+
+		bucket := cflib.NewResource(blobstoreDef.Name, cfg)
+
 		bb.Template.AddResource(bucket)
 
 		bucketInfo := &bucketInfo{
@@ -99,6 +108,7 @@ func mapBlobstore(bb *Builder, blobstoreDef *application_pb.Blobstore) (*bucketI
 			read:     true,
 			write:    true,
 		}
+
 		return bucketInfo, nil
 	}
 
