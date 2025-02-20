@@ -65,10 +65,10 @@ func runMigrate(ctx context.Context, config struct {
 	return nil
 }
 
-func printDBStats(dbc *sql.DB) {
+func printDBStats(ctx context.Context, dbc *sql.DB) {
 	for {
 		<-time.After(30 * time.Second)
-		fmt.Printf("db stats %+v", dbc.Stats())
+		log.Infof(ctx, "db stats: %+v", dbc.Stats())
 	}
 }
 
@@ -99,7 +99,7 @@ func runServe(ctx context.Context, cfg struct {
 		return err
 	}
 
-	go printDBStats(dbConn)
+	go printDBStats(ctx, dbConn)
 
 	db := sqrlx.NewPostgres(dbConn)
 
