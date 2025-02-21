@@ -108,50 +108,46 @@ func runServe(ctx context.Context, cfg struct {
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(middleware...)),
 	)
 
-	{
-		clients, err := awsapi.LoadFromConfig(ctx, awsConfig, awsapi.WithAssumeRole(cfg.DeployerAssumeRole))
-		if err != nil {
-			return err
-		}
-
-		infraApp, err := aws.NewApp(db, clients)
-		if err != nil {
-			return err
-		}
-		infraApp.RegisterGRPC(grpcServer)
+	clients, err := awsapi.LoadFromConfig(ctx, awsConfig, awsapi.WithAssumeRole(cfg.DeployerAssumeRole))
+	if err != nil {
+		return err
 	}
 
-	{
-		templateStore, err := deployer.NewS3TemplateStore(ctx, s3Client, cfg.CFTemplates)
-		if err != nil {
-			return err
-		}
+	infraApp, err := aws.NewApp(db, clients)
+	if err != nil {
+		return err
+	}
+	infraApp.RegisterGRPC(grpcServer)
 
-		specBuilder, err := deployer.NewSpecBuilder(templateStore)
-		if err != nil {
-			return err
-		}
-
-		githubApps := []github.AppConfig{}
-		if err := json.Unmarshal([]byte(cfg.GithubAppsJSON), &githubApps); err != nil {
-			return fmt.Errorf("GITHUB_APPS env var: %w", err)
-		}
-		githubClient, err := github.NewMultiOrgClientFromConfigs(githubApps...)
-		if err != nil {
-			return err
-		}
-
-		serviceApp, err := service.NewApp(service.AppDeps{
-			DB:           db,
-			GithubClient: githubClient,
-			SpecBuilder:  specBuilder,
-		})
-		if err != nil {
-			return err
-		}
-		serviceApp.RegisterGRPC(grpcServer)
+	templateStore, err := deployer.NewS3TemplateStore(ctx, s3Client, cfg.CFTemplates)
+	if err != nil {
+		return err
 	}
 
+	specBuilder, err := deployer.NewSpecBuilder(templateStore)
+	if err != nil {
+		return err
+	}
+
+	githubApps := []github.AppConfig{}
+	if err := json.Unmarshal([]byte(cfg.GithubAppsJSON), &githubApps); err != nil {
+		return fmt.Errorf("GITHUB_APPS env var: %w", err)
+	}
+	githubClient, err := github.NewMultiOrgClientFromConfigs(githubApps...)
+	if err != nil {
+		return err
+	}
+
+	serviceApp, err := service.NewApp(service.AppDeps{
+		DB:           db,
+		GithubClient: githubClient,
+		SpecBuilder:  specBuilder,
+	})
+	if err != nil {
+		return err
+	}
+
+	serviceApp.RegisterGRPC(grpcServer)
 	reflection.Register(grpcServer)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
