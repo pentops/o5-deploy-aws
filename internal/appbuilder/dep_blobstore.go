@@ -7,6 +7,7 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/policies"
 	"github.com/awslabs/goformation/v7/cloudformation/s3"
+	"github.com/awslabs/goformation/v7/cloudformation/transfer"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
 )
@@ -74,6 +75,31 @@ func (bi bucketInfo) GetPermissions() RWPermission {
 	return WriteOnly
 }
 
+func addSFTP(bb *Builder, blobstoreDef *application_pb.Blobstore) error {
+	// TODO: does this default to SFTP? Goformation is misssing ability to set that.
+	s := transfer.Server{}
+
+	sftp := cflib.NewResource(blobstoreDef.Name+"sftp", &s)
+	bb.Template.AddResource(sftp)
+
+	for _, u := range blobstoreDef.SftpSettings.Users {
+		k := transfer.User_SshPublicKey{
+			// TODO: set public key but goformation missing ability to set
+			//assign u.PublicSshKey
+		}
+		u1 := transfer.User{
+			Role:          "", // TBD: IAM role ARN
+			ServerId:      string(sftp.GetAtt("ServerId")),
+			UserName:      u.Username,
+			SshPublicKeys: []transfer.User_SshPublicKey{k},
+		}
+		user := cflib.NewResource(blobstoreDef.Name+u1.UserName, &u1)
+		bb.Template.AddResource(user)
+	}
+
+	return nil
+}
+
 func mapBlobstore(bb *Builder, blobstoreDef *application_pb.Blobstore) (*bucketInfo, error) {
 
 	appName := bb.Globals.AppName()
@@ -109,7 +135,12 @@ func mapBlobstore(bb *Builder, blobstoreDef *application_pb.Blobstore) (*bucketI
 			write:    true,
 		}
 
-		// add sftp access if needed
+		if blobstoreDef.SftpSettings != nil && len(blobstoreDef.SftpSettings.Users) > 0 {
+			err := addSFTP(bb, blobstoreDef)
+			if err != nil {
+				return nil, fmt.Errorf("error setting sftp access: %w", err)
+			}
+		}
 
 		return bucketInfo, nil
 	}
