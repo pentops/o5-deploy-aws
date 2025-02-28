@@ -109,6 +109,8 @@ func mapBlobstore(bb *Builder, blobstoreDef *application_pb.Blobstore) (*bucketI
 			write:    true,
 		}
 
+		// add sftp access if needed
+
 		return bucketInfo, nil
 	}
 

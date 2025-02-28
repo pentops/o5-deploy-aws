@@ -47,6 +47,19 @@ message Blobstore {
   // Specifies whether the bucket is configured to emit events to the default
   // event bus. Will have no impact if the blobstore is a reference.
   bool emit_events = 4;
+
+  // Blobstore should expose an SFTP endpoint.
+  // Will not make changes if the blobstore is a reference.
+  SFTPSettings sftp_settings = 5;
+}
+
+message SFTPSettings {
+  repeated SFTPUser users = 1;
+}
+
+message SFTPUser {
+  string username = 1;
+  string public_ssh_key = 2;
 }
 
 message BlobstoreRef {
