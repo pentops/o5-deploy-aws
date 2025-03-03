@@ -76,22 +76,19 @@ func (bi bucketInfo) GetPermissions() RWPermission {
 }
 
 func addSFTP(bb *Builder, blobstoreDef *application_pb.Blobstore) error {
-	// TODO: does this default to SFTP? Goformation is misssing ability to set that.
-	s := transfer.Server{}
+	s := transfer.Server{
+		Protocols: []string{"SFTP"},
+	}
 
 	sftp := cflib.NewResource(blobstoreDef.Name+"sftp", &s)
 	bb.Template.AddResource(sftp)
 
 	for _, u := range blobstoreDef.SftpSettings.Users {
-		k := transfer.User_SshPublicKey{
-			// TODO: set public key but goformation missing ability to set
-			//assign u.PublicSshKey
-		}
 		u1 := transfer.User{
 			Role:          "", // TBD: IAM role ARN
 			ServerId:      string(sftp.GetAtt("ServerId")),
 			UserName:      u.Username,
-			SshPublicKeys: []transfer.User_SshPublicKey{k},
+			SshPublicKeys: []string{u.PublicSshKey},
 		}
 		user := cflib.NewResource(blobstoreDef.Name+u1.UserName, &u1)
 		bb.Template.AddResource(user)
