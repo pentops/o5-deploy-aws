@@ -7,7 +7,6 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/policies"
 	"github.com/awslabs/goformation/v7/cloudformation/s3"
-	"github.com/awslabs/goformation/v7/cloudformation/transfer"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
 )
@@ -76,24 +75,7 @@ func (bi bucketInfo) GetPermissions() RWPermission {
 }
 
 func addSFTP(bb *Builder, blobstoreDef *application_pb.Blobstore) error {
-	s := transfer.Server{
-		Protocols: []string{"SFTP"},
-	}
-
-	sftp := cflib.NewResource(blobstoreDef.Name+"sftp", &s)
-	bb.Template.AddResource(sftp)
-
-	for _, u := range blobstoreDef.SftpSettings.Users {
-		u1 := transfer.User{
-			Role:          "", // TBD: IAM role ARN
-			ServerId:      string(sftp.GetAtt("ServerId")),
-			UserName:      u.Username,
-			SshPublicKeys: []string{u.PublicSshKey},
-		}
-		user := cflib.NewResource(blobstoreDef.Name+u1.UserName, &u1)
-		bb.Template.AddResource(user)
-	}
-
+	// noop for now - test new app protos first
 	return nil
 }
 
