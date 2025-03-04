@@ -74,6 +74,11 @@ func (bi bucketInfo) GetPermissions() RWPermission {
 	return WriteOnly
 }
 
+func addSFTP(bb *Builder, blobstoreDef *application_pb.Blobstore) error {
+	// noop for now - test new app protos first
+	return nil
+}
+
 func mapBlobstore(bb *Builder, blobstoreDef *application_pb.Blobstore) (*bucketInfo, error) {
 
 	appName := bb.Globals.AppName()
@@ -107,6 +112,13 @@ func mapBlobstore(bb *Builder, blobstoreDef *application_pb.Blobstore) (*bucketI
 			arn:      bucket.GetAtt("Arn"),
 			read:     true,
 			write:    true,
+		}
+
+		if blobstoreDef.SftpSettings != nil && len(blobstoreDef.SftpSettings.Users) > 0 {
+			err := addSFTP(bb, blobstoreDef)
+			if err != nil {
+				return nil, fmt.Errorf("error setting sftp access: %w", err)
+			}
 		}
 
 		return bucketInfo, nil

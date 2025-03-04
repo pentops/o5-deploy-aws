@@ -89,3 +89,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240930140551-af27646dc61f // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/awslabs/goformation/v7 => github.com/twisp/goformation/v7 v7.0.0-20250225211955-a6db284e8d3f
