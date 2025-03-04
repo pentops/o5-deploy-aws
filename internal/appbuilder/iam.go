@@ -136,6 +136,72 @@ const (
 
 const policyVersion = "2012-10-17"
 
+var SFTPBucketPolicy = `{
+	"Version": "2012-10-17",
+	"Statement": [
+	  {
+		"Sid":"ReadWriteS3",
+		"Action": [
+			  "s3:ListBucket"
+				  ],
+		"Effect": "Allow",
+		"Resource": ["arn:aws:s3:::%s"]
+	  },
+	  {
+		"Effect": "Allow",
+		"Action": [
+		  "s3:PutObject",
+		  "s3:GetObject",
+		  "s3:GetObjectTagging",
+		  "s3:DeleteObject",              
+		  "s3:DeleteObjectVersion",
+		  "s3:GetObjectVersion",
+		  "s3:GetObjectVersionTagging",
+		  "s3:GetObjectACL",
+		  "s3:PutObjectACL"
+		],
+		"Resource": ["arn:aws:s3:::%s/*"]
+	  }
+	]
+  }
+  `
+
+func (pb *PolicyBuilder) BuildForSFTP(bucketName, familyName string) iam.Role_Policy {
+	envNameRef := cloudformation.Ref("EnvName")
+	uniqueName := func(a string) string {
+		return cloudformation.Join("-", []string{
+			envNameRef,
+			familyName,
+			a,
+		})
+	}
+
+	pffft := iam.Role_Policy{
+		PolicyName: uniqueName(PolicyNameS3ReadwriteACL),
+		PolicyDocument: PolicyDocument{
+			Version: policyVersion,
+			Statement: []StatementEntry{{
+				Effect: "Allow",
+				Action: []string{
+					"s3:ListBucket",
+				},
+				Resource: pb.s3ReadWriteAcl,
+			}, {
+				Effect: "Allow",
+				Action: []string{
+					"s3:GetObject",
+					"s3:PutObject",
+					"s3:PutObjectAcl",
+				},
+				Resource: addS3TrailingSlash(pb.s3ReadWriteAcl),
+			},
+			},
+		},
+	}
+
+	return pffft
+}
+
 func (pb *PolicyBuilder) Build(familyName string) []iam.Role_Policy {
 
 	//accountIDRef := cloudformation.Ref("AWS::AccountId")
@@ -399,7 +465,6 @@ func (pb *PolicyBuilder) Build(familyName string) []iam.Role_Policy {
 }
 
 func addS3TrailingSlash(in []string) []string {
-
 	subResources := make([]string, 0, len(in)*2)
 
 	for i := range in {

@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/policies"
 	"github.com/awslabs/goformation/v7/cloudformation/s3"
+	"github.com/awslabs/goformation/v7/cloudformation/tags"
 	"github.com/awslabs/goformation/v7/cloudformation/transfer"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
@@ -76,19 +78,32 @@ func (bi bucketInfo) GetPermissions() RWPermission {
 }
 
 func addSFTP(bb *Builder, blobstoreDef *application_pb.Blobstore) error {
+	n := blobstoreDef.Name + "sftp"
+
 	s := transfer.Server{
-		Protocols: []string{"SFTP"},
+		Protocols:    []string{"SFTP"},
+		EndpointType: aws.String("VPC"),
+		EndpointDetails: &transfer.Server_EndpointDetails{
+			SecurityGroupIds: []string{},
+			// not sure if this one will work as I hope:
+			SubnetIds: []string{cloudformation.Split(",", cloudformation.Ref(SubnetIDsParameter))},
+			VpcId:     cloudformation.RefPtr(VPCParameter),
+		},
+		Tags: []tags.Tag{{Key: "Name", Value: n}},
 	}
 
-	sftp := cflib.NewResource(blobstoreDef.Name+"sftp", &s)
+	sftp := cflib.NewResource(n, &s)
 	bb.Template.AddResource(sftp)
 
+	// need the s3 bucket read/write policy for this role:
 	for _, u := range blobstoreDef.SftpSettings.Users {
 		u1 := transfer.User{
-			Role:          "", // TBD: IAM role ARN
+			Role:          "", // TBD: IAM role ARN: it's for S3 access
 			ServerId:      string(sftp.GetAtt("ServerId")),
 			UserName:      u.Username,
 			SshPublicKeys: []string{u.PublicSshKey},
+			Policy:        &awsExamplePolicy, // IAM policy for this user on this bucket
+			HomeDirectory: aws.String("/" + blobstoreDef.Name + "/" + u.Username),
 		}
 		user := cflib.NewResource(blobstoreDef.Name+u1.UserName, &u1)
 		bb.Template.AddResource(user)
@@ -190,3 +205,44 @@ func mapBlobstore(bb *Builder, blobstoreDef *application_pb.Blobstore) (*bucketI
 		return nil, fmt.Errorf("unknown blobstore source type %T", st)
 	}
 }
+
+// https://docs.aws.amazon.com/transfer/latest/userguide/users-policies-session.html
+var awsExamplePolicy = `
+{
+  "Version": "2012-10-17",
+  "Statement": [
+      {
+          "Sid": "AllowListingOfUserFolder",
+          "Action": [
+              "s3:ListBucket"
+          ],
+          "Effect": "Allow",
+          "Resource": [
+              "arn:aws:s3:::${transfer:HomeBucket}"
+          ],
+          "Condition": {
+              "StringLike": {
+                  "s3:prefix": [
+                      "${transfer:HomeFolder}/*",
+                      "${transfer:HomeFolder}"
+                  ]
+              }
+          }
+      },
+      {
+          "Sid": "HomeDirObjectAccess",
+          "Effect": "Allow",
+          "Action": [
+              "s3:PutObject",
+              "s3:GetObject",
+              "s3:DeleteObjectVersion",
+              "s3:DeleteObject",
+              "s3:GetObjectVersion",
+              "s3:GetObjectACL",
+              "s3:PutObjectACL"
+          ],
+          "Resource": "arn:aws:s3:::${transfer:HomeDirectory}/*"
+       }
+  ]
+}
+`
