@@ -154,8 +154,8 @@ github.com/pentops/envconf.go v0.0.0-20241008010024-9864aef6219d h1:8+nKhf+5Ms60
 github.com/pentops/envconf.go v0.0.0-20241008010024-9864aef6219d/go.mod h1:NYtaIY8a+Y8LYV9Y/nJb24zxx8mQyRK4h9k2oZDJveI=
 github.com/pentops/flowtest v0.0.0-20241110231021-42663ac00b63 h1:c/Km4mfvR35s9uPVfSXTaZswD5T93vaeMRdTSJ2SGyY=
 github.com/pentops/flowtest v0.0.0-20241110231021-42663ac00b63/go.mod h1:vNp8crAKcH0f/sZU9frkmQLUeDsTIgMqV14kQtkAqC0=
-github.com/pentops/go-grpc-helpers v0.0.0-20241017215039-49310e58e724 h1:fEp/unEa2UvNjX4JP5ne6R7CY/RRvmCMSWdW7QWPQ04=
-github.com/pentops/go-grpc-helpers v0.0.0-20241017215039-49310e58e724/go.mod h1:o4uboIed6b5IWvXyJQanB4QOmmO4ukbO4DvPFFvl7Ns=
+github.com/pentops/grpc.go v0.0.0-20250304234535-387f5d75a9c3 h1:vnxDMyk5PKWLyX4088P2YiVsHfLg5B/HCJ9SSIrnxGY=
+github.com/pentops/grpc.go v0.0.0-20250304234535-387f5d75a9c3/go.mod h1:kUYGdH/6jh6hHZzaevmPnDiRewzCHZXw3CTGk/4u5nM=
 github.com/pentops/j5 v0.0.0-20250220215902-96e4ad10ce0b h1:zcITG4qI6X0HSzagEWQcwLDQO+SVeKjdfaOGxriQvKY=
 github.com/pentops/j5 v0.0.0-20250220215902-96e4ad10ce0b/go.mod h1:0NiSxy7cqeOfHHAfpN+Kyp8Vixi+S1rX7DMPKhdGvmQ=
 github.com/pentops/log.go v0.0.15 h1:yoyu8/2LTvJ4daAkRuKcDyLe1eICwJdiCkWgZwgtq3A=

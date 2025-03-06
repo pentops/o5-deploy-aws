@@ -31,7 +31,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/pentops/envconf.go v0.0.0-20241008010024-9864aef6219d
 	github.com/pentops/flowtest v0.0.0-20241110231021-42663ac00b63
-	github.com/pentops/go-grpc-helpers v0.0.0-20241017215039-49310e58e724
+	github.com/pentops/grpc.go v0.0.0-20250304234535-387f5d75a9c3
 	github.com/pentops/j5 v0.0.0-20250220215902-96e4ad10ce0b
 	github.com/pentops/log.go v0.0.15
 	github.com/pentops/o5-messaging v0.0.0-20250222021813-347361ac64f8
