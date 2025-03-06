@@ -8,7 +8,6 @@ import (
 	"github.com/awslabs/goformation/v7/cloudformation"
 	"github.com/awslabs/goformation/v7/cloudformation/policies"
 	"github.com/awslabs/goformation/v7/cloudformation/s3"
-	"github.com/awslabs/goformation/v7/cloudformation/tags"
 	"github.com/awslabs/goformation/v7/cloudformation/transfer"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
@@ -78,28 +77,11 @@ func (bi bucketInfo) GetPermissions() RWPermission {
 }
 
 func addSFTP(bb *Builder, blobstoreDef *application_pb.Blobstore) error {
-	n := blobstoreDef.Name + "sftp"
-
-	s := transfer.Server{
-		Protocols:    []string{"SFTP"},
-		EndpointType: aws.String("VPC"),
-		EndpointDetails: &transfer.Server_EndpointDetails{
-			SecurityGroupIds: []string{},
-			// not sure if this one will work as I hope:
-			SubnetIds: []string{cloudformation.Split(",", cloudformation.Ref(SubnetIDsParameter))},
-			VpcId:     cloudformation.RefPtr(VPCParameter),
-		},
-		Tags: []tags.Tag{{Key: "Name", Value: n}},
-	}
-
-	sftp := cflib.NewResource(n, &s)
-	bb.Template.AddResource(sftp)
-
-	// need the s3 bucket read/write policy for this role:
+	// pending changes to get role, server ID etc into o5 deployer
 	for _, u := range blobstoreDef.SftpSettings.Users {
 		u1 := transfer.User{
 			Role:          "", // TBD: IAM role ARN: it's for S3 access
-			ServerId:      string(sftp.GetAtt("ServerId")),
+			ServerId:      "serverId",
 			UserName:      u.Username,
 			SshPublicKeys: []string{u.PublicSshKey},
 			Policy:        &awsExamplePolicy, // IAM policy for this user on this bucket
