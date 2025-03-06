@@ -1,7 +1,7 @@
 package service
 
 import (
-	"github.com/pentops/go-grpc-helpers/protovalidatemw"
+	"github.com/pentops/grpc.go/protovalidatemw"
 	"github.com/pentops/log.go/grpc_log"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
