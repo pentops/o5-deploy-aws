@@ -25,7 +25,6 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/google/go-github/v47 v47.1.0
 	github.com/google/uuid v1.6.0
-	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/iancoleman/strcase v0.3.0
 	github.com/lib/pq v1.10.9
 	github.com/pentops/envconf.go v0.0.0-20240806040806-dcab509e8c71
@@ -73,6 +72,7 @@ require (
 	github.com/google/cel-go v0.21.0 // indirect
 	github.com/google/go-github/v29 v29.0.3 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
+	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/jhump/protoreflect v1.16.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
