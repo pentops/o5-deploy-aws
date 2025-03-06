@@ -11,7 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bufbuild/protovalidate-go"
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
@@ -105,7 +104,7 @@ func runServe(ctx context.Context, cfg struct {
 
 	middleware := service.GRPCMiddleware()
 	grpcServer := grpc.NewServer(
-		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(middleware...)),
+		grpc.ChainUnaryInterceptor(middleware...),
 	)
 
 	clients, err := awsapi.LoadFromConfig(ctx, awsConfig, awsapi.WithAssumeRole(cfg.DeployerAssumeRole))
