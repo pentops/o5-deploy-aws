@@ -54,6 +54,7 @@ func runMigrate(ctx context.Context, config struct {
 	if err != nil {
 		return err
 	}
+	defer db.Close()
 
 	log.Info(ctx, "Running migrations")
 	err = goose.Up(db, "/migrations")
