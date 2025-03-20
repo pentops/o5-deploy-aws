@@ -153,30 +153,28 @@ message WorkerConfig {
 }
 
 message Subscription {
+  // Filters the subscription.
+  // - `/{package}.{Service}` subscribes to a full gRPC service
+  // - `/{package}.{Service}/{Method}`  subscribes to the single method only
+  // - `o5-infra/{topic}` prefix subscribes to SNS directly.
+  // - `/global/{type}` subscribes to all messages of a given type
+  //   - type = 'event' - PSM State Transition events
+  //   - type = 'upsert' - Upsert messages
   string name = 1;
+
   optional string env_name = 2;
+
+  //# TARGET #//
 
   string target_container = 3; // Default: first defined container
   int64 port = 4; // Default: 8080
 
-  // Baz in the method /foo.bar.v1.FooBar/Baz
-  // Subscribes only to the method, if not set, subscribes to all methods
-  optional string grpc_method = 5;
-
-  // For request-reply replies, filters to the reply.reply_to field to the
-  // running env/app
-  bool is_reply = 6;
-
   // The payload is not the standard messaging payload
   // It should be parsed into a o5.messaging.v1.topic.RawMessage
   // Used for infrastructure messages, e.g. AWS EventBridge or CloudWatch events.
-  // Setting non_grpc in AWS will set 'rawMessageDelivery' to *false*, i.e., the SNS wrapper
+  // Setting this in AWS will set 'rawMessageDelivery' to *false*, i.e., the SNS wrapper
   // will be included.
   bool raw_message = 7;
-
-  // Subscribes to infra events, e.g. AWS ECS Task status
-  // Requires grant_meta_deploy_permissions to be true
-  bool meta_infra_events = 8;
 }
 
 message Route {
