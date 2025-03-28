@@ -1,4 +1,3 @@
-
 ---
 
 registry:
@@ -14,6 +13,18 @@ options:
 packages:
   - label: AWS Deployer
     name: o5.aws.deployer.v1
+
+  - label: AWS Infra
+    name: o5.aws.infra.v1
+
+  - label: J5 DRSS
+    name: j5.drss.v1
+
+  - label: Application
+    name: o5.application.v1
+
+  - label: Environment
+    name: o5.environment.v1
 
 dependencies:
   - registry:
