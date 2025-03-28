@@ -29,6 +29,56 @@ func (msg *SetECSScaleMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMet
 	return msg.Request
 }
 
+// Method: RunECSTask
+
+func (msg *RunECSTaskMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.ECSRequestTopic",
+		GrpcMethod:       "RunECSTask",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
+	return header
+}
+
+// Method: SetECSScale
+
+func (msg *SetECSScaleMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.ECSRequestTopic",
+		GrpcMethod:       "SetECSScale",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
+	return header
+}
+
 type ECSRequestTopicTxSender[C any] struct {
 	sender o5msg.TxSender[C]
 }
@@ -94,29 +144,6 @@ func NewECSRequestTopicPublisher(publisher o5msg.Publisher) *ECSRequestTopicPubl
 
 // Method: RunECSTask
 
-func (msg *RunECSTaskMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.ECSRequestTopic",
-		GrpcMethod:       "RunECSTask",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_request",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	} else {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: "",
-			},
-		}
-	}
-	return header
-}
-
 func (send ECSRequestTopicTxSender[C]) RunECSTask(ctx context.Context, sendContext C, msg *RunECSTaskMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)
 }
@@ -130,29 +157,6 @@ func (publish ECSRequestTopicPublisher) RunECSTask(ctx context.Context, msg *Run
 }
 
 // Method: SetECSScale
-
-func (msg *SetECSScaleMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.ECSRequestTopic",
-		GrpcMethod:       "SetECSScale",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_request",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	} else {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: "",
-			},
-		}
-	}
-	return header
-}
 
 func (send ECSRequestTopicTxSender[C]) SetECSScale(ctx context.Context, sendContext C, msg *SetECSScaleMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)
@@ -181,6 +185,44 @@ func (msg *ECSDeploymentStatusMessage) SetJ5RequestMetadata(md *messaging_j5pb.R
 }
 func (msg *ECSDeploymentStatusMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
 	return msg.Request
+}
+
+// Method: ECSTaskStatus
+
+func (msg *ECSTaskStatusMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.ECSReplyTopic",
+		GrpcMethod:       "ECSTaskStatus",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_reply",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Reply_{
+			Reply: &messaging_pb.Message_Reply{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	}
+	return header
+}
+
+// Method: ECSDeploymentStatus
+
+func (msg *ECSDeploymentStatusMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.ECSReplyTopic",
+		GrpcMethod:       "ECSDeploymentStatus",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_reply",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Reply_{
+			Reply: &messaging_pb.Message_Reply{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	}
+	return header
 }
 
 type ECSReplyTopicTxSender[C any] struct {
@@ -248,23 +290,6 @@ func NewECSReplyTopicPublisher(publisher o5msg.Publisher) *ECSReplyTopicPublishe
 
 // Method: ECSTaskStatus
 
-func (msg *ECSTaskStatusMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.ECSReplyTopic",
-		GrpcMethod:       "ECSTaskStatus",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_reply",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Reply_{
-			Reply: &messaging_pb.Message_Reply{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	}
-	return header
-}
-
 func (send ECSReplyTopicTxSender[C]) ECSTaskStatus(ctx context.Context, sendContext C, msg *ECSTaskStatusMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)
 }
@@ -278,23 +303,6 @@ func (publish ECSReplyTopicPublisher) ECSTaskStatus(ctx context.Context, msg *EC
 }
 
 // Method: ECSDeploymentStatus
-
-func (msg *ECSDeploymentStatusMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.ECSReplyTopic",
-		GrpcMethod:       "ECSDeploymentStatus",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_reply",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Reply_{
-			Reply: &messaging_pb.Message_Reply{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	}
-	return header
-}
 
 func (send ECSReplyTopicTxSender[C]) ECSDeploymentStatus(ctx context.Context, sendContext C, msg *ECSDeploymentStatusMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)

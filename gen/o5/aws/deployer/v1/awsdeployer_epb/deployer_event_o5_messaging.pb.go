@@ -11,6 +11,42 @@ import (
 )
 
 // Service: DeployerEvents
+// Method: Deployment
+
+func (msg *DeploymentEvent) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.deployer.v1.events.DeployerEvents",
+		GrpcMethod:       "Deployment",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-deployer-events",
+	}
+	return header
+}
+
+// Method: Stack
+
+func (msg *StackEvent) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.deployer.v1.events.DeployerEvents",
+		GrpcMethod:       "Stack",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-deployer-events",
+	}
+	return header
+}
+
+// Method: Environment
+
+func (msg *EnvironmentEvent) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.deployer.v1.events.DeployerEvents",
+		GrpcMethod:       "Environment",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-deployer-events",
+	}
+	return header
+}
+
 type DeployerEventsTxSender[C any] struct {
 	sender o5msg.TxSender[C]
 }
@@ -88,16 +124,6 @@ func NewDeployerEventsPublisher(publisher o5msg.Publisher) *DeployerEventsPublis
 
 // Method: Deployment
 
-func (msg *DeploymentEvent) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.deployer.v1.events.DeployerEvents",
-		GrpcMethod:       "Deployment",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-deployer-events",
-	}
-	return header
-}
-
 func (send DeployerEventsTxSender[C]) Deployment(ctx context.Context, sendContext C, msg *DeploymentEvent) error {
 	return send.sender.Send(ctx, sendContext, msg)
 }
@@ -112,16 +138,6 @@ func (publish DeployerEventsPublisher) Deployment(ctx context.Context, msg *Depl
 
 // Method: Stack
 
-func (msg *StackEvent) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.deployer.v1.events.DeployerEvents",
-		GrpcMethod:       "Stack",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-deployer-events",
-	}
-	return header
-}
-
 func (send DeployerEventsTxSender[C]) Stack(ctx context.Context, sendContext C, msg *StackEvent) error {
 	return send.sender.Send(ctx, sendContext, msg)
 }
@@ -135,16 +151,6 @@ func (publish DeployerEventsPublisher) Stack(ctx context.Context, msg *StackEven
 }
 
 // Method: Environment
-
-func (msg *EnvironmentEvent) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.deployer.v1.events.DeployerEvents",
-		GrpcMethod:       "Environment",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-deployer-events",
-	}
-	return header
-}
 
 func (send DeployerEventsTxSender[C]) Environment(ctx context.Context, sendContext C, msg *EnvironmentEvent) error {
 	return send.sender.Send(ctx, sendContext, msg)

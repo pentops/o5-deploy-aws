@@ -21,6 +21,31 @@ func (msg *RequestDeploymentMessage) GetJ5RequestMetadata() *messaging_j5pb.Requ
 	return msg.Request
 }
 
+// Method: RequestDeployment
+
+func (msg *RequestDeploymentMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.deployer.v1.topic.DeploymentRequestTopic",
+		GrpcMethod:       "RequestDeployment",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-deployer-input_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
+	return header
+}
+
 type DeploymentRequestTopicTxSender[C any] struct {
 	sender o5msg.TxSender[C]
 }
@@ -74,29 +99,6 @@ func NewDeploymentRequestTopicPublisher(publisher o5msg.Publisher) *DeploymentRe
 
 // Method: RequestDeployment
 
-func (msg *RequestDeploymentMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.deployer.v1.topic.DeploymentRequestTopic",
-		GrpcMethod:       "RequestDeployment",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-deployer-input_request",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	} else {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: "",
-			},
-		}
-	}
-	return header
-}
-
 func (send DeploymentRequestTopicTxSender[C]) RequestDeployment(ctx context.Context, sendContext C, msg *RequestDeploymentMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)
 }
@@ -116,6 +118,25 @@ func (msg *DeploymentStatusMessage) SetJ5RequestMetadata(md *messaging_j5pb.Requ
 }
 func (msg *DeploymentStatusMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
 	return msg.Request
+}
+
+// Method: DeploymentStatus
+
+func (msg *DeploymentStatusMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.deployer.v1.topic.DeploymentReplyTopic",
+		GrpcMethod:       "DeploymentStatus",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-deployer-output_reply",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Reply_{
+			Reply: &messaging_pb.Message_Reply{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	}
+	return header
 }
 
 type DeploymentReplyTopicTxSender[C any] struct {
@@ -170,23 +191,6 @@ func NewDeploymentReplyTopicPublisher(publisher o5msg.Publisher) *DeploymentRepl
 }
 
 // Method: DeploymentStatus
-
-func (msg *DeploymentStatusMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.deployer.v1.topic.DeploymentReplyTopic",
-		GrpcMethod:       "DeploymentStatus",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-deployer-output_reply",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Reply_{
-			Reply: &messaging_pb.Message_Reply{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	}
-	return header
-}
 
 func (send DeploymentReplyTopicTxSender[C]) DeploymentStatus(ctx context.Context, sendContext C, msg *DeploymentStatusMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)

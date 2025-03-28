@@ -69,6 +69,181 @@ func (msg *StabalizeStackMessage) GetJ5RequestMetadata() *messaging_j5pb.Request
 	return msg.Request
 }
 
+// Method: CreateNewStack
+
+func (msg *CreateNewStackMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
+		GrpcMethod:       "CreateNewStack",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
+	return header
+}
+
+// Method: UpdateStack
+
+func (msg *UpdateStackMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
+		GrpcMethod:       "UpdateStack",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
+	return header
+}
+
+// Method: CreateChangeSet
+
+func (msg *CreateChangeSetMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
+		GrpcMethod:       "CreateChangeSet",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
+	return header
+}
+
+// Method: ApplyChangeSet
+
+func (msg *ApplyChangeSetMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
+		GrpcMethod:       "ApplyChangeSet",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
+	return header
+}
+
+// Method: ScaleStack
+
+func (msg *ScaleStackMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
+		GrpcMethod:       "ScaleStack",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
+	return header
+}
+
+// Method: CancelStackUpdate
+
+func (msg *CancelStackUpdateMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
+		GrpcMethod:       "CancelStackUpdate",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
+	return header
+}
+
+// Method: StabalizeStack
+
+func (msg *StabalizeStackMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
+		GrpcMethod:       "StabalizeStack",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
+	return header
+}
+
 type CloudFormationRequestTopicTxSender[C any] struct {
 	sender o5msg.TxSender[C]
 }
@@ -194,29 +369,6 @@ func NewCloudFormationRequestTopicPublisher(publisher o5msg.Publisher) *CloudFor
 
 // Method: CreateNewStack
 
-func (msg *CreateNewStackMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
-		GrpcMethod:       "CreateNewStack",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_request",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	} else {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: "",
-			},
-		}
-	}
-	return header
-}
-
 func (send CloudFormationRequestTopicTxSender[C]) CreateNewStack(ctx context.Context, sendContext C, msg *CreateNewStackMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)
 }
@@ -230,29 +382,6 @@ func (publish CloudFormationRequestTopicPublisher) CreateNewStack(ctx context.Co
 }
 
 // Method: UpdateStack
-
-func (msg *UpdateStackMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
-		GrpcMethod:       "UpdateStack",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_request",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	} else {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: "",
-			},
-		}
-	}
-	return header
-}
 
 func (send CloudFormationRequestTopicTxSender[C]) UpdateStack(ctx context.Context, sendContext C, msg *UpdateStackMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)
@@ -268,29 +397,6 @@ func (publish CloudFormationRequestTopicPublisher) UpdateStack(ctx context.Conte
 
 // Method: CreateChangeSet
 
-func (msg *CreateChangeSetMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
-		GrpcMethod:       "CreateChangeSet",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_request",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	} else {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: "",
-			},
-		}
-	}
-	return header
-}
-
 func (send CloudFormationRequestTopicTxSender[C]) CreateChangeSet(ctx context.Context, sendContext C, msg *CreateChangeSetMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)
 }
@@ -304,29 +410,6 @@ func (publish CloudFormationRequestTopicPublisher) CreateChangeSet(ctx context.C
 }
 
 // Method: ApplyChangeSet
-
-func (msg *ApplyChangeSetMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
-		GrpcMethod:       "ApplyChangeSet",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_request",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	} else {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: "",
-			},
-		}
-	}
-	return header
-}
 
 func (send CloudFormationRequestTopicTxSender[C]) ApplyChangeSet(ctx context.Context, sendContext C, msg *ApplyChangeSetMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)
@@ -342,29 +425,6 @@ func (publish CloudFormationRequestTopicPublisher) ApplyChangeSet(ctx context.Co
 
 // Method: ScaleStack
 
-func (msg *ScaleStackMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
-		GrpcMethod:       "ScaleStack",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_request",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	} else {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: "",
-			},
-		}
-	}
-	return header
-}
-
 func (send CloudFormationRequestTopicTxSender[C]) ScaleStack(ctx context.Context, sendContext C, msg *ScaleStackMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)
 }
@@ -379,29 +439,6 @@ func (publish CloudFormationRequestTopicPublisher) ScaleStack(ctx context.Contex
 
 // Method: CancelStackUpdate
 
-func (msg *CancelStackUpdateMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
-		GrpcMethod:       "CancelStackUpdate",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_request",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	} else {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: "",
-			},
-		}
-	}
-	return header
-}
-
 func (send CloudFormationRequestTopicTxSender[C]) CancelStackUpdate(ctx context.Context, sendContext C, msg *CancelStackUpdateMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)
 }
@@ -415,29 +452,6 @@ func (publish CloudFormationRequestTopicPublisher) CancelStackUpdate(ctx context
 }
 
 // Method: StabalizeStack
-
-func (msg *StabalizeStackMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationRequestTopic",
-		GrpcMethod:       "StabalizeStack",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_request",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	} else {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: "",
-			},
-		}
-	}
-	return header
-}
 
 func (send CloudFormationRequestTopicTxSender[C]) StabalizeStack(ctx context.Context, sendContext C, msg *StabalizeStackMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)
@@ -466,6 +480,44 @@ func (msg *ChangeSetStatusChangedMessage) SetJ5RequestMetadata(md *messaging_j5p
 }
 func (msg *ChangeSetStatusChangedMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
 	return msg.Request
+}
+
+// Method: StackStatusChanged
+
+func (msg *StackStatusChangedMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationReplyTopic",
+		GrpcMethod:       "StackStatusChanged",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_reply",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Reply_{
+			Reply: &messaging_pb.Message_Reply{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	}
+	return header
+}
+
+// Method: ChangeSetStatusChanged
+
+func (msg *ChangeSetStatusChangedMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationReplyTopic",
+		GrpcMethod:       "ChangeSetStatusChanged",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_reply",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Reply_{
+			Reply: &messaging_pb.Message_Reply{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	}
+	return header
 }
 
 type CloudFormationReplyTopicTxSender[C any] struct {
@@ -533,23 +585,6 @@ func NewCloudFormationReplyTopicPublisher(publisher o5msg.Publisher) *CloudForma
 
 // Method: StackStatusChanged
 
-func (msg *StackStatusChangedMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationReplyTopic",
-		GrpcMethod:       "StackStatusChanged",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_reply",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Reply_{
-			Reply: &messaging_pb.Message_Reply{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	}
-	return header
-}
-
 func (send CloudFormationReplyTopicTxSender[C]) StackStatusChanged(ctx context.Context, sendContext C, msg *StackStatusChangedMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)
 }
@@ -563,23 +598,6 @@ func (publish CloudFormationReplyTopicPublisher) StackStatusChanged(ctx context.
 }
 
 // Method: ChangeSetStatusChanged
-
-func (msg *ChangeSetStatusChangedMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.CloudFormationReplyTopic",
-		GrpcMethod:       "ChangeSetStatusChanged",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_reply",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Reply_{
-			Reply: &messaging_pb.Message_Reply{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	}
-	return header
-}
 
 func (send CloudFormationReplyTopicTxSender[C]) ChangeSetStatusChanged(ctx context.Context, sendContext C, msg *ChangeSetStatusChangedMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)

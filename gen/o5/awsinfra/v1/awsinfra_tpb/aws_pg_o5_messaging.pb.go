@@ -37,6 +37,81 @@ func (msg *DestroyPostgresDatabaseMessage) GetJ5RequestMetadata() *messaging_j5p
 	return msg.Request
 }
 
+// Method: UpsertPostgresDatabase
+
+func (msg *UpsertPostgresDatabaseMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.PostgresRequestTopic",
+		GrpcMethod:       "UpsertPostgresDatabase",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
+	return header
+}
+
+// Method: CleanupPostgresDatabase
+
+func (msg *CleanupPostgresDatabaseMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.PostgresRequestTopic",
+		GrpcMethod:       "CleanupPostgresDatabase",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
+	return header
+}
+
+// Method: DestroyPostgresDatabase
+
+func (msg *DestroyPostgresDatabaseMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.PostgresRequestTopic",
+		GrpcMethod:       "DestroyPostgresDatabase",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_request",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	} else {
+		header.Extension = &messaging_pb.Message_Request_{
+			Request: &messaging_pb.Message_Request{
+				ReplyTo: "",
+			},
+		}
+	}
+	return header
+}
+
 type PostgresRequestTopicTxSender[C any] struct {
 	sender o5msg.TxSender[C]
 }
@@ -114,29 +189,6 @@ func NewPostgresRequestTopicPublisher(publisher o5msg.Publisher) *PostgresReques
 
 // Method: UpsertPostgresDatabase
 
-func (msg *UpsertPostgresDatabaseMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.PostgresRequestTopic",
-		GrpcMethod:       "UpsertPostgresDatabase",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_request",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	} else {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: "",
-			},
-		}
-	}
-	return header
-}
-
 func (send PostgresRequestTopicTxSender[C]) UpsertPostgresDatabase(ctx context.Context, sendContext C, msg *UpsertPostgresDatabaseMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)
 }
@@ -151,29 +203,6 @@ func (publish PostgresRequestTopicPublisher) UpsertPostgresDatabase(ctx context.
 
 // Method: CleanupPostgresDatabase
 
-func (msg *CleanupPostgresDatabaseMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.PostgresRequestTopic",
-		GrpcMethod:       "CleanupPostgresDatabase",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_request",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	} else {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: "",
-			},
-		}
-	}
-	return header
-}
-
 func (send PostgresRequestTopicTxSender[C]) CleanupPostgresDatabase(ctx context.Context, sendContext C, msg *CleanupPostgresDatabaseMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)
 }
@@ -187,29 +216,6 @@ func (publish PostgresRequestTopicPublisher) CleanupPostgresDatabase(ctx context
 }
 
 // Method: DestroyPostgresDatabase
-
-func (msg *DestroyPostgresDatabaseMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.PostgresRequestTopic",
-		GrpcMethod:       "DestroyPostgresDatabase",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_request",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	} else {
-		header.Extension = &messaging_pb.Message_Request_{
-			Request: &messaging_pb.Message_Request{
-				ReplyTo: "",
-			},
-		}
-	}
-	return header
-}
 
 func (send PostgresRequestTopicTxSender[C]) DestroyPostgresDatabase(ctx context.Context, sendContext C, msg *DestroyPostgresDatabaseMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)
@@ -230,6 +236,25 @@ func (msg *PostgresDatabaseStatusMessage) SetJ5RequestMetadata(md *messaging_j5p
 }
 func (msg *PostgresDatabaseStatusMessage) GetJ5RequestMetadata() *messaging_j5pb.RequestMetadata {
 	return msg.Request
+}
+
+// Method: PostgresDatabaseStatus
+
+func (msg *PostgresDatabaseStatusMessage) O5MessageHeader() o5msg.Header {
+	header := o5msg.Header{
+		GrpcService:      "o5.aws.infra.v1.topic.PostgresReplyTopic",
+		GrpcMethod:       "PostgresDatabaseStatus",
+		Headers:          map[string]string{},
+		DestinationTopic: "o5-aws-command_reply",
+	}
+	if msg.Request != nil {
+		header.Extension = &messaging_pb.Message_Reply_{
+			Reply: &messaging_pb.Message_Reply{
+				ReplyTo: msg.Request.ReplyTo,
+			},
+		}
+	}
+	return header
 }
 
 type PostgresReplyTopicTxSender[C any] struct {
@@ -284,23 +309,6 @@ func NewPostgresReplyTopicPublisher(publisher o5msg.Publisher) *PostgresReplyTop
 }
 
 // Method: PostgresDatabaseStatus
-
-func (msg *PostgresDatabaseStatusMessage) O5MessageHeader() o5msg.Header {
-	header := o5msg.Header{
-		GrpcService:      "o5.aws.infra.v1.topic.PostgresReplyTopic",
-		GrpcMethod:       "PostgresDatabaseStatus",
-		Headers:          map[string]string{},
-		DestinationTopic: "o5-aws-command_reply",
-	}
-	if msg.Request != nil {
-		header.Extension = &messaging_pb.Message_Reply_{
-			Reply: &messaging_pb.Message_Reply{
-				ReplyTo: msg.Request.ReplyTo,
-			},
-		}
-	}
-	return header
-}
 
 func (send PostgresReplyTopicTxSender[C]) PostgresDatabaseStatus(ctx context.Context, sendContext C, msg *PostgresDatabaseStatusMessage) error {
 	return send.sender.Send(ctx, sendContext, msg)

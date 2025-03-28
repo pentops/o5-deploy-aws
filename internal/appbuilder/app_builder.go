@@ -125,12 +125,15 @@ func BuildApplication(spec AppInput) (*BuiltApplication, error) {
 	if len(ecsServices) < 1 {
 		return nil, fmt.Errorf("no runtimes defined")
 	}
+
 	firstRuntime := ecsServices[0]
+
 	for _, dbSpec := range app.Databases {
 		pg := dbSpec.GetPostgres()
 		if pg == nil || !pg.RunOutbox {
 			continue
 		}
+
 		dbRef, ok := bb.Globals.Database(dbSpec.Name)
 		if !ok {
 			// panic because this is a logic issue in the code, not a user error
