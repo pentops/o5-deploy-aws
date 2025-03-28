@@ -46,8 +46,3 @@ plugins:
     name: go-psm
     docker:
       image: ghcr.io/pentops/protoc-gen-go-protostate:89487e2fca11e0b392c6587809bdd1a01404bf51
-
-pluginOverrides:
-  - name: go-sugar
-    local:
-      cmd: protoc-gen-go-sugar
