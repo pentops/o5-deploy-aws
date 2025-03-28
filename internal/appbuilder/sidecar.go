@@ -36,16 +36,20 @@ func NewSidecarBuilder(appName string, policy *PolicyBuilder) *SidecarBuilder {
 		Cpu:          cflib.Int(128),
 		Memory:       cflib.Int(128),
 		PortMappings: []ecs.TaskDefinition_PortMapping{},
-		Environment: []ecs.TaskDefinition_KeyValuePair{{
-			Name:  cflib.String("APP_NAME"),
-			Value: cflib.String(appName),
-		}, {
-			Name:  cflib.String("ENVIRONMENT_NAME"),
-			Value: cflib.String(cloudformation.Ref(EnvNameParameter)),
-		}, {
-			Name:  cflib.String("AWS_REGION"),
-			Value: cflib.String(cloudformation.Ref(AWSRegionParameter)),
-		}},
+		Environment: []ecs.TaskDefinition_KeyValuePair{
+			{
+				Name:  cflib.String("APP_NAME"),
+				Value: cflib.String(appName),
+			},
+			{
+				Name:  cflib.String("ENVIRONMENT_NAME"),
+				Value: cflib.String(cloudformation.Ref(EnvNameParameter)),
+			},
+			{
+				Name:  cflib.String("AWS_REGION"),
+				Value: cflib.String(cloudformation.Ref(AWSRegionParameter)),
+			},
+		},
 		MountPoints: []ecs.TaskDefinition_MountPoint{{
 			ContainerPath: cflib.String("/sockets"),
 			SourceVolume:  cflib.String("sockets"),
@@ -74,13 +78,14 @@ func (sb *SidecarBuilder) IsRequired() bool {
 }
 
 func (sb *SidecarBuilder) Build() (*ecs.TaskDefinition_ContainerDefinition, error) {
-
 	if err := sb.setEnvValFromMapKeys("POSTGRES_OUTBOX", sb.outboxDBs); err != nil {
 		return nil, err
 	}
+
 	if err := sb.setEnvValFromMapKeys("POSTGRES_IAM_PROXY", sb.proxyDBs); err != nil {
 		return nil, err
 	}
+
 	if err := sb.setEnvValFromMapKeys("SERVICE_ENDPOINT", sb.serviceEndpoints); err != nil {
 		return nil, err
 	}
@@ -111,8 +116,10 @@ func (sb *SidecarBuilder) setEnvValFromMapKeys(envName string, m map[string]stru
 	if len(m) == 0 {
 		return nil
 	}
+
 	keys := maps.Keys(m)
 	sort.Strings(keys)
+
 	return sb.setEnv(envName, strings.Join(keys, ","))
 }
 
