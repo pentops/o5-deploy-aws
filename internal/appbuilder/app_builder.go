@@ -141,7 +141,7 @@ func BuildApplication(spec AppInput) (*BuiltApplication, error) {
 		}
 
 		// TODO: Assign to the first runtime which references the DB.
-		if err := firstRuntime.TaskDefinition.Sidecar.RunOutbox(dbRef); err != nil {
+		if err := firstRuntime.TaskDefinition.Sidecar.RunOutbox(dbRef, pg.OutboxDelayable); err != nil {
 			return nil, err
 		}
 	}
