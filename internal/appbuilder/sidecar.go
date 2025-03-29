@@ -3,6 +3,7 @@ package appbuilder
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/awslabs/goformation/v7/cloudformation"
@@ -23,9 +24,13 @@ type SidecarBuilder struct {
 	serviceEndpoints map[string]struct{}
 	links            map[string]struct{}
 	proxyDBs         map[string]struct{}
-	outboxDBs        map[string]struct{}
+	outboxDBs        map[string]outboxRef
 
 	dbEndpoints map[string]DatabaseRef
+}
+
+type outboxRef struct {
+	delayble bool
 }
 
 func NewSidecarBuilder(appName string, policy *PolicyBuilder) *SidecarBuilder {
@@ -64,7 +69,7 @@ func NewSidecarBuilder(appName string, policy *PolicyBuilder) *SidecarBuilder {
 
 		serviceEndpoints: make(map[string]struct{}),
 		proxyDBs:         make(map[string]struct{}),
-		outboxDBs:        make(map[string]struct{}),
+		outboxDBs:        make(map[string]outboxRef),
 		links:            make(map[string]struct{}),
 
 		dbEndpoints: make(map[string]DatabaseRef),
@@ -78,7 +83,11 @@ func (sb *SidecarBuilder) IsRequired() bool {
 }
 
 func (sb *SidecarBuilder) Build() (*ecs.TaskDefinition_ContainerDefinition, error) {
-	if err := sb.setEnvValFromMapKeys("POSTGRES_OUTBOX", sb.outboxDBs); err != nil {
+	if err := sb.setEnvValFromMapOutboxKeys("POSTGRES_OUTBOX", sb.outboxDBs); err != nil {
+		return nil, err
+	}
+
+	if err := sb.setEnvValFromOutbox("POSTGRES_OUTBOX_DELAYABLE", sb.outboxDBs); err != nil {
 		return nil, err
 	}
 
@@ -121,6 +130,32 @@ func (sb *SidecarBuilder) setEnvValFromMapKeys(envName string, m map[string]stru
 	sort.Strings(keys)
 
 	return sb.setEnv(envName, strings.Join(keys, ","))
+}
+
+func (sb *SidecarBuilder) setEnvValFromMapOutboxKeys(envName string, m map[string]outboxRef) error {
+	if len(m) == 0 {
+		return nil
+	}
+
+	keys := maps.Keys(m)
+	sort.Strings(keys)
+
+	return sb.setEnv(envName, strings.Join(keys, ","))
+}
+
+func (sb *SidecarBuilder) setEnvValFromOutbox(envName string, m map[string]outboxRef) error {
+	delayble := false
+	for _, v := range m {
+		if v.delayble {
+			delayble = true
+		}
+	}
+
+	if delayble {
+		return sb.setEnv(envName, strconv.FormatBool(delayble))
+	}
+
+	return nil
 }
 
 func (sb *SidecarBuilder) mustSetEnv(name, value string) {
@@ -220,11 +255,11 @@ func (sb *SidecarBuilder) ProxyDB(db DatabaseRef) string {
 	return fmt.Sprintf("host=%s user=%s dbname=%s sslmode=disable", socketDir, dbName, dbName)
 }
 
-func (sb *SidecarBuilder) RunOutbox(db DatabaseRef) error {
+func (sb *SidecarBuilder) RunOutbox(db DatabaseRef, delayble bool) error {
 	sb.isRequired = true
 	envVarName := strcase.ToScreamingSnake(db.Name())
 	sb.PublishToEventBridge()
-	sb.outboxDBs[envVarName] = struct{}{}
+	sb.outboxDBs[envVarName] = outboxRef{delayble}
 	sb.dbEndpoints[envVarName] = db
 	return nil
 }

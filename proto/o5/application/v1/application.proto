@@ -111,6 +111,7 @@ message Database {
     Container migrate_container = 4;
 
     bool run_outbox = 5 [(j5.list.v1.field).bool.filtering.filterable = true];
+    bool outbox_delayable = 6 [(j5.list.v1.field).bool.filtering.filterable = true];
   }
 }
 
