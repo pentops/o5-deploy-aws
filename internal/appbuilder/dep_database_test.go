@@ -249,6 +249,19 @@ func TestDatabaseCases(t *testing.T) {
 		})
 	})
 
+	t.Run("OutboxProxy", func(t *testing.T) {
+		tc := newPGTestCase()
+		tc.rdsHost.AuthType = environment_pb.RDSAuth_Iam
+		tc.pg.RunOutbox = true
+		tc.pg.OutboxDelayable = true
+
+		assertIAMCase(t, tc, &wantSecret{
+			appKey:        "appkey",
+			wantOutbox:    true,
+			wantDelayable: true,
+		})
+	})
+
 	t.Run("MigrateProxy", func(t *testing.T) {
 		tc := newPGTestCase()
 		tc.rdsHost.AuthType = environment_pb.RDSAuth_Iam
