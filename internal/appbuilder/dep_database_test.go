@@ -145,7 +145,7 @@ func TestDatabaseCases(t *testing.T) {
 
 			if want.wantDelayable {
 				outbox := sidecar.MustGetEnv(t, "POSTGRES_OUTBOX_DELAYABLE")
-				assert.Equal(t, "APPKEY", *outbox.Value, "Expected outbox env var to be set to the name of the DB")
+				assert.Equal(t, "true", *outbox.Value, "Expected outbox env var to be set to the name of the DB")
 			} else {
 				sidecar.MustNotHaveEnvOrSecret(t, "POSTGRES_OUTBOX_DELAYABLE")
 			}
