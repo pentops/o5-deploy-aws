@@ -21,12 +21,12 @@ type pgTestCase struct {
 }
 
 func newPGTestCase() *pgTestCase {
-
 	pg := &application_pb.Database_Postgres{
 		DbNameSuffix: "suffix",
 		ServerGroup:  "group",
 		RunOutbox:    false,
 	}
+
 	db := &application_pb.Database{
 		Name: "appkey",
 		Engine: &application_pb.Database_Postgres_{
@@ -74,12 +74,13 @@ func newPGTestCase() *pgTestCase {
 }
 
 func TestDatabaseCases(t *testing.T) {
-
 	type wantSecret struct {
-		appKey      string
-		wantOutbox  bool
-		wantMigrate bool
+		appKey        string
+		wantOutbox    bool
+		wantDelayable bool
+		wantMigrate   bool
 	}
+
 	assertSecretCase := func(t *testing.T, tc *pgTestCase, sc *wantSecret) {
 		t.Helper()
 		aa := tc.builder.BuildAndAssert(t)
@@ -142,6 +143,13 @@ func TestDatabaseCases(t *testing.T) {
 				sidecar.MustNotHaveEnvOrSecret(t, "POSTGRES_OUTBOX")
 			}
 
+			if want.wantDelayable {
+				outbox := sidecar.MustGetEnv(t, "POSTGRES_OUTBOX_DELAYABLE")
+				assert.Equal(t, "APPKEY", *outbox.Value, "Expected outbox env var to be set to the name of the DB")
+			} else {
+				sidecar.MustNotHaveEnvOrSecret(t, "POSTGRES_OUTBOX_DELAYABLE")
+			}
+
 			creds := sidecar.MustGetEnv(t, "DB_CREDS_APPKEY")
 			assert.NotEmpty(t, creds.Value, "Expected outbox env value to be set")
 
@@ -169,8 +177,8 @@ func TestDatabaseCases(t *testing.T) {
 			)
 			assert.Equal(t, want, got)
 		})
-
 	}
+
 	assertIAMCase := func(t *testing.T, tc *pgTestCase, want *wantSecret) {
 		t.Helper()
 		aa := tc.builder.BuildAndAssert(t)
@@ -208,7 +216,6 @@ func TestDatabaseCases(t *testing.T) {
 			appKey:     "appkey",
 			wantOutbox: false,
 		})
-
 	})
 
 	t.Run("OutboxSecret", func(t *testing.T) {

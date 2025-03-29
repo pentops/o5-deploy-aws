@@ -151,7 +151,11 @@ func (sb *SidecarBuilder) setEnvValFromOutbox(envName string, m map[string]outbo
 		}
 	}
 
-	return sb.setEnv(envName, strconv.FormatBool(delayble))
+	if delayble {
+		return sb.setEnv(envName, strconv.FormatBool(delayble))
+	}
+
+	return nil
 }
 
 func (sb *SidecarBuilder) mustSetEnv(name, value string) {
