@@ -366,6 +366,7 @@ func (d *DBMigrator) destroyPostgresDatabase(ctx context.Context, spec DBSpec, d
 	if err != nil {
 		return err
 	}
+	defer rootConn.Close()
 
 	// Kill all connections to the database
 	_, err = rootConn.ExecContext(ctx, fmt.Sprintf(`SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE pg_stat_activity.datname = '%s' AND pid <> pg_backend_pid()`, dbName))
@@ -407,6 +408,7 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, connSpec DBSpec
 	if err != nil {
 		return false, err
 	}
+	defer rootConn.Close()
 
 	db, err := sqrlx.NewWithCommander(rootConn, sq.Dollar)
 	if err != nil {
