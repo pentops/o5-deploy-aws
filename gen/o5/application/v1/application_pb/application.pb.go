@@ -1002,8 +1002,14 @@ type Subscription struct {
 	// - `/{package}.{Service}` subscribes to a full gRPC service
 	// - `/{package}.{Service}/{Method}`  subscribes to the single method only
 	// - `o5-infra/{topic}` prefix subscribes to SNS directly.
-	// - `global` subscribes to Event and Upsert messages
-	Name            string  `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// - `/global/{type}` subscribes to all messages of a given type
+	//   - type = 'event' - PSM State Transition events
+	//   - type = 'upsert' - Upsert messages
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// The 'lookup_name' of the environment to subscribe to
+	// (o5.environment.v1.AWSLink.lookup_name).
+	// Default is the current environment
+	// '*' means all environments in the deployment cluster.
 	EnvName         *string `protobuf:"bytes,2,opt,name=env_name,json=envName,proto3,oneof" json:"env_name,omitempty"`
 	TargetContainer string  `protobuf:"bytes,3,opt,name=target_container,json=targetContainer,proto3" json:"target_container,omitempty"` // Default: first defined container
 	Port            int64   `protobuf:"varint,4,opt,name=port,proto3" json:"port,omitempty"`                                             // Default: 8080

@@ -162,6 +162,10 @@ message Subscription {
   //   - type = 'upsert' - Upsert messages
   string name = 1;
 
+  // The 'lookup_name' of the environment to subscribe to
+  // (o5.environment.v1.AWSLink.lookup_name).
+  // Default is the current environment
+  // '*' means all environments in the deployment cluster.
   optional string env_name = 2;
 
   //# TARGET #//

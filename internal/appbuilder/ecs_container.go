@@ -133,7 +133,7 @@ func (cd *ContainerDefinition) bucket(globals Globals, bucketName string) (*Buck
 	}
 	bucket, ok := globals.Bucket(bucketName)
 	if !ok {
-		return nil, fmt.Errorf("unknown bucket: %s", bucketName)
+		return nil, fmt.Errorf("unknown bucket %q", bucketName)
 	}
 	bucketRef := &BucketReference{
 		Bucket: bucket,
@@ -151,7 +151,7 @@ func (cd *ContainerDefinition) database(globals Globals, dbName string) (*Databa
 	}
 	db, ok := globals.Database(dbName)
 	if !ok {
-		return nil, fmt.Errorf("unknown database: %s", dbName)
+		return nil, fmt.Errorf("unknown database %q", dbName)
 	}
 	dbRef := &DatabaseReference{
 		Name:     dbName,

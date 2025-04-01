@@ -80,7 +80,11 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 	rulesByEnv := map[string]*eventBusRules{}
 	localEnvRules := &eventBusRules{
 		sourceEnvName: "local",
-		sourceEnvRef:  []string{cloudformation.Ref(EnvNameParameter)},
+
+		// The name of the environment to subscribe to, matches
+		sourceEnvRef: []string{cloudformation.Ref(EnvNameParameter)},
+
+		// The name of the environment to subscribe to, matches
 	}
 	rulesByEnv[""] = localEnvRules
 
@@ -186,16 +190,20 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 				case "upsert":
 					rulePatterns = append(rulePatterns, singlePattern{
 						SourceEnv: rules.sourceEnvRef,
-						Upsert: []interface{}{map[string]interface{}{
-							"exists": true,
-						}},
+						Upsert: map[string]interface{}{
+							"entityName": []interface{}{map[string]interface{}{
+								"exists": true,
+							}},
+						},
 					})
 				case "event":
 					rulePatterns = append(rulePatterns, singlePattern{
 						SourceEnv: rules.sourceEnvRef,
-						Event: []interface{}{map[string]interface{}{
-							"exists": true,
-						}},
+						Event: map[string]interface{}{
+							"entityName": []interface{}{map[string]interface{}{
+								"exists": true,
+							}},
+						},
 					})
 				default:
 					return nil, fmt.Errorf("invalid global topic %s", global)
