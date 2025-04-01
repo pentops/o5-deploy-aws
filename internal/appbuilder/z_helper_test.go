@@ -425,6 +425,7 @@ type Ref struct {
 }
 
 func assertJSONEqual(t *testing.T, path []string, expected, got interface{}) {
+	t.Helper()
 	switch expected := expected.(type) {
 	case []interface{}:
 		gotSlice, ok := got.([]interface{})
@@ -450,6 +451,7 @@ func assertJSONEqual(t *testing.T, path []string, expected, got interface{}) {
 }
 
 func assertJSONArrayEqual(t *testing.T, path []string, expected, got []interface{}) {
+	t.Helper()
 	if len(expected) != len(got) {
 		t.Errorf("expected %d elements, got %d", len(expected), len(got))
 	}
@@ -466,6 +468,7 @@ func assertJSONArrayEqual(t *testing.T, path []string, expected, got []interface
 }
 
 func assertJSONMapEqual(t *testing.T, path []string, expected, got map[string]interface{}) {
+	t.Helper()
 	for k, v := range expected {
 		got, ok := got[k]
 		if !ok {

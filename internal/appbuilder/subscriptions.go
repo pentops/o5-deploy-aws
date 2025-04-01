@@ -31,6 +31,7 @@ type eventBusSubscriptionPlan struct {
 type eventBusRules struct {
 	topics        []string
 	services      []string
+	globals       []string
 	methods       []serviceAndMethod
 	sourceEnvRef  []string
 	sourceEnvName string
@@ -56,12 +57,18 @@ type busDetailPattern struct {
 	*singlePattern
 }
 
+// patterns to match o5.messaging.v1.Message
 type singlePattern struct {
-	DestinationTopic []string    `json:"destinationTopic,omitempty"`
-	GRPCService      []string    `json:"grpcService,omitempty"`
-	GRPCMethod       []string    `json:"grpcMethod,omitempty"`
-	SourceEnv        []string    `json:"sourceEnv,omitempty"`
-	Reply            interface{} `json:"reply,omitempty"`
+	DestinationTopic []string `json:"destinationTopic,omitempty"`
+	GRPCService      []string `json:"grpcService,omitempty"`
+	GRPCMethod       []string `json:"grpcMethod,omitempty"`
+	SourceEnv        []string `json:"sourceEnv,omitempty"`
+
+	// Message Extensions
+	Reply   interface{} `json:"reply,omitempty"`
+	Request interface{} `json:"request,omitempty"`
+	Upsert  interface{} `json:"upsert,omitempty"`
+	Event   interface{} `json:"event,omitempty"`
 }
 
 func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subscriptionPlan, error) {
@@ -73,7 +80,11 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 	rulesByEnv := map[string]*eventBusRules{}
 	localEnvRules := &eventBusRules{
 		sourceEnvName: "local",
-		sourceEnvRef:  []string{cloudformation.Ref(EnvNameParameter)},
+
+		// The name of the environment to subscribe to, matches
+		sourceEnvRef: []string{cloudformation.Ref(EnvNameParameter)},
+
+		// The name of the environment to subscribe to, matches
 	}
 	rulesByEnv[""] = localEnvRules
 
@@ -132,27 +143,74 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 		}
 
 		topicParts := strings.Split(sub.Name, "/")
-
-		if len(topicParts) == 1 {
-			// topic-name
+		switch {
+		case len(topicParts) == 1:
+			// {topic-name}
 			ruleSet.topics = append(ruleSet.topics, topicParts[0])
-		} else if len(topicParts) == 2 {
-			// /foo.bar.v1.FooTopic
+
+		case len(topicParts) == 2 && topicParts[0] == "global":
+			// global/{type}
+			ruleSet.globals = append(ruleSet.globals, topicParts[1])
+
+		case len(topicParts) == 2 && topicParts[0] == "":
+			// /{package}.{topic}
 			ruleSet.services = append(ruleSet.services, topicParts[1])
-		} else if len(topicParts) == 3 {
-			// /foo.bar.v1.FooTopic/FooMethod
+
+		case len(topicParts) == 3 && topicParts[0] == "":
+			// /{package}.{topic}/{method}
 			ruleSet.methods = append(ruleSet.methods, serviceAndMethod{
 				service: topicParts[1],
 				method:  topicParts[2],
 			})
-		} else {
+
+		default:
 			return nil, fmt.Errorf("invalid topic name %s", sub.Name)
 		}
 
 	}
 
+	fullNameRef := cloudformation.Join("/", []string{
+		cloudformation.Ref(EnvNameParameter),
+		appName,
+	})
+
+	replyTo := map[string]interface{}{
+		"replyTo": []interface{}{
+			map[string]interface{}{"exists": false},
+			fullNameRef,
+		},
+	}
+
 	for envGroup, rules := range rulesByEnv {
 		rulePatterns := make([]singlePattern, 0)
+
+		if len(rules.globals) > 0 {
+			for _, global := range rules.globals {
+				switch global {
+				case "upsert":
+					rulePatterns = append(rulePatterns, singlePattern{
+						SourceEnv: rules.sourceEnvRef,
+						Upsert: map[string]interface{}{
+							"entityName": []interface{}{map[string]interface{}{
+								"exists": true,
+							}},
+						},
+					})
+				case "event":
+					rulePatterns = append(rulePatterns, singlePattern{
+						SourceEnv: rules.sourceEnvRef,
+						Event: map[string]interface{}{
+							"entityName": []interface{}{map[string]interface{}{
+								"exists": true,
+							}},
+						},
+					})
+				default:
+					return nil, fmt.Errorf("invalid global topic %s", global)
+
+				}
+			}
+		}
 
 		if len(rules.topics) > 0 {
 			rulePatterns = append(rulePatterns, singlePattern{
@@ -165,6 +223,7 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 			rulePatterns = append(rulePatterns, singlePattern{
 				GRPCService: rules.services,
 				SourceEnv:   rules.sourceEnvRef,
+				Reply:       replyTo,
 			})
 		}
 
@@ -177,6 +236,7 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 						GRPCService: []string{method.service},
 						GRPCMethod:  []string{},
 						SourceEnv:   rules.sourceEnvRef,
+						Reply:       replyTo,
 					}
 				}
 				mm.GRPCMethod = append(mm.GRPCMethod, method.method)
@@ -189,23 +249,6 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 
 		if len(rulePatterns) == 0 {
 			continue
-		}
-
-		fullNameRef := cloudformation.Join("/", []string{
-			cloudformation.Ref(EnvNameParameter),
-			appName,
-		})
-
-		replyTo := map[string]interface{}{
-			"replyTo": []interface{}{
-				map[string]interface{}{"exists": false},
-				fullNameRef,
-			},
-		}
-
-		for idx, rule := range rulePatterns {
-			rule.Reply = replyTo
-			rulePatterns[idx] = rule
 		}
 
 		var detailPattern busDetailPattern
