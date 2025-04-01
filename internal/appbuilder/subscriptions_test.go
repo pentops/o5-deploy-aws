@@ -98,15 +98,19 @@ func TestEventBusRules(t *testing.T) {
 					"$or": []interface{}{
 						map[string]interface{}{
 							"sourceEnv": []interface{}{localEnvRef},
-							"event": []interface{}{map[string]interface{}{
-								"exists": true,
-							}},
+							"event": map[string]interface{}{
+								"entityName": []interface{}{map[string]interface{}{
+									"exists": true,
+								}},
+							},
 						},
 						map[string]interface{}{
 							"sourceEnv": []interface{}{localEnvRef},
-							"upsert": []interface{}{map[string]interface{}{
-								"exists": true,
-							}},
+							"upsert": map[string]interface{}{
+								"entityName": []interface{}{map[string]interface{}{
+									"exists": true,
+								}},
+							},
 						},
 					},
 				},
