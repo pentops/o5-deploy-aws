@@ -234,8 +234,13 @@ func (cf *CFClient) UpdateStack(ctx context.Context, reqToken string, msg *awsin
 		return err
 	}
 
+	params := []types.Parameter{}
+	if current != nil {
+		params = current.Parameters
+	}
+
 	// TODO: Re-use assigned priorities for routes by using the previous input
-	parameters, err := cf.resolveParameters(ctx, current.Parameters, msg.Spec.Parameters, msg.Spec.DesiredCount)
+	parameters, err := cf.resolveParameters(ctx, params, msg.Spec.Parameters, msg.Spec.DesiredCount)
 	if err != nil {
 		return err
 	}
