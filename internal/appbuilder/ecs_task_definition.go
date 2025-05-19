@@ -154,10 +154,10 @@ func (ts *ECSTaskDefinition) AddNamedPolicies(policyNames []string) {
 }
 
 func (td *ECSTaskDefinition) applyRole(template *cflib.TemplateBuilder) cflib.TemplateRef {
-
 	params := []*awsdeployer_pb.Parameter{}
 	for _, policy := range td.namedIAMPolicies {
 		policyARN := cflib.CleanParameterName("Named IAM Policy", td.family, policy)
+
 		params = append(params, &awsdeployer_pb.Parameter{
 			Name:        policyARN,
 			Type:        "String",
@@ -173,17 +173,18 @@ func (td *ECSTaskDefinition) applyRole(template *cflib.TemplateBuilder) cflib.Te
 		td.policy.AddManagedPolicyARN(cloudformation.Ref(policyARN))
 	}
 
-	builtRole := td.policy.BuildRole(td.family)
+	builtRole := td.policy.BuildRole(td.relativeName, td.family)
+
 	roleResource := cflib.NewResource(fmt.Sprintf("%sAssume", td.relativeName), builtRole)
 	for _, param := range params {
 		roleResource.AddParameter(param)
 	}
+
 	template.AddResource(roleResource)
 	return roleResource.GetAtt("Arn")
 }
 
 func (td *ECSTaskDefinition) AddToTemplate(template *cflib.TemplateBuilder) (cflib.TemplateRef, error) {
-
 	params := []*awsdeployer_pb.Parameter{}
 
 	// Not sure who thought it would be a good idea to not use pointers here...
@@ -234,6 +235,7 @@ func (td *ECSTaskDefinition) AddToTemplate(template *cflib.TemplateBuilder) (cfl
 			},
 		})
 	}
+
 	taskDefinition.TaskRoleArn = td.applyRole(template).RefPtr()
 
 	tdResource := cflib.NewResource(td.relativeName, taskDefinition)
