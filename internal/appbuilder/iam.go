@@ -95,7 +95,7 @@ type StatementEntry struct {
 	Principal map[string]string `json:"Principal,omitempty"`
 }
 
-func (pb *PolicyBuilder) BuildRole(familyName string) *iam.Role {
+func (pb *PolicyBuilder) BuildRole(relativeName, familyName string) *iam.Role {
 	rolePolicies := pb.Build(familyName)
 	role := &iam.Role{
 		AssumeRolePolicyDocument: PolicyDocument{
@@ -112,9 +112,8 @@ func (pb *PolicyBuilder) BuildRole(familyName string) *iam.Role {
 		ManagedPolicyArns: pb.managedPolicyARNs,
 		Policies:          rolePolicies,
 		RoleName: cloudformation.JoinPtr("-", []string{
-			"ecs-task",
 			cloudformation.Ref("AWS::StackName"),
-			familyName,
+			relativeName,
 		}),
 	}
 	return role
