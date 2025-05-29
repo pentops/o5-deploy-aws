@@ -68,7 +68,7 @@ message TriggerDeploymentRequest {
 }
 
 message TriggerSource {
-  option (j5.ext.v1.message).is_oneof_wrapper = true;
+  option (j5.ext.v1.message).oneof = {};
   oneof type {
     GithubSource github = 10;
     InlineSource inline = 11;

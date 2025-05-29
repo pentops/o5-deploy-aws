@@ -9,7 +9,6 @@ import (
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/j5/drss/v1/drss_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/deployer/plan/awsdeployer_step_pb"
 )
@@ -290,10 +289,10 @@ func (ds *StepBuild) RunPGUpsert(sb awsdeployer_step_pb.StepBaton, req *awsdeplo
 	if err != nil {
 		return nil, err
 	}
-	appSpec := &awsinfra_pb.RDSAppSpecType{}
+	appSpec := &awsdeployer_pb.RDSAppSpecType{}
 	switch conn := src.AppConnection.Get().(type) {
 	case *awsdeployer_pb.PostgresConnectionType_Aurora:
-		appSpec.Set(&awsinfra_pb.RDSAppSpecType_Aurora{
+		appSpec.Set(&awsdeployer_pb.RDSAppSpecType_Aurora{
 			Conn: conn.Conn,
 		})
 
@@ -303,7 +302,7 @@ func (ds *StepBuild) RunPGUpsert(sb awsdeployer_step_pb.StepBaton, req *awsdeplo
 			return nil, fmt.Errorf("stack output missing %s for database %s", conn.AppSecretOutputName, src.AppKey)
 		}
 
-		appSpec.Set(&awsinfra_pb.RDSAppSpecType_SecretsManager{
+		appSpec.Set(&awsdeployer_pb.RDSAppSpecType_SecretsManager{
 			AppSecretName:     secret,
 			RotateCredentials: req.RotateCredentials,
 		})
@@ -316,7 +315,7 @@ func (ds *StepBuild) RunPGUpsert(sb awsdeployer_step_pb.StepBaton, req *awsdeplo
 		MigrationId: sb.GetID(),
 		AdminHost:   src.AdminConnection,
 		AppAccess:   appSpec,
-		Spec: &awsinfra_pb.RDSCreateSpec{
+		Spec: &awsdeployer_pb.RDSCreateSpec{
 			DbExtensions: src.DbExtensions,
 			DbName:       src.FullDbName,
 		},

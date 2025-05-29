@@ -16,7 +16,7 @@ import (
 	sq "github.com/elgris/sqrl"
 	_ "github.com/lib/pq"
 	"github.com/pentops/log.go/log"
-	"github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb"
+	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/sqrlx.go/sqrlx"
 )
@@ -192,9 +192,9 @@ func (a *auroraSpec) NewAppSecret(dbName string) DBSecret {
 	return newSecret
 }
 
-func (d *DBMigrator) buildSpec(ctx context.Context, spec *awsinfra_pb.RDSHostType) (DBSpec, error) {
+func (d *DBMigrator) buildSpec(ctx context.Context, spec *awsdeployer_pb.RDSHostType) (DBSpec, error) {
 	switch spec := spec.Get().(type) {
-	case *awsinfra_pb.RDSHostType_Aurora:
+	case *awsdeployer_pb.RDSHostType_Aurora:
 		dbEndpoint := spec.Conn.Endpoint
 		dbPort := spec.Conn.Port
 		dbUser := spec.Conn.DbUser
@@ -224,7 +224,7 @@ func (d *DBMigrator) buildSpec(ctx context.Context, spec *awsinfra_pb.RDSHostTyp
 			token:      authenticationToken,
 		}, nil
 
-	case *awsinfra_pb.RDSHostType_SecretsManager:
+	case *awsdeployer_pb.RDSHostType_SecretsManager:
 
 		secret, err := d.rootPostgresCredentials(ctx, spec.SecretName)
 		if err != nil {
@@ -396,7 +396,7 @@ func (d *DBMigrator) destroyPostgresDatabase(ctx context.Context, spec DBSpec, d
 var reSafeRoleName = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 var reSafeExtensionName = regexp.MustCompile(`^[a-zA-Z0-9_\-]+$`)
 
-func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, connSpec DBSpec, spec *awsinfra_pb.RDSCreateSpec, clientConn *awsinfra_pb.RDSAppSpecType) (bool, error) {
+func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, connSpec DBSpec, spec *awsdeployer_pb.RDSCreateSpec, clientConn *awsdeployer_pb.RDSAppSpecType) (bool, error) {
 	dbName := spec.DbName
 	// dbName is going to be used directly as a string in postgres, as the role
 	// commands don't accept parameters.
@@ -417,9 +417,9 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, connSpec DBSpec
 
 	var grantIAM bool
 	switch clientConn.Get().(type) {
-	case *awsinfra_pb.RDSAppSpecType_SecretsManager:
+	case *awsdeployer_pb.RDSAppSpecType_SecretsManager:
 		grantIAM = false
-	case *awsinfra_pb.RDSAppSpecType_Aurora:
+	case *awsdeployer_pb.RDSAppSpecType_Aurora:
 		grantIAM = true
 	}
 
@@ -501,7 +501,7 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, connSpec DBSpec
 }
 
 // buildSecretsUser creates a new user alias in the database and stores the credentials in Secrets Manager.
-func (d *DBMigrator) buildSecretsUser(ctx context.Context, connSpec DBSpec, dbName string, msg *awsinfra_pb.RDSAppSpecType_SecretsManager) error {
+func (d *DBMigrator) buildSecretsUser(ctx context.Context, connSpec DBSpec, dbName string, msg *awsdeployer_pb.RDSAppSpecType_SecretsManager) error {
 	var err error
 
 	newSecret := connSpec.NewAppSecret(dbName)

@@ -15,7 +15,6 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/j5/drss/v1/drss_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"google.golang.org/protobuf/proto"
@@ -269,17 +268,17 @@ func TestLocalRun(t *testing.T) {
 			t.Fatalf("expected UpsertPostgresDatabaseMessage")
 		}
 
-		prototest.AssertEqualProto(t, msg.AppAccess, &awsinfra_pb.RDSAppSpecType{
-			Type: &awsinfra_pb.RDSAppSpecType_AppSecret{
-				AppSecret: &awsinfra_pb.RDSAppSpecType_SecretsManager{
+		prototest.AssertEqualProto(t, msg.AppAccess, &awsdeployer_pb.RDSAppSpecType{
+			Type: &awsdeployer_pb.RDSAppSpecType_AppSecret{
+				AppSecret: &awsdeployer_pb.RDSAppSpecType_SecretsManager{
 					AppSecretName: "/env/app/secret",
 				},
 			},
 		})
 
-		prototest.AssertEqualProto(t, msg.AdminHost, &awsinfra_pb.RDSHostType{
-			Type: &awsinfra_pb.RDSHostType_SecretsManager_{
-				SecretsManager: &awsinfra_pb.RDSHostType_SecretsManager{
+		prototest.AssertEqualProto(t, msg.AdminHost, &awsdeployer_pb.RDSHostType{
+			Type: &awsdeployer_pb.RDSHostType_SecretsManager_{
+				SecretsManager: &awsdeployer_pb.RDSHostType_SecretsManager{
 					SecretName: "/env/root/secret",
 				},
 			},

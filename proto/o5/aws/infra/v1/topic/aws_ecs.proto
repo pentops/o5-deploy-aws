@@ -6,7 +6,7 @@ import "buf/validate/validate.proto";
 import "google/protobuf/empty.proto";
 import "j5/messaging/v1/annotations.proto";
 import "j5/messaging/v1/reqres.proto";
-import "o5/aws/infra/v1/ecs.proto";
+import "o5/aws/deployer/v1/ecs.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb";
 
@@ -26,7 +26,7 @@ message RunECSTaskMessage {
   j5.messaging.v1.RequestMetadata request = 1;
   string task_definition = 2;
   int32 count = 3;
-  o5.aws.infra.v1.ECSTaskContext context = 5;
+  o5.aws.deployer.v1.ECSTaskContext context = 5;
 }
 
 message SetECSScaleMessage {

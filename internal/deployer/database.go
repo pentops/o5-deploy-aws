@@ -4,13 +4,12 @@ import (
 	"fmt"
 
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	"github.com/pentops/o5-deploy-aws/gen/o5/aws/infra/v1/awsinfra_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 )
 
 func buildDatabaseSpecs(databases []*awsdeployer_pb.PostgresDatabaseResource, awsCluster *environment_pb.AWSCluster, envName, appName string) ([]*awsdeployer_pb.PostgresSpec, error) {
 
-	auroraHosts := map[string]*awsinfra_pb.AuroraConnection{}
+	auroraHosts := map[string]*awsdeployer_pb.AuroraConnection{}
 	dbSpecs := make([]*awsdeployer_pb.PostgresSpec, 0, len(databases))
 	for _, db := range databases {
 
@@ -32,7 +31,7 @@ func buildDatabaseSpecs(databases []*awsdeployer_pb.PostgresDatabaseResource, aw
 			FullDbName:            fullName,
 			DbExtensions:          db.DbExtensions,
 			AppConnection:         &awsdeployer_pb.PostgresConnectionType{},
-			AdminConnection:       &awsinfra_pb.RDSHostType{},
+			AdminConnection:       &awsdeployer_pb.RDSHostType{},
 			ClientSecurityGroupId: host.ClientSecurityGroupId,
 		}
 		if db.MigrationTaskOutputName != nil {
@@ -40,12 +39,12 @@ func buildDatabaseSpecs(databases []*awsdeployer_pb.PostgresDatabaseResource, aw
 				Type: &awsdeployer_pb.PostgresMigrateSpec_Ecs{
 					Ecs: &awsdeployer_pb.PostgresMigrateSpec_ECS{
 						TaskOutputName: *db.MigrationTaskOutputName,
-						TaskContext: &awsinfra_pb.ECSTaskContext{
+						TaskContext: &awsdeployer_pb.ECSTaskContext{
 							Cluster: awsCluster.EcsCluster.ClusterName,
 							/*
-								Network: &awsinfra_pb.ECSTaskNetworkType{
-									Type: &awsinfra_pb.ECSTaskNetworkType_Awsvpc{
-										Awsvpc: &awsinfra_pb.ECSTaskNetworkType_AWSVPC{
+								Network: &awsdeployer_pb.ECSTaskNetworkType{
+									Type: &awsdeployer_pb.ECSTaskNetworkType_Awsvpc{
+										Awsvpc: &awsdeployer_pb.ECSTaskNetworkType_AWSVPC{
 											SecurityGroups: []string{
 												host.ClientSecurityGroupId,
 												awsCluster.EcsCluster.BaseSecurityGroupId,
@@ -72,12 +71,12 @@ func buildDatabaseSpecs(databases []*awsdeployer_pb.PostgresDatabaseResource, aw
 				AppSecretOutputName: secret,
 			})
 
-			dbSpec.AdminConnection.Set(&awsinfra_pb.RDSHostType_SecretsManager{
+			dbSpec.AdminConnection.Set(&awsdeployer_pb.RDSHostType_SecretsManager{
 				SecretName: hostType.SecretName,
 			})
 
 		case *environment_pb.RDSAuthType_IAM:
-			clientConn := &awsinfra_pb.AuroraConnection{
+			clientConn := &awsdeployer_pb.AuroraConnection{
 				Endpoint:   host.Endpoint,
 				Port:       host.Port,
 				DbUser:     fullName,
@@ -90,8 +89,8 @@ func buildDatabaseSpecs(databases []*awsdeployer_pb.PostgresDatabaseResource, aw
 				Conn: clientConn,
 			})
 
-			dbSpec.AdminConnection.Set(&awsinfra_pb.RDSHostType_Aurora{
-				Conn: &awsinfra_pb.AuroraConnection{
+			dbSpec.AdminConnection.Set(&awsdeployer_pb.RDSHostType_Aurora{
+				Conn: &awsdeployer_pb.AuroraConnection{
 					Endpoint: host.Endpoint,
 					Port:     host.Port,
 					DbUser:   hostType.DbUser,

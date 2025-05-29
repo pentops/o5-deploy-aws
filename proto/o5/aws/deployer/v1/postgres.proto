@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package o5.aws.deployer.v1;
 
-import "o5/aws/infra/v1/ecs.proto";
-import "o5/aws/infra/v1/rds.proto";
+import "o5/aws/deployer/v1/ecs.proto";
+import "o5/aws/deployer/v1/rds.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb";
 
@@ -43,7 +43,7 @@ message PostgresSpec {
   string full_db_name = 2;
   repeated string db_extensions = 3;
 
-  o5.aws.infra.v1.RDSHostType admin_connection = 4;
+  o5.aws.deployer.v1.RDSHostType admin_connection = 4;
 
   PostgresConnectionType app_connection = 5;
 
@@ -59,7 +59,7 @@ message PostgresMigrateSpec {
 
   message ECS {
     string task_output_name = 1;
-    o5.aws.infra.v1.ECSTaskContext task_context = 2;
+    o5.aws.deployer.v1.ECSTaskContext task_context = 2;
   }
 }
 
@@ -70,7 +70,7 @@ message PostgresConnectionType {
   }
 
   message Aurora {
-    o5.aws.infra.v1.AuroraConnection conn = 1;
+    o5.aws.deployer.v1.AuroraConnection conn = 1;
   }
 
   message SecretsManager {

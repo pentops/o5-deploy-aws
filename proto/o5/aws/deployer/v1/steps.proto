@@ -6,7 +6,7 @@ import "buf/validate/validate.proto";
 import "j5/drss/v1/drss.proto";
 import "o5/application/v1/application.proto";
 import "o5/aws/deployer/v1/postgres.proto";
-import "o5/aws/infra/v1/ecs.proto";
+import "o5/aws/deployer/v1/ecs.proto";
 
 option go_package = "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb";
 
@@ -98,7 +98,7 @@ message DeploymentStepType {
     // containing the migration task ARN and secret ARN
     string infra_output_step_id = 2;
 
-    o5.aws.infra.v1.ECSTaskContext ecs_context = 5;
+    o5.aws.deployer.v1.ECSTaskContext ecs_context = 5;
   }
 }
 
