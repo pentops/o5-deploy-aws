@@ -64,7 +64,7 @@ func (cf *InfraWorker) HandleStackStatusChangeEvent(ctx context.Context, eventID
 	}
 
 	requestMetadata, err := cf.db.ClientTokenToRequest(ctx, event.ClientRequestToken)
-	if errors.Is(err, tokenstore.RequestTokenNotFound) {
+	if errors.Is(err, tokenstore.ErrRequestTokenNotFound) {
 		return nil
 	} else if err != nil {
 		return err

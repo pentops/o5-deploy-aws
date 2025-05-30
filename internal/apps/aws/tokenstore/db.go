@@ -20,7 +20,7 @@ type DBLite interface {
 	ClientTokenToRequest(context.Context, string) (*messaging_j5pb.RequestMetadata, error)
 }
 
-var RequestTokenNotFound = errors.New("request token not found")
+var ErrRequestTokenNotFound = errors.New("request token not found")
 
 type Storage struct {
 	db sqrlx.Transactor
@@ -84,7 +84,7 @@ func (s *Storage) RequestToClientToken(ctx context.Context, req *messaging_j5pb.
 func (s *Storage) ClientTokenToRequest(ctx context.Context, token string) (*messaging_j5pb.RequestMetadata, error) {
 	response := &messaging_j5pb.RequestMetadata{}
 	if !strings.HasPrefix(token, tokenPrefix) {
-		return nil, RequestTokenNotFound
+		return nil, ErrRequestTokenNotFound
 	}
 	token = strings.TrimPrefix(token, tokenPrefix)
 
