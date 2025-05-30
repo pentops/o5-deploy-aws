@@ -247,7 +247,7 @@ func (cf *InfraAdapter) StabalizeStack(ctx context.Context, msg *awsinfra_tpb.St
 		return cf.pollStack(ctx, msg.StackName, "", msg.Request)
 	}
 
-	log.WithFields(ctx, map[string]interface{}{
+	log.WithFields(ctx, map[string]any{
 		"stackName":   msg.StackName,
 		"lifecycle":   lifecycle.ShortString(),
 		"stackStatus": remoteStack.StackStatus,
@@ -374,7 +374,7 @@ func (cf *InfraAdapter) pollStack(
 
 	beginTime := time.Now()
 
-	ctx = log.WithFields(ctx, map[string]interface{}{
+	ctx = log.WithFields(ctx, map[string]any{
 		"stackName": stackName,
 	})
 
@@ -396,7 +396,7 @@ func (cf *InfraAdapter) pollStack(
 			for _, event := range events {
 				if event.Timestamp.After(lastEvent) {
 					lastEvent = event.Timestamp
-					args := map[string]interface{}{
+					args := map[string]any{
 						"timestamp": event.Timestamp,
 						"resource":  event.Resource,
 						"status":    event.Status,
@@ -416,7 +416,7 @@ func (cf *InfraAdapter) pollStack(
 		}
 
 		if !remoteStack.Stable {
-			log.WithFields(ctx, map[string]interface{}{
+			log.WithFields(ctx, map[string]any{
 				"lifecycle":   remoteStack.SummaryType.ShortString(),
 				"stackStatus": remoteStack.StackStatus,
 			}).Debug("PollStack Intermediate Result")
@@ -424,7 +424,7 @@ func (cf *InfraAdapter) pollStack(
 			continue
 		}
 
-		log.WithFields(ctx, map[string]interface{}{
+		log.WithFields(ctx, map[string]any{
 			"lifecycle":   remoteStack.SummaryType.ShortString(),
 			"stackStatus": remoteStack.StackStatus,
 			"outputs":     remoteStack.Outputs,
@@ -450,7 +450,7 @@ func (cf *InfraAdapter) pollChangeSet(
 
 	changeSetID := fmt.Sprintf("%s-%s", stackName, reqToken)
 
-	ctx = log.WithFields(ctx, map[string]interface{}{
+	ctx = log.WithFields(ctx, map[string]any{
 		"stackName":   stackName,
 		"changeSetID": changeSetID,
 	})
@@ -477,7 +477,7 @@ func (cf *InfraAdapter) pollChangeSet(
 			}, nil
 		}
 
-		log.WithFields(ctx, map[string]interface{}{
+		log.WithFields(ctx, map[string]any{
 			"lifecycle": remoteChangeSet.Lifecycle.ShortString(),
 			"status":    remoteChangeSet.Status,
 		}).Debug("PollChangeSet Intermediate Result")

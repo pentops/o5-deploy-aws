@@ -14,7 +14,7 @@ import (
 var namespaceStackID = uuid.MustParse("C27983FD-BC4B-493F-A056-CC8C869A1999")
 
 func StackID(envName, appName string) string {
-	return uuid.NewMD5(namespaceStackID, []byte(fmt.Sprintf("%s-%s", envName, appName))).String()
+	return uuid.NewMD5(namespaceStackID, fmt.Appendf(nil, "%s-%s", envName, appName)).String()
 }
 
 func NewStackEventer() (*awsdeployer_pb.StackPSM, error) {

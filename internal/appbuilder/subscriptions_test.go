@@ -20,9 +20,9 @@ func TestEventBusRules(t *testing.T) {
 			testAppName,
 		})
 
-		replyFilter = map[string]interface{}{
-			"replyTo": []interface{}{
-				map[string]interface{}{
+		replyFilter = map[string]any{
+			"replyTo": []any{
+				map[string]any{
 					"exists": false,
 				},
 				fullNameRef,
@@ -32,7 +32,7 @@ func TestEventBusRules(t *testing.T) {
 
 	for _, tc := range []struct {
 		name  string
-		want  []map[string]interface{}
+		want  []map[string]any
 		input *application_pb.Runtime
 	}{
 		{
@@ -47,10 +47,10 @@ func TestEventBusRules(t *testing.T) {
 					Name: "test",
 				}},
 			},
-			want: []map[string]interface{}{{
-				"detail": map[string]interface{}{
-					"sourceEnv":        []interface{}{localEnvRef},
-					"destinationTopic": []interface{}{"test"},
+			want: []map[string]any{{
+				"detail": map[string]any{
+					"sourceEnv":        []any{localEnvRef},
+					"destinationTopic": []any{"test"},
 				},
 			}},
 		},
@@ -62,9 +62,9 @@ func TestEventBusRules(t *testing.T) {
 					EnvName: proto.String("*"),
 				}},
 			},
-			want: []map[string]interface{}{{
-				"detail": map[string]interface{}{
-					"destinationTopic": []interface{}{"test"},
+			want: []map[string]any{{
+				"detail": map[string]any{
+					"destinationTopic": []any{"test"},
 				},
 			}},
 		},
@@ -77,10 +77,10 @@ func TestEventBusRules(t *testing.T) {
 					Name: "test2",
 				}},
 			},
-			want: []map[string]interface{}{{
-				"detail": map[string]interface{}{
-					"sourceEnv":        []interface{}{localEnvRef},
-					"destinationTopic": []interface{}{"test", "test2"},
+			want: []map[string]any{{
+				"detail": map[string]any{
+					"sourceEnv":        []any{localEnvRef},
+					"destinationTopic": []any{"test", "test2"},
 				},
 			}},
 		},
@@ -93,21 +93,21 @@ func TestEventBusRules(t *testing.T) {
 					Name: "global/upsert",
 				}},
 			},
-			want: []map[string]interface{}{{
-				"detail": map[string]interface{}{
-					"$or": []interface{}{
-						map[string]interface{}{
-							"sourceEnv": []interface{}{localEnvRef},
-							"event": map[string]interface{}{
-								"entityName": []interface{}{map[string]interface{}{
+			want: []map[string]any{{
+				"detail": map[string]any{
+					"$or": []any{
+						map[string]any{
+							"sourceEnv": []any{localEnvRef},
+							"event": map[string]any{
+								"entityName": []any{map[string]any{
 									"exists": true,
 								}},
 							},
 						},
-						map[string]interface{}{
-							"sourceEnv": []interface{}{localEnvRef},
-							"upsert": map[string]interface{}{
-								"entityName": []interface{}{map[string]interface{}{
+						map[string]any{
+							"sourceEnv": []any{localEnvRef},
+							"upsert": map[string]any{
+								"entityName": []any{map[string]any{
 									"exists": true,
 								}},
 							},
@@ -123,10 +123,10 @@ func TestEventBusRules(t *testing.T) {
 					Name: "/foo.v1.Bar",
 				}},
 			},
-			want: []map[string]interface{}{{
-				"detail": map[string]interface{}{
-					"sourceEnv":   []interface{}{localEnvRef},
-					"grpcService": []interface{}{"foo.v1.Bar"},
+			want: []map[string]any{{
+				"detail": map[string]any{
+					"sourceEnv":   []any{localEnvRef},
+					"grpcService": []any{"foo.v1.Bar"},
 					"reply":       replyFilter,
 				},
 			}},
@@ -138,11 +138,11 @@ func TestEventBusRules(t *testing.T) {
 					Name: "/foo.v1.Bar/Baz",
 				}},
 			},
-			want: []map[string]interface{}{{
-				"detail": map[string]interface{}{
-					"sourceEnv":   []interface{}{localEnvRef},
-					"grpcService": []interface{}{"foo.v1.Bar"},
-					"grpcMethod":  []interface{}{"Baz"},
+			want: []map[string]any{{
+				"detail": map[string]any{
+					"sourceEnv":   []any{localEnvRef},
+					"grpcService": []any{"foo.v1.Bar"},
+					"grpcMethod":  []any{"Baz"},
 					"reply":       replyFilter,
 				},
 			}},
@@ -156,11 +156,11 @@ func TestEventBusRules(t *testing.T) {
 					Name: "/foo.v1.Bar/Qux",
 				}},
 			},
-			want: []map[string]interface{}{{
-				"detail": map[string]interface{}{
-					"sourceEnv":   []interface{}{localEnvRef},
-					"grpcService": []interface{}{"foo.v1.Bar"},
-					"grpcMethod":  []interface{}{"Baz", "Qux"},
+			want: []map[string]any{{
+				"detail": map[string]any{
+					"sourceEnv":   []any{localEnvRef},
+					"grpcService": []any{"foo.v1.Bar"},
+					"grpcMethod":  []any{"Baz", "Qux"},
 					"reply":       replyFilter,
 				},
 			}},
@@ -174,18 +174,18 @@ func TestEventBusRules(t *testing.T) {
 					Name: "/foo.v1.Qux",
 				}},
 			},
-			want: []map[string]interface{}{{
-				"detail": map[string]interface{}{
-					"$or": []interface{}{
-						map[string]interface{}{
-							"sourceEnv":   []interface{}{localEnvRef},
-							"grpcService": []interface{}{"foo.v1.Qux"},
+			want: []map[string]any{{
+				"detail": map[string]any{
+					"$or": []any{
+						map[string]any{
+							"sourceEnv":   []any{localEnvRef},
+							"grpcService": []any{"foo.v1.Qux"},
 							"reply":       replyFilter,
 						},
-						map[string]interface{}{
-							"sourceEnv":   []interface{}{localEnvRef},
-							"grpcService": []interface{}{"foo.v1.Bar"},
-							"grpcMethod":  []interface{}{"Baz"},
+						map[string]any{
+							"sourceEnv":   []any{localEnvRef},
+							"grpcService": []any{"foo.v1.Bar"},
+							"grpcMethod":  []any{"Baz"},
 							"reply":       replyFilter,
 						},
 					},
@@ -220,7 +220,7 @@ func TestEventBusRules(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				gotAsMap := map[string]interface{}{}
+				gotAsMap := map[string]any{}
 				if err := json.Unmarshal(gotAsJSON, &gotAsMap); err != nil {
 					t.Fatal(err)
 				}

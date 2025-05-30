@@ -129,7 +129,7 @@ type secretsSpec struct {
 }
 
 func (s *secretsSpec) OpenRoot(ctx context.Context) (*sql.DB, error) {
-	log.WithFields(ctx, map[string]interface{}{
+	log.WithFields(ctx, map[string]any{
 		"hostname": s.rootSecret.Hostname,
 		"dbName":   s.rootSecret.DBName,
 	}).Debug("Connecting to RDS root db as root user")
@@ -138,7 +138,7 @@ func (s *secretsSpec) OpenRoot(ctx context.Context) (*sql.DB, error) {
 }
 
 func (s *secretsSpec) OpenDBAsRoot(ctx context.Context, dbName string) (*sql.DB, error) {
-	log.WithFields(ctx, map[string]interface{}{
+	log.WithFields(ctx, map[string]any{
 		"hostname": s.rootSecret.Hostname,
 		"dbName":   s.rootSecret.DBName,
 	}).Debug("Connecting to RDS app db as root user")
@@ -203,7 +203,7 @@ func (d *DBMigrator) buildSpec(ctx context.Context, spec *awsdeployer_pb.RDSHost
 			dbName = dbUser
 		}
 
-		log.WithFields(ctx, map[string]interface{}{
+		log.WithFields(ctx, map[string]any{
 			"dbEndpoint": dbEndpoint,
 			"dbPort":     dbPort,
 			"dbUser":     dbUser,
@@ -336,7 +336,7 @@ func (d *DBMigrator) fixPostgresOwnership(ctx context.Context, spec DBSpec, dbNa
 	}} {
 
 		for _, object := range objects[typeSpec.key] {
-			log.WithFields(ctx, map[string]interface{}{
+			log.WithFields(ctx, map[string]any{
 				"badOwner":   object.owner,
 				"objectName": object.name,
 				"objectKind": object.kind,
@@ -434,7 +434,7 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, connSpec DBSpec
 		return false, err
 	}
 
-	log.WithFields(ctx, map[string]interface{}{
+	log.WithFields(ctx, map[string]any{
 		"count": count,
 	}).Debug("Found DBs")
 
@@ -467,7 +467,7 @@ func (d *DBMigrator) upsertPostgresDatabase(ctx context.Context, connSpec DBSpec
 	}
 
 	if len(spec.DbExtensions) > 0 {
-		log.WithFields(ctx, map[string]interface{}{
+		log.WithFields(ctx, map[string]any{
 			"count": len(spec.DbExtensions),
 		}).Debug("Adding Extensions")
 		if err := func() error {
@@ -506,7 +506,7 @@ func (d *DBMigrator) buildSecretsUser(ctx context.Context, connSpec DBSpec, dbNa
 
 	newSecret := connSpec.NewAppSecret(dbName)
 
-	log.WithFields(ctx, map[string]interface{}{
+	log.WithFields(ctx, map[string]any{
 		"newUsername": newSecret.Username,
 	}).Debug("Creating New User")
 
@@ -535,7 +535,7 @@ func (d *DBMigrator) buildSecretsUser(ctx context.Context, connSpec DBSpec, dbNa
 		return err
 	}
 
-	log.WithFields(ctx, map[string]interface{}{
+	log.WithFields(ctx, map[string]any{
 		"newUsername": newSecret.Username,
 		"secretARN":   msg.AppSecretName,
 	}).Debug("Storing New User Credentials")

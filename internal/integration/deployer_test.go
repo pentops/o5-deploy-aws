@@ -75,8 +75,7 @@ func tValidAWSCluster() *environment_pb.AWSCluster {
 }
 
 func TestDeploymentFlow(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ss := NewStepper(ctx, t)
 	defer ss.RunSteps(t)
 
@@ -295,8 +294,7 @@ func TestDeploymentFlow(t *testing.T) {
 }
 
 func TestStackLock(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ss := NewStepper(ctx, t)
 	defer ss.RunSteps(t)
 

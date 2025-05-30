@@ -65,10 +65,10 @@ type singlePattern struct {
 	SourceEnv        []string `json:"sourceEnv,omitempty"`
 
 	// Message Extensions
-	Reply   interface{} `json:"reply,omitempty"`
-	Request interface{} `json:"request,omitempty"`
-	Upsert  interface{} `json:"upsert,omitempty"`
-	Event   interface{} `json:"event,omitempty"`
+	Reply   any `json:"reply,omitempty"`
+	Request any `json:"request,omitempty"`
+	Upsert  any `json:"upsert,omitempty"`
+	Event   any `json:"event,omitempty"`
 }
 
 func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subscriptionPlan, error) {
@@ -174,9 +174,9 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 		appName,
 	})
 
-	replyTo := map[string]interface{}{
-		"replyTo": []interface{}{
-			map[string]interface{}{"exists": false},
+	replyTo := map[string]any{
+		"replyTo": []any{
+			map[string]any{"exists": false},
 			fullNameRef,
 		},
 	}
@@ -190,8 +190,8 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 				case "upsert":
 					rulePatterns = append(rulePatterns, singlePattern{
 						SourceEnv: rules.sourceEnvRef,
-						Upsert: map[string]interface{}{
-							"entityName": []interface{}{map[string]interface{}{
+						Upsert: map[string]any{
+							"entityName": []any{map[string]any{
 								"exists": true,
 							}},
 						},
@@ -199,8 +199,8 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 				case "event":
 					rulePatterns = append(rulePatterns, singlePattern{
 						SourceEnv: rules.sourceEnvRef,
-						Event: map[string]interface{}{
-							"entityName": []interface{}{map[string]interface{}{
+						Event: map[string]any{
+							"entityName": []any{map[string]any{
 								"exists": true,
 							}},
 						},
@@ -305,10 +305,10 @@ func (sp *subscriptionPlan) AddToTemplate(template *cflib.TemplateBuilder, queue
 		template.AddResource(cflib.NewResource(cflib.CleanParameterName(namePrefix, "subscription", sub.name), eventBusSubscription))
 	}
 
-	queuePolicyStatement := []interface{}{
-		map[string]interface{}{
+	queuePolicyStatement := []any{
+		map[string]any{
 			"Effect": "Allow",
-			"Principal": map[string]interface{}{
+			"Principal": map[string]any{
 				"Service": "events.amazonaws.com",
 			},
 			"Action":   "sqs:SendMessage",
@@ -316,13 +316,13 @@ func (sp *subscriptionPlan) AddToTemplate(template *cflib.TemplateBuilder, queue
 		}}
 
 	if len(topicARNs) > 0 {
-		queuePolicyStatement = append(queuePolicyStatement, map[string]interface{}{
+		queuePolicyStatement = append(queuePolicyStatement, map[string]any{
 			"Effect":    "Allow",
 			"Principal": "*",
 			"Action":    "sqs:SendMessage",
 			"Resource":  queueResource.GetAtt("Arn"),
-			"Condition": map[string]interface{}{
-				"ArnEquals": map[string]interface{}{
+			"Condition": map[string]any{
+				"ArnEquals": map[string]any{
 					"aws:SourceArn": topicARNs,
 				},
 			},
@@ -333,7 +333,7 @@ func (sp *subscriptionPlan) AddToTemplate(template *cflib.TemplateBuilder, queue
 	// (The ARN distinguishes the source)
 	template.AddResource(cflib.NewResource(cflib.CleanParameterName(namePrefix), &sqs.QueuePolicy{
 		Queues: []string{queueResource.Ref().Ref()},
-		PolicyDocument: map[string]interface{}{
+		PolicyDocument: map[string]any{
 			"Version":   "2012-10-17",
 			"Statement": queuePolicyStatement,
 		},

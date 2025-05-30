@@ -179,7 +179,7 @@ func (plan *DeploymentPlan) MigrateDatabases(ctx context.Context, infraReadyStep
 	finalSteps := make([]*PlanStep, 0)
 	for _, db := range plan.Deployment.Databases {
 
-		ctx = log.WithFields(ctx, map[string]interface{}{
+		ctx = log.WithFields(ctx, map[string]any{
 			"database": db.AppKey,
 		})
 		log.Debug(ctx, "Upsert Database")
@@ -198,7 +198,7 @@ func (plan *DeploymentPlan) DestroyDatabases(ctx context.Context, infraReadyStep
 	finalSteps := make([]*PlanStep, 0)
 	for _, db := range plan.Deployment.Databases {
 
-		ctx = log.WithFields(ctx, map[string]interface{}{
+		ctx = log.WithFields(ctx, map[string]any{
 			"database": db.AppKey,
 		})
 		log.Debug(ctx, "Destroy Database")
@@ -218,7 +218,7 @@ func (plan *DeploymentPlan) RecreateDatabases(ctx context.Context, infraReadySte
 	finalSteps := make([]*PlanStep, 0)
 	for _, db := range plan.Deployment.Databases {
 
-		ctx = log.WithFields(ctx, map[string]interface{}{
+		ctx = log.WithFields(ctx, map[string]any{
 			"database": db.AppKey,
 		})
 		log.Debug(ctx, "Recreate Database")

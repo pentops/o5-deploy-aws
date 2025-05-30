@@ -188,7 +188,7 @@ func (ds *CommandService) UpsertEnvironment(ctx context.Context, req *awsdeploye
 		return nil, err
 	}
 
-	log.WithFields(ctx, map[string]interface{}{
+	log.WithFields(ctx, map[string]any{
 		"environmentID": identifiers.environmentID,
 		"clusterID":     identifiers.clusterID,
 		"envName":       identifiers.fullName,

@@ -146,7 +146,7 @@ func (ds *LookupProvider) lookupStack(ctx context.Context, presented string) (st
 	res.appName = fallbackAppName
 	res.environment = env
 	res.stackID = states.StackID(fallbackEnvName, fallbackAppName)
-	log.WithFields(ctx, map[string]interface{}{
+	log.WithFields(ctx, map[string]any{
 		"stack_id":    res.stackID,
 		"environment": fallbackEnvName,
 		"application": fallbackAppName,
