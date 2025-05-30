@@ -119,7 +119,7 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (D
 
 	dbType := database.GetPostgres()
 
-	dbHost, ok := builder.Globals.FindRDSHost(dbType.ServerGroup)
+	dbHost, ok := builder.FindRDSHost(dbType.ServerGroup)
 	if !ok {
 		return nil, nil, fmt.Errorf("no RDS host %q for database %s", dbType.ServerGroup, database.Name)
 	}

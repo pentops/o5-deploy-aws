@@ -249,7 +249,7 @@ func ChangeSetStatusToEvent(msg *awsinfra_tpb.ChangeSetStatusChangedMessage) (*a
 	}
 
 	if stepContext.Phase != awsdeployer_pb.StepPhase_STEPS || stepContext.StepId == nil {
-		return nil, fmt.Errorf("Plan context expects STEPS and an ID")
+		return nil, fmt.Errorf("plan context expects STEPS and an ID")
 	}
 
 	status := drss_pb.StepStatus_DONE

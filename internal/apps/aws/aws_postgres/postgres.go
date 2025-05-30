@@ -527,7 +527,7 @@ func (d *DBMigrator) buildSecretsUser(ctx context.Context, connSpec DBSpec, dbNa
 	// Note the driver can't take these as parameters apparently.
 	_, err = rootConn.ExecContext(ctx, fmt.Sprintf(`CREATE USER %s PASSWORD '%s' IN ROLE %s`, newSecret.Username, newSecret.Password, newSecret.DBName))
 	if err != nil {
-		return fmt.Errorf("Create User Role: %w", err)
+		return fmt.Errorf("create user role: %w", err)
 	}
 
 	jsonBytes, err := json.Marshal(newSecret)
@@ -546,7 +546,7 @@ func (d *DBMigrator) buildSecretsUser(ctx context.Context, connSpec DBSpec, dbNa
 		SecretString: aws.String(string(jsonBytes)),
 	})
 	if err != nil {
-		return fmt.Errorf("Storing new secret value (%s) failed. The user was still created: %w", msg.AppSecretName, err)
+		return fmt.Errorf("storing new secret value (%s) failed. The user was still created: %w", msg.AppSecretName, err)
 	}
 
 	return nil

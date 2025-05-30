@@ -97,7 +97,7 @@ func (rr *Runner) RunDeployment(ctx context.Context, deployment *awsdeployer_pb.
 			// leave nil
 
 		default:
-			return fmt.Errorf("Stack Status: %s", stackStatus.Status)
+			return fmt.Errorf("stack status: %s", stackStatus.Status)
 		}
 	}
 
@@ -174,10 +174,10 @@ func (rr *Runner) runSteps(ctx context.Context, steps []*awsdeployer_pb.Deployme
 				hadSideEffect := len(tb.SideEffects) == 1
 				hadChainEvent := len(tb.ChainEvents) == 1
 				if !hadSideEffect && !hadChainEvent {
-					return fmt.Errorf("expected side effect or chain event, deadlock.")
+					return fmt.Errorf("expected side effect or chain event, deadlock")
 				}
 				if hadChainEvent && hadSideEffect {
-					return fmt.Errorf("expected side effect or chain event, not both.")
+					return fmt.Errorf("expected side effect or chain event, not both")
 				}
 
 				if hadChainEvent {

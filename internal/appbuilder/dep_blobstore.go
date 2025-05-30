@@ -74,14 +74,14 @@ func (bi bucketInfo) GetPermissions() RWPermission {
 	return WriteOnly
 }
 
-func addSFTP(bb *Builder, blobstoreDef *application_pb.Blobstore) error {
+func addSFTP(_ *Builder, _ *application_pb.Blobstore) error {
 	// noop for now - test new app protos first
 	return nil
 }
 
 func mapBlobstore(bb *Builder, blobstoreDef *application_pb.Blobstore) (*bucketInfo, error) {
 
-	appName := bb.Globals.AppName()
+	appName := bb.AppName()
 
 	if blobstoreDef.Ref == nil {
 		bucketName := cflib.Join(".",

@@ -134,7 +134,7 @@ func BuildApplication(spec AppInput) (*BuiltApplication, error) {
 			continue
 		}
 
-		dbRef, ok := bb.Globals.Database(dbSpec.Name)
+		dbRef, ok := bb.Database(dbSpec.Name)
 		if !ok {
 			// panic because this is a logic issue in the code, not a user error
 			panic(fmt.Sprintf("database %s not found for outbox, but was defined in spec", dbSpec.Name))

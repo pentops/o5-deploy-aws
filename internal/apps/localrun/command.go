@@ -39,10 +39,10 @@ func RunLocalDeploy(ctx context.Context, templateStore deployer.TemplateStore, i
 	}
 
 	if spec.EnvConfig == nil {
-		return fmt.Errorf("Environment config is required")
+		return fmt.Errorf("environment config is required")
 	}
 	if spec.ClusterConfig == nil {
-		return fmt.Errorf("Cluster config is required")
+		return fmt.Errorf("cluster config is required")
 	}
 
 	rr := &Runner{

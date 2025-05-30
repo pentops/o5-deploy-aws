@@ -7,7 +7,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
-	"github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	ecs_types "github.com/aws/aws-sdk-go-v2/service/ecs/types"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
@@ -32,12 +31,12 @@ func NewECSWorker(db tokenstore.DBLite, ecsClient awsapi.ECSAPI) (*ECSWorker, er
 }
 
 func RunTaskInput(msg *awsinfra_tpb.RunECSTaskMessage) (*ecs.RunTaskInput, error) {
-	var network *types.NetworkConfiguration
+	var network *ecs_types.NetworkConfiguration
 	if msg.Context.Network != nil {
 		switch nt := msg.Context.Network.Get().(type) {
 		case *awsdeployer_pb.ECSTaskNetworkType_AWSVPC:
-			network = &types.NetworkConfiguration{
-				AwsvpcConfiguration: &types.AwsVpcConfiguration{
+			network = &ecs_types.NetworkConfiguration{
+				AwsvpcConfiguration: &ecs_types.AwsVpcConfiguration{
 					SecurityGroups: nt.SecurityGroups,
 					Subnets:        nt.Subnets,
 				},
