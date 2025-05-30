@@ -416,3 +416,46 @@ func StackPSMGeneralEventDataHook(cb func(context.Context, sqrlx.Transaction, *S
 		StackPSMEvent,   // implements psm.IInnerEvent
 	](cb)
 }
+func StackPSMEventPublishHook(cb func(context.Context, psm.Publisher, *StackState, *StackEvent) error) psm.EventPublishHook[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.EventPublishHook[
+		*StackKeys,      // implements psm.IKeyset
+		*StackState,     // implements psm.IState
+		StackStatus,     // implements psm.IStatusEnum
+		*StackStateData, // implements psm.IStateData
+		*StackEvent,     // implements psm.IEvent
+		StackPSMEvent,   // implements psm.IInnerEvent
+	](cb)
+}
+func StackPSMUpsertPublishHook(cb func(context.Context, psm.Publisher, *StackState) error) psm.UpsertPublishHook[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+] {
+	return psm.UpsertPublishHook[
+		*StackKeys,      // implements psm.IKeyset
+		*StackState,     // implements psm.IState
+		StackStatus,     // implements psm.IStatusEnum
+		*StackStateData, // implements psm.IStateData
+	](cb)
+}
+
+func (event *StackEvent) EventPublishMetadata() *psm_j5pb.EventPublishMetadata {
+	tenantKeys := make([]*psm_j5pb.EventTenant, 0)
+	return &psm_j5pb.EventPublishMetadata{
+		EventId:   event.Metadata.EventId,
+		Sequence:  event.Metadata.Sequence,
+		Timestamp: event.Metadata.Timestamp,
+		Cause:     event.Metadata.Cause,
+		Auth: &psm_j5pb.PublishAuth{
+			TenantKeys: tenantKeys,
+		},
+	}
+}

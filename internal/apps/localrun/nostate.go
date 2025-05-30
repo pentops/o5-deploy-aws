@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/pentops/j5/gen/j5/state/v1/psm_j5pb"
 	"github.com/pentops/log.go/log"
@@ -35,6 +36,10 @@ func (td *TransitionData) ChainEvent(event awsdeployer_pb.DeploymentPSMEvent) {
 
 func (td *TransitionData) SideEffect(msg o5msg.Message) {
 	td.SideEffects = append(td.SideEffects, msg)
+}
+
+func (td *TransitionData) DelayedSideEffect(msg o5msg.Message, dd time.Duration) {
+	panic("DelayedSideEffect not implemented")
 }
 
 func (td *TransitionData) AsCause() *psm_j5pb.Cause {

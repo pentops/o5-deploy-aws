@@ -362,3 +362,46 @@ func ClusterPSMGeneralEventDataHook(cb func(context.Context, sqrlx.Transaction, 
 		ClusterPSMEvent,   // implements psm.IInnerEvent
 	](cb)
 }
+func ClusterPSMEventPublishHook(cb func(context.Context, psm.Publisher, *ClusterState, *ClusterEvent) error) psm.EventPublishHook[
+	*ClusterKeys,      // implements psm.IKeyset
+	*ClusterState,     // implements psm.IState
+	ClusterStatus,     // implements psm.IStatusEnum
+	*ClusterStateData, // implements psm.IStateData
+	*ClusterEvent,     // implements psm.IEvent
+	ClusterPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.EventPublishHook[
+		*ClusterKeys,      // implements psm.IKeyset
+		*ClusterState,     // implements psm.IState
+		ClusterStatus,     // implements psm.IStatusEnum
+		*ClusterStateData, // implements psm.IStateData
+		*ClusterEvent,     // implements psm.IEvent
+		ClusterPSMEvent,   // implements psm.IInnerEvent
+	](cb)
+}
+func ClusterPSMUpsertPublishHook(cb func(context.Context, psm.Publisher, *ClusterState) error) psm.UpsertPublishHook[
+	*ClusterKeys,      // implements psm.IKeyset
+	*ClusterState,     // implements psm.IState
+	ClusterStatus,     // implements psm.IStatusEnum
+	*ClusterStateData, // implements psm.IStateData
+] {
+	return psm.UpsertPublishHook[
+		*ClusterKeys,      // implements psm.IKeyset
+		*ClusterState,     // implements psm.IState
+		ClusterStatus,     // implements psm.IStatusEnum
+		*ClusterStateData, // implements psm.IStateData
+	](cb)
+}
+
+func (event *ClusterEvent) EventPublishMetadata() *psm_j5pb.EventPublishMetadata {
+	tenantKeys := make([]*psm_j5pb.EventTenant, 0)
+	return &psm_j5pb.EventPublishMetadata{
+		EventId:   event.Metadata.EventId,
+		Sequence:  event.Metadata.Sequence,
+		Timestamp: event.Metadata.Timestamp,
+		Cause:     event.Metadata.Cause,
+		Auth: &psm_j5pb.PublishAuth{
+			TenantKeys: tenantKeys,
+		},
+	}
+}
