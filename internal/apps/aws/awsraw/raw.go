@@ -52,7 +52,7 @@ func (worker *RawMessageWorker) Raw(ctx context.Context, msg *messaging_tpb.RawM
 func (worker *RawMessageWorker) HandleEventBridgeEvent(ctx context.Context, payload []byte) error {
 	infraEvent := &InfraEvent{}
 	if err := json.Unmarshal(payload, infraEvent); err == nil && infraEvent.Valid() {
-		log.WithFields(ctx, map[string]interface{}{
+		log.WithFields(ctx, map[string]any{
 			"eventId":     infraEvent.ID,
 			"eventSource": infraEvent.Source,
 			"eventType":   infraEvent.DetailType,

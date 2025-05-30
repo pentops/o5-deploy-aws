@@ -312,7 +312,7 @@ func (pr paramResolve) Get(key string) (string, bool) {
 	return fmt.Sprintf("{%s}", key), true
 }
 
-func funcToPlaceholders(t testing.TB, f interface{}) string {
+func funcToPlaceholders(t testing.TB, f any) string {
 	t.Helper()
 	str, err := cflib.ResolveFunc(f, paramResolve{})
 	if err != nil {
@@ -335,7 +335,7 @@ func decodeGetAtt(t testing.TB, s string) *GetAtt {
 	return getAtt
 }
 
-func decodeAny(t testing.TB, s string) interface{} {
+func decodeAny(t testing.TB, s string) any {
 
 	jb, err := json.Marshal(s)
 	if err != nil {
@@ -347,14 +347,14 @@ func decodeAny(t testing.TB, s string) interface{} {
 		t.Fatal(err)
 	}
 
-	var out interface{}
+	var out any
 	if err := json.Unmarshal(processed, &out); err != nil {
 		t.Fatal(err)
 	}
 	return out
 }
 
-func jsonStrictUnmarshal(t testing.TB, val []byte, into interface{}) {
+func jsonStrictUnmarshal(t testing.TB, val []byte, into any) {
 	dd := json.NewDecoder(bytes.NewReader(val))
 	dd.DisallowUnknownFields()
 	if err := dd.Decode(into); err != nil {
@@ -362,7 +362,7 @@ func jsonStrictUnmarshal(t testing.TB, val []byte, into interface{}) {
 	}
 }
 
-func decode(t testing.TB, s string, into interface{}) {
+func decode(t testing.TB, s string, into any) {
 	t.Helper()
 	val, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
@@ -379,7 +379,7 @@ type Join struct {
 
 func (j *Join) UnmarshalJSON(b []byte) error {
 	raw := struct {
-		Vals []interface{} `json:"Fn::Join"`
+		Vals []any `json:"Fn::Join"`
 	}{}
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return err
@@ -390,7 +390,7 @@ func (j *Join) UnmarshalJSON(b []byte) error {
 	}
 
 	j.Delim = raw.Vals[0].(string)
-	for _, v := range raw.Vals[1].([]interface{}) {
+	for _, v := range raw.Vals[1].([]any) {
 		j.Vals = append(j.Vals, v.(string))
 	}
 
@@ -424,19 +424,19 @@ type Ref struct {
 	Ref string `json:"Ref"`
 }
 
-func assertJSONEqual(t *testing.T, path []string, expected, got interface{}) {
+func assertJSONEqual(t *testing.T, path []string, expected, got any) {
 	t.Helper()
 	switch expected := expected.(type) {
-	case []interface{}:
-		gotSlice, ok := got.([]interface{})
+	case []any:
+		gotSlice, ok := got.([]any)
 		if !ok {
 			t.Errorf("at %s: expected slice, got %T", strings.Join(path, "."), got)
 		}
 
 		assertJSONArrayEqual(t, path, expected, gotSlice)
 
-	case map[string]interface{}:
-		gotMap, ok := got.(map[string]interface{})
+	case map[string]any:
+		gotMap, ok := got.(map[string]any)
 		if !ok {
 			t.Errorf("at %s: expected map, got %T", strings.Join(path, "."), got)
 		}
@@ -450,7 +450,7 @@ func assertJSONEqual(t *testing.T, path []string, expected, got interface{}) {
 	}
 }
 
-func assertJSONArrayEqual(t *testing.T, path []string, expected, got []interface{}) {
+func assertJSONArrayEqual(t *testing.T, path []string, expected, got []any) {
 	t.Helper()
 	if len(expected) != len(got) {
 		t.Errorf("expected %d elements, got %d", len(expected), len(got))
@@ -467,7 +467,7 @@ func assertJSONArrayEqual(t *testing.T, path []string, expected, got []interface
 	}
 }
 
-func assertJSONMapEqual(t *testing.T, path []string, expected, got map[string]interface{}) {
+func assertJSONMapEqual(t *testing.T, path []string, expected, got map[string]any) {
 	t.Helper()
 	for k, v := range expected {
 		got, ok := got[k]

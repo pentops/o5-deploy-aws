@@ -75,7 +75,7 @@ func (d *ecsRunner) runECSTask(ctx context.Context, ecsMsg *awsinfra_tpb.RunECST
 		}
 
 		task := state.Tasks[0]
-		log.WithFields(ctx, map[string]interface{}{
+		log.WithFields(ctx, map[string]any{
 			"status": *task.LastStatus,
 		}).Debug("waiting for task to stop")
 
@@ -86,7 +86,7 @@ func (d *ecsRunner) runECSTask(ctx context.Context, ecsMsg *awsinfra_tpb.RunECST
 				return err
 			}
 			for _, lg := range logGroups {
-				log.WithFields(ctx, map[string]interface{}{
+				log.WithFields(ctx, map[string]any{
 					"logGroup":  lg.LogGroup,
 					"logStream": lg.LogStream,
 				}).Info("log group")
@@ -218,13 +218,13 @@ func tailLogStream(ctx context.Context, client awsapi.CloudWatchLogsAPI, logGrou
 
 		for _, event := range logEvents.Events {
 			if strings.HasPrefix(*event.Message, "{") {
-				msg := make(map[string]interface{})
+				msg := make(map[string]any)
 				if err := json.Unmarshal([]byte(*event.Message), &msg); err == nil {
 					log.WithFields(ctx, msg).Info("log message")
 					continue
 				}
 			}
-			log.WithFields(ctx, map[string]interface{}{
+			log.WithFields(ctx, map[string]any{
 				"container": logGroup.Container,
 				"message":   event.Message,
 			}).Info("log message")

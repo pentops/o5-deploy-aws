@@ -16,16 +16,16 @@ import (
 )
 
 type Template struct {
-	AWSTemplateFormatVersion string                 `json:"AWSTemplateFormatVersion"`
-	Resources                map[string]Resource    `json:"Resources"`
-	Parameters               map[string]interface{} `json:"Parameters"`
-	Outputs                  map[string]interface{} `json:"Outputs,omitempty"`
+	AWSTemplateFormatVersion string              `json:"AWSTemplateFormatVersion"`
+	Resources                map[string]Resource `json:"Resources"`
+	Parameters               map[string]any      `json:"Parameters"`
+	Outputs                  map[string]any      `json:"Outputs,omitempty"`
 }
 
 type Resource struct {
-	Type           string                 `json:"Type"`
-	DeletionPolicy string                 `json:"DeletionPolicy,omitempty"`
-	Properties     map[string]interface{} `json:"Properties,omitempty"`
+	Type           string         `json:"Type"`
+	DeletionPolicy string         `json:"DeletionPolicy,omitempty"`
+	Properties     map[string]any `json:"Properties,omitempty"`
 }
 
 func EmptyTemplate() string {
@@ -37,7 +37,7 @@ func EmptyTemplate() string {
 				Type: "AWS::CloudFormation::WaitConditionHandle",
 			},
 		},
-		Parameters: map[string]interface{}{},
+		Parameters: map[string]any{},
 	}
 
 	templateJSON, err := json.MarshalIndent(emptyTemplate, "", "  ")
@@ -171,18 +171,18 @@ func (cf *CFClient) ImportResources(ctx context.Context, templateBody string, pa
 
 type FuncJoin struct {
 	Join   string
-	Values []interface{}
+	Values []any
 }
 
 func (f *FuncJoin) MarshalJSON() ([]byte, error) {
-	out := make([]interface{}, 2)
+	out := make([]any, 2)
 	out[0] = f.Join
 	out[1] = f.Values
 	return json.Marshal(out)
 }
 
 func (f *FuncJoin) UnmarshalJSON(data []byte) error {
-	var out []interface{}
+	var out []any
 	err := json.Unmarshal(data, &out)
 	if err != nil {
 		return err
@@ -196,24 +196,24 @@ func (f *FuncJoin) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("expected string, got %T", out[0])
 	}
 
-	f.Values, ok = out[1].([]interface{})
+	f.Values, ok = out[1].([]any)
 	if !ok {
 		return fmt.Errorf("expected []interface{}, got %T", out[1])
 	}
 	return err
 }
 
-func ResolveFunc(raw interface{}, params map[string]string) (string, error) {
+func ResolveFunc(raw any, params map[string]string) (string, error) {
 	if stringVal, ok := raw.(string); ok {
 		return stringVal, nil
 	}
 
-	mapStringInterface, ok := raw.(map[string]interface{})
+	mapStringInterface, ok := raw.(map[string]any)
 	if !ok {
 		return "", fmt.Errorf("expected map[string]interface{}, got %T", raw)
 	}
 	var fnName string
-	var fnValue interface{}
+	var fnValue any
 
 	if len(mapStringInterface) != 1 {
 		return "", fmt.Errorf("expected 1 key, got %d", len(mapStringInterface))
@@ -236,7 +236,7 @@ func ResolveFunc(raw interface{}, params map[string]string) (string, error) {
 
 	case "Fn::Join":
 		joiner := &FuncJoin{}
-		joinerValues, ok := fnValue.([]interface{})
+		joinerValues, ok := fnValue.([]any)
 		if !ok {
 			return "", fmt.Errorf("expected []interface{}, got %T", fnValue)
 		}
@@ -247,7 +247,7 @@ func ResolveFunc(raw interface{}, params map[string]string) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("expected string, got %T", joinerValues[0])
 		}
-		joiner.Values, ok = joinerValues[1].([]interface{})
+		joiner.Values, ok = joinerValues[1].([]any)
 		if !ok {
 			return "", fmt.Errorf("expected []interface{}, got %T", joinerValues[1])
 		}

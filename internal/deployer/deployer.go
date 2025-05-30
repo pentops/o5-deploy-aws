@@ -89,7 +89,7 @@ func safeDBName(dbName string) string {
 }
 
 func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.RequestDeploymentMessage, cluster *environment_pb.Cluster, environment *environment_pb.Environment) (*awsdeployer_pb.DeploymentSpec, error) {
-	ctx = log.WithFields(ctx, map[string]interface{}{
+	ctx = log.WithFields(ctx, map[string]any{
 		"appName":     trigger.Application.Name,
 		"environment": environment.FullName,
 	})

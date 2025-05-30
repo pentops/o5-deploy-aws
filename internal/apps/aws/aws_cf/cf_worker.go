@@ -200,7 +200,7 @@ func (cf *InfraWorker) StabalizeStack(ctx context.Context, msg *awsinfra_tpb.Sta
 		return nil, err
 	}
 
-	log.WithFields(ctx, map[string]interface{}{
+	log.WithFields(ctx, map[string]any{
 		"stackName":   msg.StackName,
 		"lifecycle":   lifecycle.ShortString(),
 		"stackStatus": remoteStack.StackStatus,

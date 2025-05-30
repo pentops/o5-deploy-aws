@@ -405,7 +405,7 @@ func addS3TrailingSlash(in []string) []string {
 		//This represents all of the objects inside of the s3 buckets. Receiver of Get and Put permissions.
 		subResources = append(subResources,
 			in[i],
-			cloudformation.Join("", []interface{}{in[i], "/*"}),
+			cloudformation.Join("", []any{in[i], "/*"}),
 		)
 	}
 	return subResources

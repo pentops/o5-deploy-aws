@@ -133,7 +133,7 @@ func (rr *Runner) runSteps(ctx context.Context, steps []*awsdeployer_pb.Deployme
 		}
 
 		for _, chainEvent := range tb.ChainEvents {
-			fields := map[string]interface{}{
+			fields := map[string]any{
 				"event":     chainEvent,
 				"eventType": chainEvent.PSMEventKey(),
 			}

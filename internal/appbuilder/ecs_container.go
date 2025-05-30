@@ -8,6 +8,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
+	"slices"
 )
 
 type ContainerDefinition struct {
@@ -277,10 +278,8 @@ func (cd *ContainerDefinition) addDefEnvVar(globals Globals, envVar *application
 }
 
 func (cd *ContainerDefinition) ExposePort(port int) {
-	for _, havePort := range cd.exposePorts {
-		if havePort == port {
-			return
-		}
+	if slices.Contains(cd.exposePorts, port) {
+		return
 	}
 	cd.exposePorts = append(cd.exposePorts, port)
 }

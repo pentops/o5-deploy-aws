@@ -15,7 +15,7 @@ func String(str string) *string {
 	return &str
 }
 
-func Stringf(str string, params ...interface{}) *string {
+func Stringf(str string, params ...any) *string {
 	return String(fmt.Sprintf(str, params...))
 }
 
@@ -51,8 +51,8 @@ func CleanParameterName(unsafes ...string) string {
 	outParts := []string{}
 	for _, unsafe := range unsafes {
 		safeString := reUnsafe.ReplaceAllString(unsafe, "_")
-		parts := strings.Split(safeString, "_")
-		for _, part := range parts {
+		parts := strings.SplitSeq(safeString, "_")
+		for part := range parts {
 			outParts = append(outParts, titleCase.String(part))
 		}
 	}

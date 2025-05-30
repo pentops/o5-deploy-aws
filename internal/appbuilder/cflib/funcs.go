@@ -9,18 +9,18 @@ import (
 
 type FuncJoin struct {
 	Join   string
-	Values []interface{}
+	Values []any
 }
 
 func (f *FuncJoin) MarshalJSON() ([]byte, error) {
-	out := make([]interface{}, 2)
+	out := make([]any, 2)
 	out[0] = f.Join
 	out[1] = f.Values
 	return json.Marshal(out)
 }
 
 func (f *FuncJoin) UnmarshalJSON(data []byte) error {
-	var out []interface{}
+	var out []any
 	err := json.Unmarshal(data, &out)
 	if err != nil {
 		return err
@@ -34,7 +34,7 @@ func (f *FuncJoin) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("expected string, got %T", out[0])
 	}
 
-	f.Values, ok = out[1].([]interface{})
+	f.Values, ok = out[1].([]any)
 	if !ok {
 		return fmt.Errorf("expected []interface{}, got %T", out[1])
 	}
@@ -58,8 +58,8 @@ func (pf ParamFunc) Get(key string) (string, bool) {
 	return pf(key)
 }
 
-func preEncode(raw interface{}) (map[string]interface{}, bool) {
-	mapStringInterface, ok := raw.(map[string]interface{})
+func preEncode(raw any) (map[string]any, bool) {
+	mapStringInterface, ok := raw.(map[string]any)
 	if ok {
 		return mapStringInterface, true
 	}
@@ -75,20 +75,20 @@ func preEncode(raw interface{}) (map[string]interface{}, bool) {
 	return nil, false
 }
 
-func fromBase64(stringVal string) (map[string]interface{}, bool) {
+func fromBase64(stringVal string) (map[string]any, bool) {
 	b64, err := base64.StdEncoding.DecodeString(stringVal)
 	if err != nil {
 		return nil, false
 	}
 
-	val := map[string]interface{}{}
+	val := map[string]any{}
 	if err := json.Unmarshal(b64, &val); err != nil {
 		return nil, false
 	}
 	return val, true
 }
 
-func ResolveFunc(raw interface{}, params Params) (string, error) {
+func ResolveFunc(raw any, params Params) (string, error) {
 	msi, ok := preEncode(raw)
 	if !ok {
 		if str, ok := raw.(string); ok {
@@ -98,7 +98,7 @@ func ResolveFunc(raw interface{}, params Params) (string, error) {
 	}
 
 	var fnName string
-	var fnValue interface{}
+	var fnValue any
 
 	if len(msi) != 1 {
 		return "", fmt.Errorf("expected 1 key, got %d", len(msi))
@@ -121,7 +121,7 @@ func ResolveFunc(raw interface{}, params Params) (string, error) {
 
 	case "Fn::Join":
 		joiner := &FuncJoin{}
-		joinerValues, ok := fnValue.([]interface{})
+		joinerValues, ok := fnValue.([]any)
 		if !ok {
 			return "", fmt.Errorf("expected []interface{}, got %T", fnValue)
 		}
@@ -132,7 +132,7 @@ func ResolveFunc(raw interface{}, params Params) (string, error) {
 		if !ok {
 			return "", fmt.Errorf("expected string, got %T", joinerValues[0])
 		}
-		joiner.Values, ok = joinerValues[1].([]interface{})
+		joiner.Values, ok = joinerValues[1].([]any)
 		if !ok {
 			return "", fmt.Errorf("expected []interface{}, got %T", joinerValues[1])
 		}

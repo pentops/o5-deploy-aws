@@ -108,7 +108,7 @@ func (handler *ECSWorker) HandleECSTaskEvent(ctx context.Context, eventID string
 	if taskEvent.Group != nil && strings.HasPrefix(*taskEvent.Group, "service:") {
 		serviceName = strings.TrimPrefix(*taskEvent.Group, "service:")
 	}
-	ctx = log.WithFields(ctx, map[string]interface{}{
+	ctx = log.WithFields(ctx, map[string]any{
 		"taskArn":    taskEvent.TaskArn,
 		"service":    serviceName,
 		"startedBy":  taskEvent.StartedBy,

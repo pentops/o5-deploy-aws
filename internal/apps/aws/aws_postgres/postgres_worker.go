@@ -57,7 +57,7 @@ func (d *PostgresMigrateWorker) runCallback(ctx context.Context, msg pgRequest, 
 		Request:     request,
 		MigrationId: msg.GetMigrationId(),
 		Status:      awsinfra_tpb.PostgresStatus_STARTED,
-		EventId:     uuid.NewSHA1(migrationNamespace, []byte(fmt.Sprintf("%s-%s-started", phase, migrationId))).String(),
+		EventId:     uuid.NewSHA1(migrationNamespace, fmt.Appendf(nil, "%s-%s-started", phase, migrationId)).String(),
 	}); err != nil {
 		return err
 	}
@@ -69,7 +69,7 @@ func (d *PostgresMigrateWorker) runCallback(ctx context.Context, msg pgRequest, 
 		errMsg := migrateErr.Error()
 		if err := d.db.PublishEvent(ctx, &awsinfra_tpb.PostgresDatabaseStatusMessage{
 			Request:     request,
-			EventId:     uuid.NewSHA1(migrationNamespace, []byte(fmt.Sprintf("%s-%s-error", phase, migrationId))).String(),
+			EventId:     uuid.NewSHA1(migrationNamespace, fmt.Appendf(nil, "%s-%s-error", phase, migrationId)).String(),
 			MigrationId: msg.GetMigrationId(),
 			Status:      awsinfra_tpb.PostgresStatus_ERROR,
 			Error:       &errMsg,
@@ -81,7 +81,7 @@ func (d *PostgresMigrateWorker) runCallback(ctx context.Context, msg pgRequest, 
 
 	if err := d.db.PublishEvent(ctx, &awsinfra_tpb.PostgresDatabaseStatusMessage{
 		Request:     request,
-		EventId:     uuid.NewSHA1(migrationNamespace, []byte(fmt.Sprintf("%s-%s-done", phase, migrationId))).String(),
+		EventId:     uuid.NewSHA1(migrationNamespace, fmt.Appendf(nil, "%s-%s-done", phase, migrationId)).String(),
 		MigrationId: msg.GetMigrationId(),
 		Status:      awsinfra_tpb.PostgresStatus_DONE,
 	}); err != nil {

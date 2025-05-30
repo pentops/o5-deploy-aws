@@ -49,7 +49,7 @@ func (ta *TemplateAsserter) GetResource(t testing.TB, name string, into cloudfor
 	}
 }
 
-func (ta *TemplateAsserter) AssertResource(t testing.TB, name string, intoType cloudformation.Resource, want map[string]interface{}) {
+func (ta *TemplateAsserter) AssertResource(t testing.TB, name string, intoType cloudformation.Resource, want map[string]any) {
 	t.Helper()
 	asJSON := ta.getResourceJSON(t, name, intoType)
 	asserter, err := jsontest.NewAsserter(asJSON)
@@ -99,7 +99,7 @@ func (ta *TemplateAsserter) GetOutputValue(t testing.TB, name string) string {
 	return ta.resolveFuncWithPlaceholders(t, output.Value)
 }
 
-func (ta *TemplateAsserter) resolveFuncWithPlaceholders(t testing.TB, f interface{}) string {
+func (ta *TemplateAsserter) resolveFuncWithPlaceholders(t testing.TB, f any) string {
 	t.Helper()
 	str, err := cflib.ResolveFunc(f, cflib.ParamFunc(func(key string) (string, bool) {
 		_, ok := ta.built.Template.Resources[key]

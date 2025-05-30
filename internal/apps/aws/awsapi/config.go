@@ -55,7 +55,7 @@ func LoadFromConfig(ctx context.Context, awsConfig aws.Config, opts ...Option) (
 		return nil, err
 	}
 
-	log.WithFields(ctx, map[string]interface{}{
+	log.WithFields(ctx, map[string]any{
 		"account":     aws.ToString(callerIdentity.Account),
 		"arn":         aws.ToString(callerIdentity.Arn),
 		"user":        aws.ToString(callerIdentity.UserId),

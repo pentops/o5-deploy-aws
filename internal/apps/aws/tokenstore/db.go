@@ -66,7 +66,7 @@ func (s *Storage) RequestToClientToken(ctx context.Context, req *messaging_j5pb.
 		}
 
 		didInsert, err := tx.InsertRow(ctx, sq.Insert("infra_client_token").
-			SetMap(map[string]interface{}{
+			SetMap(map[string]any{
 				"token":   token,
 				"dest":    req.ReplyTo,
 				"request": req.Context,
