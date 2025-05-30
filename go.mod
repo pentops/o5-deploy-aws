@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.24.1
 
 require (
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.5-20250219170025-d39267d9df8f.1
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.6-20250307204501-0409229c3780.1
 	buf.build/go/protoyaml v0.3.1
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.9
@@ -30,26 +30,26 @@ require (
 	github.com/iancoleman/strcase v0.3.0
 	github.com/lib/pq v1.10.9
 	github.com/pentops/envconf.go v0.0.0-20241008010024-9864aef6219d
-	github.com/pentops/flowtest v0.0.0-20241110231021-42663ac00b63
-	github.com/pentops/grpc.go v0.0.0-20250304234535-387f5d75a9c3
-	github.com/pentops/j5 v0.0.0-20250220215902-96e4ad10ce0b
-	github.com/pentops/log.go v0.0.15
-	github.com/pentops/o5-messaging v0.0.0-20250222021813-347361ac64f8
+	github.com/pentops/flowtest v0.0.0-20250521181823-71b0be743b08
+	github.com/pentops/grpc.go v0.0.0-20250326042738-bcdfc2b43fa9
+	github.com/pentops/j5 v0.0.0-20250530005724-d535ce1060fa
+	github.com/pentops/log.go v0.0.16
+	github.com/pentops/o5-messaging v0.0.0-20250520213617-fba07334e9aa
 	github.com/pentops/pgtest.go v0.0.0-20241223222214-7638cc50e15b
-	github.com/pentops/protostate v0.0.0-20250305161356-5d0574ed788c
-	github.com/pentops/realms v0.0.0-20250305163009-613fe9868ed8
-	github.com/pentops/runner v0.0.0-20250116202335-8635b2a42547
-	github.com/pentops/sqrlx.go v0.0.0-20250107233303-36a524e154c7
+	github.com/pentops/protostate v0.0.0-20250520005750-91b4a48c3407
+	github.com/pentops/realms v0.0.0-20250327015025-d65dc0463c4e
+	github.com/pentops/runner v0.0.0-20250530005558-0b8e943f923e
+	github.com/pentops/sqrlx.go v0.0.0-20250520210217-2f46de329c7a
 	github.com/pkg/errors v0.9.1
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/stretchr/testify v1.10.0
 	github.com/tidwall/sjson v1.2.5
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
 	golang.org/x/oauth2 v0.28.0
-	golang.org/x/text v0.23.0
-	google.golang.org/genproto/googleapis/api v0.0.0-20250303144028-a0af3efb3deb
+	golang.org/x/text v0.25.0
+	google.golang.org/genproto/googleapis/api v0.0.0-20250324211829-b45e905df463
 	google.golang.org/grpc v1.71.0
-	google.golang.org/protobuf v1.36.5
+	google.golang.org/protobuf v1.36.6
 )
 
 require (
@@ -80,17 +80,19 @@ require (
 	github.com/jhump/protoreflect v1.17.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/pentops/golib v0.0.0-20250326060930-8c83d58ddb63 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
-	golang.org/x/crypto v0.36.0 // indirect
-	golang.org/x/net v0.37.0 // indirect
-	golang.org/x/sync v0.12.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250303144028-a0af3efb3deb // indirect
+	golang.org/x/crypto v0.38.0 // indirect
+	golang.org/x/net v0.40.0 // indirect
+	golang.org/x/sync v0.14.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250324211829-b45e905df463 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/awslabs/goformation/v7 => github.com/twisp/goformation/v7 v7.0.0-20250225211955-a6db284e8d3f
+replace github.com/awslabs/goformation/v7 => github.com/twisp/goformation/v7 v7.0.0-20250225211955-a6db284e8d3f // lint:ignore

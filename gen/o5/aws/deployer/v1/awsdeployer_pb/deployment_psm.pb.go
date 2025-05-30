@@ -515,3 +515,46 @@ func DeploymentPSMGeneralEventDataHook(cb func(context.Context, sqrlx.Transactio
 		DeploymentPSMEvent,   // implements psm.IInnerEvent
 	](cb)
 }
+func DeploymentPSMEventPublishHook(cb func(context.Context, psm.Publisher, *DeploymentState, *DeploymentEvent) error) psm.EventPublishHook[
+	*DeploymentKeys,      // implements psm.IKeyset
+	*DeploymentState,     // implements psm.IState
+	DeploymentStatus,     // implements psm.IStatusEnum
+	*DeploymentStateData, // implements psm.IStateData
+	*DeploymentEvent,     // implements psm.IEvent
+	DeploymentPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.EventPublishHook[
+		*DeploymentKeys,      // implements psm.IKeyset
+		*DeploymentState,     // implements psm.IState
+		DeploymentStatus,     // implements psm.IStatusEnum
+		*DeploymentStateData, // implements psm.IStateData
+		*DeploymentEvent,     // implements psm.IEvent
+		DeploymentPSMEvent,   // implements psm.IInnerEvent
+	](cb)
+}
+func DeploymentPSMUpsertPublishHook(cb func(context.Context, psm.Publisher, *DeploymentState) error) psm.UpsertPublishHook[
+	*DeploymentKeys,      // implements psm.IKeyset
+	*DeploymentState,     // implements psm.IState
+	DeploymentStatus,     // implements psm.IStatusEnum
+	*DeploymentStateData, // implements psm.IStateData
+] {
+	return psm.UpsertPublishHook[
+		*DeploymentKeys,      // implements psm.IKeyset
+		*DeploymentState,     // implements psm.IState
+		DeploymentStatus,     // implements psm.IStatusEnum
+		*DeploymentStateData, // implements psm.IStateData
+	](cb)
+}
+
+func (event *DeploymentEvent) EventPublishMetadata() *psm_j5pb.EventPublishMetadata {
+	tenantKeys := make([]*psm_j5pb.EventTenant, 0)
+	return &psm_j5pb.EventPublishMetadata{
+		EventId:   event.Metadata.EventId,
+		Sequence:  event.Metadata.Sequence,
+		Timestamp: event.Metadata.Timestamp,
+		Cause:     event.Metadata.Cause,
+		Auth: &psm_j5pb.PublishAuth{
+			TenantKeys: tenantKeys,
+		},
+	}
+}

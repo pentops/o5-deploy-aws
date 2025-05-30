@@ -349,3 +349,46 @@ func EnvironmentPSMGeneralEventDataHook(cb func(context.Context, sqrlx.Transacti
 		EnvironmentPSMEvent,   // implements psm.IInnerEvent
 	](cb)
 }
+func EnvironmentPSMEventPublishHook(cb func(context.Context, psm.Publisher, *EnvironmentState, *EnvironmentEvent) error) psm.EventPublishHook[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.EventPublishHook[
+		*EnvironmentKeys,      // implements psm.IKeyset
+		*EnvironmentState,     // implements psm.IState
+		EnvironmentStatus,     // implements psm.IStatusEnum
+		*EnvironmentStateData, // implements psm.IStateData
+		*EnvironmentEvent,     // implements psm.IEvent
+		EnvironmentPSMEvent,   // implements psm.IInnerEvent
+	](cb)
+}
+func EnvironmentPSMUpsertPublishHook(cb func(context.Context, psm.Publisher, *EnvironmentState) error) psm.UpsertPublishHook[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+] {
+	return psm.UpsertPublishHook[
+		*EnvironmentKeys,      // implements psm.IKeyset
+		*EnvironmentState,     // implements psm.IState
+		EnvironmentStatus,     // implements psm.IStatusEnum
+		*EnvironmentStateData, // implements psm.IStateData
+	](cb)
+}
+
+func (event *EnvironmentEvent) EventPublishMetadata() *psm_j5pb.EventPublishMetadata {
+	tenantKeys := make([]*psm_j5pb.EventTenant, 0)
+	return &psm_j5pb.EventPublishMetadata{
+		EventId:   event.Metadata.EventId,
+		Sequence:  event.Metadata.Sequence,
+		Timestamp: event.Metadata.Timestamp,
+		Cause:     event.Metadata.Cause,
+		Auth: &psm_j5pb.PublishAuth{
+			TenantKeys: tenantKeys,
+		},
+	}
+}
