@@ -39,6 +39,24 @@ type ClusterPSMEventSpec = psm.EventSpec[
 	ClusterPSMEvent,   // implements psm.IInnerEvent
 ]
 
+type ClusterPSMHookBaton = psm.HookBaton[
+	*ClusterKeys,      // implements psm.IKeyset
+	*ClusterState,     // implements psm.IState
+	ClusterStatus,     // implements psm.IStatusEnum
+	*ClusterStateData, // implements psm.IStateData
+	*ClusterEvent,     // implements psm.IEvent
+	ClusterPSMEvent,   // implements psm.IInnerEvent
+]
+
+type ClusterPSMFullBaton = psm.CallbackBaton[
+	*ClusterKeys,      // implements psm.IKeyset
+	*ClusterState,     // implements psm.IState
+	ClusterStatus,     // implements psm.IStatusEnum
+	*ClusterStateData, // implements psm.IStateData
+	*ClusterEvent,     // implements psm.IEvent
+	ClusterPSMEvent,   // implements psm.IInnerEvent
+]
+
 type ClusterPSMEventKey = string
 
 const (
@@ -58,8 +76,8 @@ func (msg *ClusterKeys) PSMIsSet() bool {
 func (msg *ClusterKeys) PSMFullName() string {
 	return "o5.aws.deployer.v1.cluster"
 }
-func (msg *ClusterKeys) PSMKeyValues() (map[string]string, error) {
-	keyset := map[string]string{
+func (msg *ClusterKeys) PSMKeyValues() (map[string]any, error) {
+	keyset := map[string]any{
 		"cluster_id": msg.ClusterId,
 	}
 	return keyset, nil
@@ -215,6 +233,7 @@ func ClusterPSMBuilder() *psm.StateMachineConfig[
 	]{}
 }
 
+// ClusterPSMMutation runs at the start of a transition to merge the event information into the state data object. The state object is mutable in this context.
 func ClusterPSMMutation[SE ClusterPSMEvent](cb func(*ClusterStateData, SE) error) psm.TransitionMutation[
 	*ClusterKeys,      // implements psm.IKeyset
 	*ClusterState,     // implements psm.IState
@@ -235,83 +254,55 @@ func ClusterPSMMutation[SE ClusterPSMEvent](cb func(*ClusterStateData, SE) error
 	](cb)
 }
 
-type ClusterPSMHookBaton = psm.HookBaton[
+// ClusterPSMLogicHook runs after the mutation is complete. This hook can trigger side effects, including chained events, which are additional events processed by the state machine. Use this for Business Logic which determines the 'next step' in processing.
+func ClusterPSMLogicHook[
+	SE ClusterPSMEvent,
+](
+	cb func(
+		context.Context,
+		ClusterPSMHookBaton,
+		*ClusterState,
+		SE,
+	) error) psm.TransitionHook[
 	*ClusterKeys,      // implements psm.IKeyset
 	*ClusterState,     // implements psm.IState
 	ClusterStatus,     // implements psm.IStatusEnum
 	*ClusterStateData, // implements psm.IStateData
 	*ClusterEvent,     // implements psm.IEvent
 	ClusterPSMEvent,   // implements psm.IInnerEvent
-]
-
-func ClusterPSMLogicHook[SE ClusterPSMEvent](cb func(context.Context, ClusterPSMHookBaton, *ClusterState, SE) error) psm.TransitionLogicHook[
-	*ClusterKeys,      // implements psm.IKeyset
-	*ClusterState,     // implements psm.IState
-	ClusterStatus,     // implements psm.IStatusEnum
-	*ClusterStateData, // implements psm.IStateData
-	*ClusterEvent,     // implements psm.IEvent
-	ClusterPSMEvent,   // implements psm.IInnerEvent
-	SE,                // Specific event type for the transition
 ] {
-	return psm.TransitionLogicHook[
+	eventType := (*new(SE)).PSMEventKey()
+	return psm.TransitionHook[
 		*ClusterKeys,      // implements psm.IKeyset
 		*ClusterState,     // implements psm.IState
 		ClusterStatus,     // implements psm.IStatusEnum
 		*ClusterStateData, // implements psm.IStateData
 		*ClusterEvent,     // implements psm.IEvent
 		ClusterPSMEvent,   // implements psm.IInnerEvent
-		SE,                // Specific event type for the transition
-	](cb)
-}
-func ClusterPSMDataHook[SE ClusterPSMEvent](cb func(context.Context, sqrlx.Transaction, *ClusterState, SE) error) psm.TransitionDataHook[
-	*ClusterKeys,      // implements psm.IKeyset
-	*ClusterState,     // implements psm.IState
-	ClusterStatus,     // implements psm.IStatusEnum
-	*ClusterStateData, // implements psm.IStateData
-	*ClusterEvent,     // implements psm.IEvent
-	ClusterPSMEvent,   // implements psm.IInnerEvent
-	SE,                // Specific event type for the transition
-] {
-	return psm.TransitionDataHook[
-		*ClusterKeys,      // implements psm.IKeyset
-		*ClusterState,     // implements psm.IState
-		ClusterStatus,     // implements psm.IStatusEnum
-		*ClusterStateData, // implements psm.IStateData
-		*ClusterEvent,     // implements psm.IEvent
-		ClusterPSMEvent,   // implements psm.IInnerEvent
-		SE,                // Specific event type for the transition
-	](cb)
-}
-func ClusterPSMLinkHook[SE ClusterPSMEvent, DK psm.IKeyset, DIE psm.IInnerEvent](
-	linkDestination psm.LinkDestination[DK, DIE],
-	cb func(context.Context, *ClusterState, SE, func(DK, DIE)) error,
-) psm.LinkHook[
-	*ClusterKeys,      // implements psm.IKeyset
-	*ClusterState,     // implements psm.IState
-	ClusterStatus,     // implements psm.IStatusEnum
-	*ClusterStateData, // implements psm.IStateData
-	*ClusterEvent,     // implements psm.IEvent
-	ClusterPSMEvent,   // implements psm.IInnerEvent
-	SE,                // Specific event type for the transition
-	DK,                // Destination Keys
-	DIE,               // Destination Inner Event
-] {
-	return psm.LinkHook[
-		*ClusterKeys,      // implements psm.IKeyset
-		*ClusterState,     // implements psm.IState
-		ClusterStatus,     // implements psm.IStatusEnum
-		*ClusterStateData, // implements psm.IStateData
-		*ClusterEvent,     // implements psm.IEvent
-		ClusterPSMEvent,   // implements psm.IInnerEvent
-		SE,                // Specific event type for the transition
-		DK,                // Destination Keys
-		DIE,               // Destination Inner Event
 	]{
-		Derive:      cb,
-		Destination: linkDestination,
+		Callback: func(ctx context.Context, tx sqrlx.Transaction, baton ClusterPSMFullBaton, state *ClusterState, event *ClusterEvent) error {
+			asType, ok := any(event.UnwrapPSMEvent()).(SE)
+			if !ok {
+				name := event.ProtoReflect().Descriptor().FullName()
+				return fmt.Errorf("unexpected event type in transition: %s [IE] does not match [SE] (%T)", name, new(SE))
+			}
+			return cb(ctx, baton, state, asType)
+		},
+		EventType:   eventType,
+		RunOnFollow: false,
 	}
 }
-func ClusterPSMGeneralLogicHook(cb func(context.Context, ClusterPSMHookBaton, *ClusterState, *ClusterEvent) error) psm.GeneralLogicHook[
+
+// ClusterPSMDataHook runs after the mutations, and can be used to update data in tables which are not controlled as the state machine, e.g. for pre-calculating fields for performance reasons. Use of this hook prevents (future) transaction optimizations, as the transaction state when the function is called must needs to match the processing state, but only for this single transition, unlike the GeneralEventDataHook.
+func ClusterPSMDataHook[
+	SE ClusterPSMEvent,
+](
+	cb func(
+		context.Context,
+		sqrlx.Transaction,
+		*ClusterState,
+		SE,
+	) error) psm.TransitionHook[
 	*ClusterKeys,      // implements psm.IKeyset
 	*ClusterState,     // implements psm.IState
 	ClusterStatus,     // implements psm.IStatusEnum
@@ -319,16 +310,41 @@ func ClusterPSMGeneralLogicHook(cb func(context.Context, ClusterPSMHookBaton, *C
 	*ClusterEvent,     // implements psm.IEvent
 	ClusterPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.GeneralLogicHook[
+	eventType := (*new(SE)).PSMEventKey()
+	return psm.TransitionHook[
 		*ClusterKeys,      // implements psm.IKeyset
 		*ClusterState,     // implements psm.IState
 		ClusterStatus,     // implements psm.IStatusEnum
 		*ClusterStateData, // implements psm.IStateData
 		*ClusterEvent,     // implements psm.IEvent
 		ClusterPSMEvent,   // implements psm.IInnerEvent
-	](cb)
+	]{
+		Callback: func(ctx context.Context, tx sqrlx.Transaction, baton ClusterPSMFullBaton, state *ClusterState, event *ClusterEvent) error {
+			asType, ok := any(event.UnwrapPSMEvent()).(SE)
+			if !ok {
+				name := event.ProtoReflect().Descriptor().FullName()
+				return fmt.Errorf("unexpected event type in transition: %s [IE] does not match [SE] (%T)", name, new(SE))
+			}
+			return cb(ctx, tx, state, asType)
+		},
+		EventType:   eventType,
+		RunOnFollow: true,
+	}
 }
-func ClusterPSMGeneralStateDataHook(cb func(context.Context, sqrlx.Transaction, *ClusterState) error) psm.GeneralStateDataHook[
+
+// ClusterPSMLinkHook runs after the mutation and logic hook, and can be used to link the state machine to other state machines in the same database transaction
+func ClusterPSMLinkHook[
+	SE ClusterPSMEvent,
+	DK psm.IKeyset,
+	DIE psm.IInnerEvent,
+](
+	linkDestination psm.LinkDestination[DK, DIE],
+	cb func(
+		context.Context,
+		*ClusterState,
+		SE,
+		func(DK, DIE),
+	) error) psm.TransitionHook[
 	*ClusterKeys,      // implements psm.IKeyset
 	*ClusterState,     // implements psm.IState
 	ClusterStatus,     // implements psm.IStatusEnum
@@ -336,16 +352,40 @@ func ClusterPSMGeneralStateDataHook(cb func(context.Context, sqrlx.Transaction, 
 	*ClusterEvent,     // implements psm.IEvent
 	ClusterPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.GeneralStateDataHook[
+	eventType := (*new(SE)).PSMEventKey()
+	wrapped := func(ctx context.Context, tx sqrlx.Transaction, state *ClusterState, event SE, add func(DK, DIE)) error {
+		return cb(ctx, state, event, add)
+	}
+	return psm.TransitionHook[
 		*ClusterKeys,      // implements psm.IKeyset
 		*ClusterState,     // implements psm.IState
 		ClusterStatus,     // implements psm.IStatusEnum
 		*ClusterStateData, // implements psm.IStateData
 		*ClusterEvent,     // implements psm.IEvent
 		ClusterPSMEvent,   // implements psm.IInnerEvent
-	](cb)
+	]{
+		Callback: func(ctx context.Context, tx sqrlx.Transaction, baton ClusterPSMFullBaton, state *ClusterState, event *ClusterEvent) error {
+			return psm.RunLinkHook(ctx, linkDestination, wrapped, tx, state, event)
+		},
+		EventType:   eventType,
+		RunOnFollow: false,
+	}
 }
-func ClusterPSMGeneralEventDataHook(cb func(context.Context, sqrlx.Transaction, *ClusterState, *ClusterEvent) error) psm.GeneralEventDataHook[
+
+// ClusterPSMLinkDBHook like LinkHook, but has access to the current transaction for reads only (not enforced), use in place of controller logic to look up existing state.
+func ClusterPSMLinkDBHook[
+	SE ClusterPSMEvent,
+	DK psm.IKeyset,
+	DIE psm.IInnerEvent,
+](
+	linkDestination psm.LinkDestination[DK, DIE],
+	cb func(
+		context.Context,
+		sqrlx.Transaction,
+		*ClusterState,
+		SE,
+		func(DK, DIE),
+	) error) psm.TransitionHook[
 	*ClusterKeys,      // implements psm.IKeyset
 	*ClusterState,     // implements psm.IState
 	ClusterStatus,     // implements psm.IStatusEnum
@@ -353,16 +393,31 @@ func ClusterPSMGeneralEventDataHook(cb func(context.Context, sqrlx.Transaction, 
 	*ClusterEvent,     // implements psm.IEvent
 	ClusterPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.GeneralEventDataHook[
+	eventType := (*new(SE)).PSMEventKey()
+	return psm.TransitionHook[
 		*ClusterKeys,      // implements psm.IKeyset
 		*ClusterState,     // implements psm.IState
 		ClusterStatus,     // implements psm.IStatusEnum
 		*ClusterStateData, // implements psm.IStateData
 		*ClusterEvent,     // implements psm.IEvent
 		ClusterPSMEvent,   // implements psm.IInnerEvent
-	](cb)
+	]{
+		Callback: func(ctx context.Context, tx sqrlx.Transaction, baton ClusterPSMFullBaton, state *ClusterState, event *ClusterEvent) error {
+			return psm.RunLinkHook(ctx, linkDestination, cb, tx, state, event)
+		},
+		EventType:   eventType,
+		RunOnFollow: false,
+	}
 }
-func ClusterPSMEventPublishHook(cb func(context.Context, psm.Publisher, *ClusterState, *ClusterEvent) error) psm.EventPublishHook[
+
+// ClusterPSMGeneralLogicHook runs once per transition at the state-machine level regardless of which transition / event is being processed. It runs exactly once per transition, with the state object in the final state after the transition but prior to processing any further events. Chained events are added to the *end* of the event queue for the transaction, and side effects are published (as always) when the transaction is committed. The function MUST be pure, i.e. It MUST NOT produce any side-effects outside of the HookBaton, and MUST NOT modify the state.
+func ClusterPSMGeneralLogicHook(
+	cb func(
+		context.Context,
+		ClusterPSMHookBaton,
+		*ClusterState,
+		*ClusterEvent,
+	) error) psm.GeneralEventHook[
 	*ClusterKeys,      // implements psm.IKeyset
 	*ClusterState,     // implements psm.IState
 	ClusterStatus,     // implements psm.IStatusEnum
@@ -370,27 +425,165 @@ func ClusterPSMEventPublishHook(cb func(context.Context, psm.Publisher, *Cluster
 	*ClusterEvent,     // implements psm.IEvent
 	ClusterPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.EventPublishHook[
+	return psm.GeneralEventHook[
 		*ClusterKeys,      // implements psm.IKeyset
 		*ClusterState,     // implements psm.IState
 		ClusterStatus,     // implements psm.IStatusEnum
 		*ClusterStateData, // implements psm.IStateData
 		*ClusterEvent,     // implements psm.IEvent
 		ClusterPSMEvent,   // implements psm.IInnerEvent
-	](cb)
+	]{
+		Callback: func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			baton ClusterPSMFullBaton,
+			state *ClusterState,
+			event *ClusterEvent,
+		) error {
+			return cb(ctx, baton, state, event)
+		},
+		RunOnFollow: false,
+	}
 }
-func ClusterPSMUpsertPublishHook(cb func(context.Context, psm.Publisher, *ClusterState) error) psm.UpsertPublishHook[
+
+// ClusterPSMGeneralStateDataHook runs at the state-machine level regardless of which transition / event is being processed. It runs at-least once before committing a database transaction after multiple transitions are complete. This hook has access only to the final state after the transitions and is used to update other tables based on the resulting state. It MUST be idempotent, it may be called after injecting externally-held state data.
+func ClusterPSMGeneralStateDataHook(
+	cb func(
+		context.Context,
+		sqrlx.Transaction,
+		*ClusterState,
+	) error) psm.GeneralStateHook[
 	*ClusterKeys,      // implements psm.IKeyset
 	*ClusterState,     // implements psm.IState
 	ClusterStatus,     // implements psm.IStatusEnum
 	*ClusterStateData, // implements psm.IStateData
+	*ClusterEvent,     // implements psm.IEvent
+	ClusterPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.UpsertPublishHook[
+	return psm.GeneralStateHook[
 		*ClusterKeys,      // implements psm.IKeyset
 		*ClusterState,     // implements psm.IState
 		ClusterStatus,     // implements psm.IStatusEnum
 		*ClusterStateData, // implements psm.IStateData
-	](cb)
+		*ClusterEvent,     // implements psm.IEvent
+		ClusterPSMEvent,   // implements psm.IInnerEvent
+	]{
+		Callback: func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			baton ClusterPSMFullBaton,
+			state *ClusterState,
+		) error {
+			return cb(ctx, tx, state)
+		},
+		RunOnFollow: true,
+	}
+}
+
+// ClusterPSMGeneralEventDataHook runs after each transition at the state-machine level regardless of which transition / event is being processed. It runs exactly once per transition, before any other events are processed. The presence of this hook type prevents (future) transaction optimizations, so should be used sparingly.
+func ClusterPSMGeneralEventDataHook(
+	cb func(
+		context.Context,
+		sqrlx.Transaction,
+		*ClusterState,
+		*ClusterEvent,
+	) error) psm.GeneralEventHook[
+	*ClusterKeys,      // implements psm.IKeyset
+	*ClusterState,     // implements psm.IState
+	ClusterStatus,     // implements psm.IStatusEnum
+	*ClusterStateData, // implements psm.IStateData
+	*ClusterEvent,     // implements psm.IEvent
+	ClusterPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralEventHook[
+		*ClusterKeys,      // implements psm.IKeyset
+		*ClusterState,     // implements psm.IState
+		ClusterStatus,     // implements psm.IStatusEnum
+		*ClusterStateData, // implements psm.IStateData
+		*ClusterEvent,     // implements psm.IEvent
+		ClusterPSMEvent,   // implements psm.IInnerEvent
+	]{
+		Callback: func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			baton ClusterPSMFullBaton,
+			state *ClusterState,
+			event *ClusterEvent,
+		) error {
+			return cb(ctx, tx, state, event)
+		},
+		RunOnFollow: true,
+	}
+}
+
+// ClusterPSMEventPublishHook  EventPublishHook runs for each transition, at least once before committing a database transaction after multiple transitions are complete. It should publish a derived version of the event using the publisher.
+func ClusterPSMEventPublishHook(
+	cb func(
+		context.Context,
+		psm.Publisher,
+		*ClusterState,
+		*ClusterEvent,
+	) error) psm.GeneralEventHook[
+	*ClusterKeys,      // implements psm.IKeyset
+	*ClusterState,     // implements psm.IState
+	ClusterStatus,     // implements psm.IStatusEnum
+	*ClusterStateData, // implements psm.IStateData
+	*ClusterEvent,     // implements psm.IEvent
+	ClusterPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralEventHook[
+		*ClusterKeys,      // implements psm.IKeyset
+		*ClusterState,     // implements psm.IState
+		ClusterStatus,     // implements psm.IStatusEnum
+		*ClusterStateData, // implements psm.IStateData
+		*ClusterEvent,     // implements psm.IEvent
+		ClusterPSMEvent,   // implements psm.IInnerEvent
+	]{
+		Callback: func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			baton ClusterPSMFullBaton,
+			state *ClusterState,
+			event *ClusterEvent,
+		) error {
+			return cb(ctx, baton, state, event)
+		},
+		RunOnFollow: false,
+	}
+}
+
+// ClusterPSMUpsertPublishHook runs for each transition, at least once before committing a database transaction after multiple transitions are complete. It should publish a derived version of the event using the publisher.
+func ClusterPSMUpsertPublishHook(
+	cb func(
+		context.Context,
+		psm.Publisher,
+		*ClusterState,
+	) error) psm.GeneralStateHook[
+	*ClusterKeys,      // implements psm.IKeyset
+	*ClusterState,     // implements psm.IState
+	ClusterStatus,     // implements psm.IStatusEnum
+	*ClusterStateData, // implements psm.IStateData
+	*ClusterEvent,     // implements psm.IEvent
+	ClusterPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralStateHook[
+		*ClusterKeys,      // implements psm.IKeyset
+		*ClusterState,     // implements psm.IState
+		ClusterStatus,     // implements psm.IStatusEnum
+		*ClusterStateData, // implements psm.IStateData
+		*ClusterEvent,     // implements psm.IEvent
+		ClusterPSMEvent,   // implements psm.IInnerEvent
+	]{
+		Callback: func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			baton ClusterPSMFullBaton,
+			state *ClusterState,
+		) error {
+			return cb(ctx, baton, state)
+		},
+		RunOnFollow: false,
+	}
 }
 
 func (event *ClusterEvent) EventPublishMetadata() *psm_j5pb.EventPublishMetadata {

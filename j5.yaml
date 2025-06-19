@@ -40,9 +40,9 @@ plugins:
   - base: go
     name: go-o5-messaging
     docker:
-      image: ghcr.io/pentops/protoc-gen-go-o5-messaging:fba07334e9aa1affc26b34eae82254a36f955267
+      image: ghcr.io/pentops/protoc-gen-go-o5-messaging:7e07c29129f03edc9ef01ba4739328625ef24746
 
   - base: go
     name: go-psm
     docker:
-      image: ghcr.io/pentops/protoc-gen-go-protostate:91b4a48c3407345a92e7e966d78f08eff2686e30
+      image: ghcr.io/pentops/protoc-gen-go-protostate:eece54c9845787974c8d0a39bc37030b65f2d536

@@ -39,6 +39,24 @@ type EnvironmentPSMEventSpec = psm.EventSpec[
 	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 ]
 
+type EnvironmentPSMHookBaton = psm.HookBaton[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
+]
+
+type EnvironmentPSMFullBaton = psm.CallbackBaton[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
+]
+
 type EnvironmentPSMEventKey = string
 
 const (
@@ -57,8 +75,8 @@ func (msg *EnvironmentKeys) PSMIsSet() bool {
 func (msg *EnvironmentKeys) PSMFullName() string {
 	return "o5.aws.deployer.v1.environment"
 }
-func (msg *EnvironmentKeys) PSMKeyValues() (map[string]string, error) {
-	keyset := map[string]string{
+func (msg *EnvironmentKeys) PSMKeyValues() (map[string]any, error) {
+	keyset := map[string]any{
 		"environment_id": msg.EnvironmentId,
 	}
 	if msg.ClusterId != "" {
@@ -202,6 +220,7 @@ func EnvironmentPSMBuilder() *psm.StateMachineConfig[
 	]{}
 }
 
+// EnvironmentPSMMutation runs at the start of a transition to merge the event information into the state data object. The state object is mutable in this context.
 func EnvironmentPSMMutation[SE EnvironmentPSMEvent](cb func(*EnvironmentStateData, SE) error) psm.TransitionMutation[
 	*EnvironmentKeys,      // implements psm.IKeyset
 	*EnvironmentState,     // implements psm.IState
@@ -222,83 +241,55 @@ func EnvironmentPSMMutation[SE EnvironmentPSMEvent](cb func(*EnvironmentStateDat
 	](cb)
 }
 
-type EnvironmentPSMHookBaton = psm.HookBaton[
+// EnvironmentPSMLogicHook runs after the mutation is complete. This hook can trigger side effects, including chained events, which are additional events processed by the state machine. Use this for Business Logic which determines the 'next step' in processing.
+func EnvironmentPSMLogicHook[
+	SE EnvironmentPSMEvent,
+](
+	cb func(
+		context.Context,
+		EnvironmentPSMHookBaton,
+		*EnvironmentState,
+		SE,
+	) error) psm.TransitionHook[
 	*EnvironmentKeys,      // implements psm.IKeyset
 	*EnvironmentState,     // implements psm.IState
 	EnvironmentStatus,     // implements psm.IStatusEnum
 	*EnvironmentStateData, // implements psm.IStateData
 	*EnvironmentEvent,     // implements psm.IEvent
 	EnvironmentPSMEvent,   // implements psm.IInnerEvent
-]
-
-func EnvironmentPSMLogicHook[SE EnvironmentPSMEvent](cb func(context.Context, EnvironmentPSMHookBaton, *EnvironmentState, SE) error) psm.TransitionLogicHook[
-	*EnvironmentKeys,      // implements psm.IKeyset
-	*EnvironmentState,     // implements psm.IState
-	EnvironmentStatus,     // implements psm.IStatusEnum
-	*EnvironmentStateData, // implements psm.IStateData
-	*EnvironmentEvent,     // implements psm.IEvent
-	EnvironmentPSMEvent,   // implements psm.IInnerEvent
-	SE,                    // Specific event type for the transition
 ] {
-	return psm.TransitionLogicHook[
+	eventType := (*new(SE)).PSMEventKey()
+	return psm.TransitionHook[
 		*EnvironmentKeys,      // implements psm.IKeyset
 		*EnvironmentState,     // implements psm.IState
 		EnvironmentStatus,     // implements psm.IStatusEnum
 		*EnvironmentStateData, // implements psm.IStateData
 		*EnvironmentEvent,     // implements psm.IEvent
 		EnvironmentPSMEvent,   // implements psm.IInnerEvent
-		SE,                    // Specific event type for the transition
-	](cb)
-}
-func EnvironmentPSMDataHook[SE EnvironmentPSMEvent](cb func(context.Context, sqrlx.Transaction, *EnvironmentState, SE) error) psm.TransitionDataHook[
-	*EnvironmentKeys,      // implements psm.IKeyset
-	*EnvironmentState,     // implements psm.IState
-	EnvironmentStatus,     // implements psm.IStatusEnum
-	*EnvironmentStateData, // implements psm.IStateData
-	*EnvironmentEvent,     // implements psm.IEvent
-	EnvironmentPSMEvent,   // implements psm.IInnerEvent
-	SE,                    // Specific event type for the transition
-] {
-	return psm.TransitionDataHook[
-		*EnvironmentKeys,      // implements psm.IKeyset
-		*EnvironmentState,     // implements psm.IState
-		EnvironmentStatus,     // implements psm.IStatusEnum
-		*EnvironmentStateData, // implements psm.IStateData
-		*EnvironmentEvent,     // implements psm.IEvent
-		EnvironmentPSMEvent,   // implements psm.IInnerEvent
-		SE,                    // Specific event type for the transition
-	](cb)
-}
-func EnvironmentPSMLinkHook[SE EnvironmentPSMEvent, DK psm.IKeyset, DIE psm.IInnerEvent](
-	linkDestination psm.LinkDestination[DK, DIE],
-	cb func(context.Context, *EnvironmentState, SE, func(DK, DIE)) error,
-) psm.LinkHook[
-	*EnvironmentKeys,      // implements psm.IKeyset
-	*EnvironmentState,     // implements psm.IState
-	EnvironmentStatus,     // implements psm.IStatusEnum
-	*EnvironmentStateData, // implements psm.IStateData
-	*EnvironmentEvent,     // implements psm.IEvent
-	EnvironmentPSMEvent,   // implements psm.IInnerEvent
-	SE,                    // Specific event type for the transition
-	DK,                    // Destination Keys
-	DIE,                   // Destination Inner Event
-] {
-	return psm.LinkHook[
-		*EnvironmentKeys,      // implements psm.IKeyset
-		*EnvironmentState,     // implements psm.IState
-		EnvironmentStatus,     // implements psm.IStatusEnum
-		*EnvironmentStateData, // implements psm.IStateData
-		*EnvironmentEvent,     // implements psm.IEvent
-		EnvironmentPSMEvent,   // implements psm.IInnerEvent
-		SE,                    // Specific event type for the transition
-		DK,                    // Destination Keys
-		DIE,                   // Destination Inner Event
 	]{
-		Derive:      cb,
-		Destination: linkDestination,
+		Callback: func(ctx context.Context, tx sqrlx.Transaction, baton EnvironmentPSMFullBaton, state *EnvironmentState, event *EnvironmentEvent) error {
+			asType, ok := any(event.UnwrapPSMEvent()).(SE)
+			if !ok {
+				name := event.ProtoReflect().Descriptor().FullName()
+				return fmt.Errorf("unexpected event type in transition: %s [IE] does not match [SE] (%T)", name, new(SE))
+			}
+			return cb(ctx, baton, state, asType)
+		},
+		EventType:   eventType,
+		RunOnFollow: false,
 	}
 }
-func EnvironmentPSMGeneralLogicHook(cb func(context.Context, EnvironmentPSMHookBaton, *EnvironmentState, *EnvironmentEvent) error) psm.GeneralLogicHook[
+
+// EnvironmentPSMDataHook runs after the mutations, and can be used to update data in tables which are not controlled as the state machine, e.g. for pre-calculating fields for performance reasons. Use of this hook prevents (future) transaction optimizations, as the transaction state when the function is called must needs to match the processing state, but only for this single transition, unlike the GeneralEventDataHook.
+func EnvironmentPSMDataHook[
+	SE EnvironmentPSMEvent,
+](
+	cb func(
+		context.Context,
+		sqrlx.Transaction,
+		*EnvironmentState,
+		SE,
+	) error) psm.TransitionHook[
 	*EnvironmentKeys,      // implements psm.IKeyset
 	*EnvironmentState,     // implements psm.IState
 	EnvironmentStatus,     // implements psm.IStatusEnum
@@ -306,16 +297,41 @@ func EnvironmentPSMGeneralLogicHook(cb func(context.Context, EnvironmentPSMHookB
 	*EnvironmentEvent,     // implements psm.IEvent
 	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.GeneralLogicHook[
+	eventType := (*new(SE)).PSMEventKey()
+	return psm.TransitionHook[
 		*EnvironmentKeys,      // implements psm.IKeyset
 		*EnvironmentState,     // implements psm.IState
 		EnvironmentStatus,     // implements psm.IStatusEnum
 		*EnvironmentStateData, // implements psm.IStateData
 		*EnvironmentEvent,     // implements psm.IEvent
 		EnvironmentPSMEvent,   // implements psm.IInnerEvent
-	](cb)
+	]{
+		Callback: func(ctx context.Context, tx sqrlx.Transaction, baton EnvironmentPSMFullBaton, state *EnvironmentState, event *EnvironmentEvent) error {
+			asType, ok := any(event.UnwrapPSMEvent()).(SE)
+			if !ok {
+				name := event.ProtoReflect().Descriptor().FullName()
+				return fmt.Errorf("unexpected event type in transition: %s [IE] does not match [SE] (%T)", name, new(SE))
+			}
+			return cb(ctx, tx, state, asType)
+		},
+		EventType:   eventType,
+		RunOnFollow: true,
+	}
 }
-func EnvironmentPSMGeneralStateDataHook(cb func(context.Context, sqrlx.Transaction, *EnvironmentState) error) psm.GeneralStateDataHook[
+
+// EnvironmentPSMLinkHook runs after the mutation and logic hook, and can be used to link the state machine to other state machines in the same database transaction
+func EnvironmentPSMLinkHook[
+	SE EnvironmentPSMEvent,
+	DK psm.IKeyset,
+	DIE psm.IInnerEvent,
+](
+	linkDestination psm.LinkDestination[DK, DIE],
+	cb func(
+		context.Context,
+		*EnvironmentState,
+		SE,
+		func(DK, DIE),
+	) error) psm.TransitionHook[
 	*EnvironmentKeys,      // implements psm.IKeyset
 	*EnvironmentState,     // implements psm.IState
 	EnvironmentStatus,     // implements psm.IStatusEnum
@@ -323,16 +339,40 @@ func EnvironmentPSMGeneralStateDataHook(cb func(context.Context, sqrlx.Transacti
 	*EnvironmentEvent,     // implements psm.IEvent
 	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.GeneralStateDataHook[
+	eventType := (*new(SE)).PSMEventKey()
+	wrapped := func(ctx context.Context, tx sqrlx.Transaction, state *EnvironmentState, event SE, add func(DK, DIE)) error {
+		return cb(ctx, state, event, add)
+	}
+	return psm.TransitionHook[
 		*EnvironmentKeys,      // implements psm.IKeyset
 		*EnvironmentState,     // implements psm.IState
 		EnvironmentStatus,     // implements psm.IStatusEnum
 		*EnvironmentStateData, // implements psm.IStateData
 		*EnvironmentEvent,     // implements psm.IEvent
 		EnvironmentPSMEvent,   // implements psm.IInnerEvent
-	](cb)
+	]{
+		Callback: func(ctx context.Context, tx sqrlx.Transaction, baton EnvironmentPSMFullBaton, state *EnvironmentState, event *EnvironmentEvent) error {
+			return psm.RunLinkHook(ctx, linkDestination, wrapped, tx, state, event)
+		},
+		EventType:   eventType,
+		RunOnFollow: false,
+	}
 }
-func EnvironmentPSMGeneralEventDataHook(cb func(context.Context, sqrlx.Transaction, *EnvironmentState, *EnvironmentEvent) error) psm.GeneralEventDataHook[
+
+// EnvironmentPSMLinkDBHook like LinkHook, but has access to the current transaction for reads only (not enforced), use in place of controller logic to look up existing state.
+func EnvironmentPSMLinkDBHook[
+	SE EnvironmentPSMEvent,
+	DK psm.IKeyset,
+	DIE psm.IInnerEvent,
+](
+	linkDestination psm.LinkDestination[DK, DIE],
+	cb func(
+		context.Context,
+		sqrlx.Transaction,
+		*EnvironmentState,
+		SE,
+		func(DK, DIE),
+	) error) psm.TransitionHook[
 	*EnvironmentKeys,      // implements psm.IKeyset
 	*EnvironmentState,     // implements psm.IState
 	EnvironmentStatus,     // implements psm.IStatusEnum
@@ -340,16 +380,31 @@ func EnvironmentPSMGeneralEventDataHook(cb func(context.Context, sqrlx.Transacti
 	*EnvironmentEvent,     // implements psm.IEvent
 	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.GeneralEventDataHook[
+	eventType := (*new(SE)).PSMEventKey()
+	return psm.TransitionHook[
 		*EnvironmentKeys,      // implements psm.IKeyset
 		*EnvironmentState,     // implements psm.IState
 		EnvironmentStatus,     // implements psm.IStatusEnum
 		*EnvironmentStateData, // implements psm.IStateData
 		*EnvironmentEvent,     // implements psm.IEvent
 		EnvironmentPSMEvent,   // implements psm.IInnerEvent
-	](cb)
+	]{
+		Callback: func(ctx context.Context, tx sqrlx.Transaction, baton EnvironmentPSMFullBaton, state *EnvironmentState, event *EnvironmentEvent) error {
+			return psm.RunLinkHook(ctx, linkDestination, cb, tx, state, event)
+		},
+		EventType:   eventType,
+		RunOnFollow: false,
+	}
 }
-func EnvironmentPSMEventPublishHook(cb func(context.Context, psm.Publisher, *EnvironmentState, *EnvironmentEvent) error) psm.EventPublishHook[
+
+// EnvironmentPSMGeneralLogicHook runs once per transition at the state-machine level regardless of which transition / event is being processed. It runs exactly once per transition, with the state object in the final state after the transition but prior to processing any further events. Chained events are added to the *end* of the event queue for the transaction, and side effects are published (as always) when the transaction is committed. The function MUST be pure, i.e. It MUST NOT produce any side-effects outside of the HookBaton, and MUST NOT modify the state.
+func EnvironmentPSMGeneralLogicHook(
+	cb func(
+		context.Context,
+		EnvironmentPSMHookBaton,
+		*EnvironmentState,
+		*EnvironmentEvent,
+	) error) psm.GeneralEventHook[
 	*EnvironmentKeys,      // implements psm.IKeyset
 	*EnvironmentState,     // implements psm.IState
 	EnvironmentStatus,     // implements psm.IStatusEnum
@@ -357,27 +412,165 @@ func EnvironmentPSMEventPublishHook(cb func(context.Context, psm.Publisher, *Env
 	*EnvironmentEvent,     // implements psm.IEvent
 	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.EventPublishHook[
+	return psm.GeneralEventHook[
 		*EnvironmentKeys,      // implements psm.IKeyset
 		*EnvironmentState,     // implements psm.IState
 		EnvironmentStatus,     // implements psm.IStatusEnum
 		*EnvironmentStateData, // implements psm.IStateData
 		*EnvironmentEvent,     // implements psm.IEvent
 		EnvironmentPSMEvent,   // implements psm.IInnerEvent
-	](cb)
+	]{
+		Callback: func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			baton EnvironmentPSMFullBaton,
+			state *EnvironmentState,
+			event *EnvironmentEvent,
+		) error {
+			return cb(ctx, baton, state, event)
+		},
+		RunOnFollow: false,
+	}
 }
-func EnvironmentPSMUpsertPublishHook(cb func(context.Context, psm.Publisher, *EnvironmentState) error) psm.UpsertPublishHook[
+
+// EnvironmentPSMGeneralStateDataHook runs at the state-machine level regardless of which transition / event is being processed. It runs at-least once before committing a database transaction after multiple transitions are complete. This hook has access only to the final state after the transitions and is used to update other tables based on the resulting state. It MUST be idempotent, it may be called after injecting externally-held state data.
+func EnvironmentPSMGeneralStateDataHook(
+	cb func(
+		context.Context,
+		sqrlx.Transaction,
+		*EnvironmentState,
+	) error) psm.GeneralStateHook[
 	*EnvironmentKeys,      // implements psm.IKeyset
 	*EnvironmentState,     // implements psm.IState
 	EnvironmentStatus,     // implements psm.IStatusEnum
 	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.UpsertPublishHook[
+	return psm.GeneralStateHook[
 		*EnvironmentKeys,      // implements psm.IKeyset
 		*EnvironmentState,     // implements psm.IState
 		EnvironmentStatus,     // implements psm.IStatusEnum
 		*EnvironmentStateData, // implements psm.IStateData
-	](cb)
+		*EnvironmentEvent,     // implements psm.IEvent
+		EnvironmentPSMEvent,   // implements psm.IInnerEvent
+	]{
+		Callback: func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			baton EnvironmentPSMFullBaton,
+			state *EnvironmentState,
+		) error {
+			return cb(ctx, tx, state)
+		},
+		RunOnFollow: true,
+	}
+}
+
+// EnvironmentPSMGeneralEventDataHook runs after each transition at the state-machine level regardless of which transition / event is being processed. It runs exactly once per transition, before any other events are processed. The presence of this hook type prevents (future) transaction optimizations, so should be used sparingly.
+func EnvironmentPSMGeneralEventDataHook(
+	cb func(
+		context.Context,
+		sqrlx.Transaction,
+		*EnvironmentState,
+		*EnvironmentEvent,
+	) error) psm.GeneralEventHook[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralEventHook[
+		*EnvironmentKeys,      // implements psm.IKeyset
+		*EnvironmentState,     // implements psm.IState
+		EnvironmentStatus,     // implements psm.IStatusEnum
+		*EnvironmentStateData, // implements psm.IStateData
+		*EnvironmentEvent,     // implements psm.IEvent
+		EnvironmentPSMEvent,   // implements psm.IInnerEvent
+	]{
+		Callback: func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			baton EnvironmentPSMFullBaton,
+			state *EnvironmentState,
+			event *EnvironmentEvent,
+		) error {
+			return cb(ctx, tx, state, event)
+		},
+		RunOnFollow: true,
+	}
+}
+
+// EnvironmentPSMEventPublishHook  EventPublishHook runs for each transition, at least once before committing a database transaction after multiple transitions are complete. It should publish a derived version of the event using the publisher.
+func EnvironmentPSMEventPublishHook(
+	cb func(
+		context.Context,
+		psm.Publisher,
+		*EnvironmentState,
+		*EnvironmentEvent,
+	) error) psm.GeneralEventHook[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralEventHook[
+		*EnvironmentKeys,      // implements psm.IKeyset
+		*EnvironmentState,     // implements psm.IState
+		EnvironmentStatus,     // implements psm.IStatusEnum
+		*EnvironmentStateData, // implements psm.IStateData
+		*EnvironmentEvent,     // implements psm.IEvent
+		EnvironmentPSMEvent,   // implements psm.IInnerEvent
+	]{
+		Callback: func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			baton EnvironmentPSMFullBaton,
+			state *EnvironmentState,
+			event *EnvironmentEvent,
+		) error {
+			return cb(ctx, baton, state, event)
+		},
+		RunOnFollow: false,
+	}
+}
+
+// EnvironmentPSMUpsertPublishHook runs for each transition, at least once before committing a database transaction after multiple transitions are complete. It should publish a derived version of the event using the publisher.
+func EnvironmentPSMUpsertPublishHook(
+	cb func(
+		context.Context,
+		psm.Publisher,
+		*EnvironmentState,
+	) error) psm.GeneralStateHook[
+	*EnvironmentKeys,      // implements psm.IKeyset
+	*EnvironmentState,     // implements psm.IState
+	EnvironmentStatus,     // implements psm.IStatusEnum
+	*EnvironmentStateData, // implements psm.IStateData
+	*EnvironmentEvent,     // implements psm.IEvent
+	EnvironmentPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralStateHook[
+		*EnvironmentKeys,      // implements psm.IKeyset
+		*EnvironmentState,     // implements psm.IState
+		EnvironmentStatus,     // implements psm.IStatusEnum
+		*EnvironmentStateData, // implements psm.IStateData
+		*EnvironmentEvent,     // implements psm.IEvent
+		EnvironmentPSMEvent,   // implements psm.IInnerEvent
+	]{
+		Callback: func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			baton EnvironmentPSMFullBaton,
+			state *EnvironmentState,
+		) error {
+			return cb(ctx, baton, state)
+		},
+		RunOnFollow: false,
+	}
 }
 
 func (event *EnvironmentEvent) EventPublishMetadata() *psm_j5pb.EventPublishMetadata {

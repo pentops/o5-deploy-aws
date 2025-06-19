@@ -39,6 +39,24 @@ type StackPSMEventSpec = psm.EventSpec[
 	StackPSMEvent,   // implements psm.IInnerEvent
 ]
 
+type StackPSMHookBaton = psm.HookBaton[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+]
+
+type StackPSMFullBaton = psm.CallbackBaton[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+]
+
 type StackPSMEventKey = string
 
 const (
@@ -61,8 +79,8 @@ func (msg *StackKeys) PSMIsSet() bool {
 func (msg *StackKeys) PSMFullName() string {
 	return "o5.aws.deployer.v1.stack"
 }
-func (msg *StackKeys) PSMKeyValues() (map[string]string, error) {
-	keyset := map[string]string{
+func (msg *StackKeys) PSMKeyValues() (map[string]any, error) {
+	keyset := map[string]any{
 		"stack_id": msg.StackId,
 	}
 	if msg.EnvironmentId != "" {
@@ -269,6 +287,7 @@ func StackPSMBuilder() *psm.StateMachineConfig[
 	]{}
 }
 
+// StackPSMMutation runs at the start of a transition to merge the event information into the state data object. The state object is mutable in this context.
 func StackPSMMutation[SE StackPSMEvent](cb func(*StackStateData, SE) error) psm.TransitionMutation[
 	*StackKeys,      // implements psm.IKeyset
 	*StackState,     // implements psm.IState
@@ -289,83 +308,55 @@ func StackPSMMutation[SE StackPSMEvent](cb func(*StackStateData, SE) error) psm.
 	](cb)
 }
 
-type StackPSMHookBaton = psm.HookBaton[
+// StackPSMLogicHook runs after the mutation is complete. This hook can trigger side effects, including chained events, which are additional events processed by the state machine. Use this for Business Logic which determines the 'next step' in processing.
+func StackPSMLogicHook[
+	SE StackPSMEvent,
+](
+	cb func(
+		context.Context,
+		StackPSMHookBaton,
+		*StackState,
+		SE,
+	) error) psm.TransitionHook[
 	*StackKeys,      // implements psm.IKeyset
 	*StackState,     // implements psm.IState
 	StackStatus,     // implements psm.IStatusEnum
 	*StackStateData, // implements psm.IStateData
 	*StackEvent,     // implements psm.IEvent
 	StackPSMEvent,   // implements psm.IInnerEvent
-]
-
-func StackPSMLogicHook[SE StackPSMEvent](cb func(context.Context, StackPSMHookBaton, *StackState, SE) error) psm.TransitionLogicHook[
-	*StackKeys,      // implements psm.IKeyset
-	*StackState,     // implements psm.IState
-	StackStatus,     // implements psm.IStatusEnum
-	*StackStateData, // implements psm.IStateData
-	*StackEvent,     // implements psm.IEvent
-	StackPSMEvent,   // implements psm.IInnerEvent
-	SE,              // Specific event type for the transition
 ] {
-	return psm.TransitionLogicHook[
+	eventType := (*new(SE)).PSMEventKey()
+	return psm.TransitionHook[
 		*StackKeys,      // implements psm.IKeyset
 		*StackState,     // implements psm.IState
 		StackStatus,     // implements psm.IStatusEnum
 		*StackStateData, // implements psm.IStateData
 		*StackEvent,     // implements psm.IEvent
 		StackPSMEvent,   // implements psm.IInnerEvent
-		SE,              // Specific event type for the transition
-	](cb)
-}
-func StackPSMDataHook[SE StackPSMEvent](cb func(context.Context, sqrlx.Transaction, *StackState, SE) error) psm.TransitionDataHook[
-	*StackKeys,      // implements psm.IKeyset
-	*StackState,     // implements psm.IState
-	StackStatus,     // implements psm.IStatusEnum
-	*StackStateData, // implements psm.IStateData
-	*StackEvent,     // implements psm.IEvent
-	StackPSMEvent,   // implements psm.IInnerEvent
-	SE,              // Specific event type for the transition
-] {
-	return psm.TransitionDataHook[
-		*StackKeys,      // implements psm.IKeyset
-		*StackState,     // implements psm.IState
-		StackStatus,     // implements psm.IStatusEnum
-		*StackStateData, // implements psm.IStateData
-		*StackEvent,     // implements psm.IEvent
-		StackPSMEvent,   // implements psm.IInnerEvent
-		SE,              // Specific event type for the transition
-	](cb)
-}
-func StackPSMLinkHook[SE StackPSMEvent, DK psm.IKeyset, DIE psm.IInnerEvent](
-	linkDestination psm.LinkDestination[DK, DIE],
-	cb func(context.Context, *StackState, SE, func(DK, DIE)) error,
-) psm.LinkHook[
-	*StackKeys,      // implements psm.IKeyset
-	*StackState,     // implements psm.IState
-	StackStatus,     // implements psm.IStatusEnum
-	*StackStateData, // implements psm.IStateData
-	*StackEvent,     // implements psm.IEvent
-	StackPSMEvent,   // implements psm.IInnerEvent
-	SE,              // Specific event type for the transition
-	DK,              // Destination Keys
-	DIE,             // Destination Inner Event
-] {
-	return psm.LinkHook[
-		*StackKeys,      // implements psm.IKeyset
-		*StackState,     // implements psm.IState
-		StackStatus,     // implements psm.IStatusEnum
-		*StackStateData, // implements psm.IStateData
-		*StackEvent,     // implements psm.IEvent
-		StackPSMEvent,   // implements psm.IInnerEvent
-		SE,              // Specific event type for the transition
-		DK,              // Destination Keys
-		DIE,             // Destination Inner Event
 	]{
-		Derive:      cb,
-		Destination: linkDestination,
+		Callback: func(ctx context.Context, tx sqrlx.Transaction, baton StackPSMFullBaton, state *StackState, event *StackEvent) error {
+			asType, ok := any(event.UnwrapPSMEvent()).(SE)
+			if !ok {
+				name := event.ProtoReflect().Descriptor().FullName()
+				return fmt.Errorf("unexpected event type in transition: %s [IE] does not match [SE] (%T)", name, new(SE))
+			}
+			return cb(ctx, baton, state, asType)
+		},
+		EventType:   eventType,
+		RunOnFollow: false,
 	}
 }
-func StackPSMGeneralLogicHook(cb func(context.Context, StackPSMHookBaton, *StackState, *StackEvent) error) psm.GeneralLogicHook[
+
+// StackPSMDataHook runs after the mutations, and can be used to update data in tables which are not controlled as the state machine, e.g. for pre-calculating fields for performance reasons. Use of this hook prevents (future) transaction optimizations, as the transaction state when the function is called must needs to match the processing state, but only for this single transition, unlike the GeneralEventDataHook.
+func StackPSMDataHook[
+	SE StackPSMEvent,
+](
+	cb func(
+		context.Context,
+		sqrlx.Transaction,
+		*StackState,
+		SE,
+	) error) psm.TransitionHook[
 	*StackKeys,      // implements psm.IKeyset
 	*StackState,     // implements psm.IState
 	StackStatus,     // implements psm.IStatusEnum
@@ -373,16 +364,41 @@ func StackPSMGeneralLogicHook(cb func(context.Context, StackPSMHookBaton, *Stack
 	*StackEvent,     // implements psm.IEvent
 	StackPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.GeneralLogicHook[
+	eventType := (*new(SE)).PSMEventKey()
+	return psm.TransitionHook[
 		*StackKeys,      // implements psm.IKeyset
 		*StackState,     // implements psm.IState
 		StackStatus,     // implements psm.IStatusEnum
 		*StackStateData, // implements psm.IStateData
 		*StackEvent,     // implements psm.IEvent
 		StackPSMEvent,   // implements psm.IInnerEvent
-	](cb)
+	]{
+		Callback: func(ctx context.Context, tx sqrlx.Transaction, baton StackPSMFullBaton, state *StackState, event *StackEvent) error {
+			asType, ok := any(event.UnwrapPSMEvent()).(SE)
+			if !ok {
+				name := event.ProtoReflect().Descriptor().FullName()
+				return fmt.Errorf("unexpected event type in transition: %s [IE] does not match [SE] (%T)", name, new(SE))
+			}
+			return cb(ctx, tx, state, asType)
+		},
+		EventType:   eventType,
+		RunOnFollow: true,
+	}
 }
-func StackPSMGeneralStateDataHook(cb func(context.Context, sqrlx.Transaction, *StackState) error) psm.GeneralStateDataHook[
+
+// StackPSMLinkHook runs after the mutation and logic hook, and can be used to link the state machine to other state machines in the same database transaction
+func StackPSMLinkHook[
+	SE StackPSMEvent,
+	DK psm.IKeyset,
+	DIE psm.IInnerEvent,
+](
+	linkDestination psm.LinkDestination[DK, DIE],
+	cb func(
+		context.Context,
+		*StackState,
+		SE,
+		func(DK, DIE),
+	) error) psm.TransitionHook[
 	*StackKeys,      // implements psm.IKeyset
 	*StackState,     // implements psm.IState
 	StackStatus,     // implements psm.IStatusEnum
@@ -390,16 +406,40 @@ func StackPSMGeneralStateDataHook(cb func(context.Context, sqrlx.Transaction, *S
 	*StackEvent,     // implements psm.IEvent
 	StackPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.GeneralStateDataHook[
+	eventType := (*new(SE)).PSMEventKey()
+	wrapped := func(ctx context.Context, tx sqrlx.Transaction, state *StackState, event SE, add func(DK, DIE)) error {
+		return cb(ctx, state, event, add)
+	}
+	return psm.TransitionHook[
 		*StackKeys,      // implements psm.IKeyset
 		*StackState,     // implements psm.IState
 		StackStatus,     // implements psm.IStatusEnum
 		*StackStateData, // implements psm.IStateData
 		*StackEvent,     // implements psm.IEvent
 		StackPSMEvent,   // implements psm.IInnerEvent
-	](cb)
+	]{
+		Callback: func(ctx context.Context, tx sqrlx.Transaction, baton StackPSMFullBaton, state *StackState, event *StackEvent) error {
+			return psm.RunLinkHook(ctx, linkDestination, wrapped, tx, state, event)
+		},
+		EventType:   eventType,
+		RunOnFollow: false,
+	}
 }
-func StackPSMGeneralEventDataHook(cb func(context.Context, sqrlx.Transaction, *StackState, *StackEvent) error) psm.GeneralEventDataHook[
+
+// StackPSMLinkDBHook like LinkHook, but has access to the current transaction for reads only (not enforced), use in place of controller logic to look up existing state.
+func StackPSMLinkDBHook[
+	SE StackPSMEvent,
+	DK psm.IKeyset,
+	DIE psm.IInnerEvent,
+](
+	linkDestination psm.LinkDestination[DK, DIE],
+	cb func(
+		context.Context,
+		sqrlx.Transaction,
+		*StackState,
+		SE,
+		func(DK, DIE),
+	) error) psm.TransitionHook[
 	*StackKeys,      // implements psm.IKeyset
 	*StackState,     // implements psm.IState
 	StackStatus,     // implements psm.IStatusEnum
@@ -407,16 +447,31 @@ func StackPSMGeneralEventDataHook(cb func(context.Context, sqrlx.Transaction, *S
 	*StackEvent,     // implements psm.IEvent
 	StackPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.GeneralEventDataHook[
+	eventType := (*new(SE)).PSMEventKey()
+	return psm.TransitionHook[
 		*StackKeys,      // implements psm.IKeyset
 		*StackState,     // implements psm.IState
 		StackStatus,     // implements psm.IStatusEnum
 		*StackStateData, // implements psm.IStateData
 		*StackEvent,     // implements psm.IEvent
 		StackPSMEvent,   // implements psm.IInnerEvent
-	](cb)
+	]{
+		Callback: func(ctx context.Context, tx sqrlx.Transaction, baton StackPSMFullBaton, state *StackState, event *StackEvent) error {
+			return psm.RunLinkHook(ctx, linkDestination, cb, tx, state, event)
+		},
+		EventType:   eventType,
+		RunOnFollow: false,
+	}
 }
-func StackPSMEventPublishHook(cb func(context.Context, psm.Publisher, *StackState, *StackEvent) error) psm.EventPublishHook[
+
+// StackPSMGeneralLogicHook runs once per transition at the state-machine level regardless of which transition / event is being processed. It runs exactly once per transition, with the state object in the final state after the transition but prior to processing any further events. Chained events are added to the *end* of the event queue for the transaction, and side effects are published (as always) when the transaction is committed. The function MUST be pure, i.e. It MUST NOT produce any side-effects outside of the HookBaton, and MUST NOT modify the state.
+func StackPSMGeneralLogicHook(
+	cb func(
+		context.Context,
+		StackPSMHookBaton,
+		*StackState,
+		*StackEvent,
+	) error) psm.GeneralEventHook[
 	*StackKeys,      // implements psm.IKeyset
 	*StackState,     // implements psm.IState
 	StackStatus,     // implements psm.IStatusEnum
@@ -424,27 +479,165 @@ func StackPSMEventPublishHook(cb func(context.Context, psm.Publisher, *StackStat
 	*StackEvent,     // implements psm.IEvent
 	StackPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.EventPublishHook[
+	return psm.GeneralEventHook[
 		*StackKeys,      // implements psm.IKeyset
 		*StackState,     // implements psm.IState
 		StackStatus,     // implements psm.IStatusEnum
 		*StackStateData, // implements psm.IStateData
 		*StackEvent,     // implements psm.IEvent
 		StackPSMEvent,   // implements psm.IInnerEvent
-	](cb)
+	]{
+		Callback: func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			baton StackPSMFullBaton,
+			state *StackState,
+			event *StackEvent,
+		) error {
+			return cb(ctx, baton, state, event)
+		},
+		RunOnFollow: false,
+	}
 }
-func StackPSMUpsertPublishHook(cb func(context.Context, psm.Publisher, *StackState) error) psm.UpsertPublishHook[
+
+// StackPSMGeneralStateDataHook runs at the state-machine level regardless of which transition / event is being processed. It runs at-least once before committing a database transaction after multiple transitions are complete. This hook has access only to the final state after the transitions and is used to update other tables based on the resulting state. It MUST be idempotent, it may be called after injecting externally-held state data.
+func StackPSMGeneralStateDataHook(
+	cb func(
+		context.Context,
+		sqrlx.Transaction,
+		*StackState,
+	) error) psm.GeneralStateHook[
 	*StackKeys,      // implements psm.IKeyset
 	*StackState,     // implements psm.IState
 	StackStatus,     // implements psm.IStatusEnum
 	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
 ] {
-	return psm.UpsertPublishHook[
+	return psm.GeneralStateHook[
 		*StackKeys,      // implements psm.IKeyset
 		*StackState,     // implements psm.IState
 		StackStatus,     // implements psm.IStatusEnum
 		*StackStateData, // implements psm.IStateData
-	](cb)
+		*StackEvent,     // implements psm.IEvent
+		StackPSMEvent,   // implements psm.IInnerEvent
+	]{
+		Callback: func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			baton StackPSMFullBaton,
+			state *StackState,
+		) error {
+			return cb(ctx, tx, state)
+		},
+		RunOnFollow: true,
+	}
+}
+
+// StackPSMGeneralEventDataHook runs after each transition at the state-machine level regardless of which transition / event is being processed. It runs exactly once per transition, before any other events are processed. The presence of this hook type prevents (future) transaction optimizations, so should be used sparingly.
+func StackPSMGeneralEventDataHook(
+	cb func(
+		context.Context,
+		sqrlx.Transaction,
+		*StackState,
+		*StackEvent,
+	) error) psm.GeneralEventHook[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralEventHook[
+		*StackKeys,      // implements psm.IKeyset
+		*StackState,     // implements psm.IState
+		StackStatus,     // implements psm.IStatusEnum
+		*StackStateData, // implements psm.IStateData
+		*StackEvent,     // implements psm.IEvent
+		StackPSMEvent,   // implements psm.IInnerEvent
+	]{
+		Callback: func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			baton StackPSMFullBaton,
+			state *StackState,
+			event *StackEvent,
+		) error {
+			return cb(ctx, tx, state, event)
+		},
+		RunOnFollow: true,
+	}
+}
+
+// StackPSMEventPublishHook  EventPublishHook runs for each transition, at least once before committing a database transaction after multiple transitions are complete. It should publish a derived version of the event using the publisher.
+func StackPSMEventPublishHook(
+	cb func(
+		context.Context,
+		psm.Publisher,
+		*StackState,
+		*StackEvent,
+	) error) psm.GeneralEventHook[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralEventHook[
+		*StackKeys,      // implements psm.IKeyset
+		*StackState,     // implements psm.IState
+		StackStatus,     // implements psm.IStatusEnum
+		*StackStateData, // implements psm.IStateData
+		*StackEvent,     // implements psm.IEvent
+		StackPSMEvent,   // implements psm.IInnerEvent
+	]{
+		Callback: func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			baton StackPSMFullBaton,
+			state *StackState,
+			event *StackEvent,
+		) error {
+			return cb(ctx, baton, state, event)
+		},
+		RunOnFollow: false,
+	}
+}
+
+// StackPSMUpsertPublishHook runs for each transition, at least once before committing a database transaction after multiple transitions are complete. It should publish a derived version of the event using the publisher.
+func StackPSMUpsertPublishHook(
+	cb func(
+		context.Context,
+		psm.Publisher,
+		*StackState,
+	) error) psm.GeneralStateHook[
+	*StackKeys,      // implements psm.IKeyset
+	*StackState,     // implements psm.IState
+	StackStatus,     // implements psm.IStatusEnum
+	*StackStateData, // implements psm.IStateData
+	*StackEvent,     // implements psm.IEvent
+	StackPSMEvent,   // implements psm.IInnerEvent
+] {
+	return psm.GeneralStateHook[
+		*StackKeys,      // implements psm.IKeyset
+		*StackState,     // implements psm.IState
+		StackStatus,     // implements psm.IStatusEnum
+		*StackStateData, // implements psm.IStateData
+		*StackEvent,     // implements psm.IEvent
+		StackPSMEvent,   // implements psm.IInnerEvent
+	]{
+		Callback: func(
+			ctx context.Context,
+			tx sqrlx.Transaction,
+			baton StackPSMFullBaton,
+			state *StackState,
+		) error {
+			return cb(ctx, baton, state)
+		},
+		RunOnFollow: false,
+	}
 }
 
 func (event *StackEvent) EventPublishMetadata() *psm_j5pb.EventPublishMetadata {
