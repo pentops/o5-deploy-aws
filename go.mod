@@ -32,12 +32,12 @@ require (
 	github.com/pentops/envconf.go v0.0.0-20241008010024-9864aef6219d
 	github.com/pentops/flowtest v0.0.0-20250611222350-b5c7162d9db1
 	github.com/pentops/grpc.go v0.0.0-20250604193928-b45524df9c41
-	github.com/pentops/j5 v0.0.0-20250619022508-51d7758f272d
+	github.com/pentops/j5 v0.0.0-20250627203711-1cb261630b87
 	github.com/pentops/log.go v0.0.16
 	github.com/pentops/o5-messaging v0.0.0-20250619024104-7e07c29129f0
 	github.com/pentops/pgtest.go v0.0.0-20241223222214-7638cc50e15b
-	github.com/pentops/protostate v0.0.0-20250617222920-eece54c98457
-	github.com/pentops/realms v0.0.0-20250619023231-18c9e23fe3dd
+	github.com/pentops/protostate v0.0.0-20250627220531-ea6dfe7edca9
+	github.com/pentops/realms v0.0.0-20250619030211-be302569b3fc
 	github.com/pentops/runner v0.0.0-20250619010747-2bb7a5385324
 	github.com/pentops/sqrlx.go v0.0.0-20250520210217-2f46de329c7a
 	github.com/pkg/errors v0.9.1
