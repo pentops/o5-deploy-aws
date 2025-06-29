@@ -26,7 +26,11 @@ type ECSTaskDefinition struct {
 }
 
 func NewECSTaskDefinition(globals Globals, runtimeName string) *ECSTaskDefinition {
-	family := fmt.Sprintf("%s_%s", globals.AppName(), runtimeName)
+	family := cloudformation.Join("_", []string{
+		cloudformation.Ref("AWS::StackName"),
+		runtimeName,
+	})
+
 	policy := NewPolicyBuilder()
 	sidecar := NewSidecarBuilder(globals.AppName(), policy)
 	return &ECSTaskDefinition{
