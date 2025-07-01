@@ -43,7 +43,7 @@ func buildPlan(ctx context.Context, plan *planbuild.DeploymentPlan) error {
 	}
 
 	if plan.Deployment.Flags.InfraOnly {
-		if plan.StackStatus == nil {
+		if plan.StackStatus != nil {
 			plan.CFUpdate(0)
 		} else {
 			plan.CFCreateEmpty().
