@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pentops/j5/gen/j5/state/v1/psm_j5pb"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
@@ -15,7 +16,6 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/apps/service/internal/states"
 	"github.com/pentops/o5-deploy-aws/internal/protoread"
-	"github.com/pentops/o5-messaging/outbox"
 	"github.com/pentops/realms/j5auth"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc/codes"
@@ -27,10 +27,11 @@ type GithubClient interface {
 }
 
 type CommandService struct {
-	deploymentStateMachine  *awsdeployer_pb.DeploymentPSM
+	deploymentStateMachine  *awsdeployer_pb.DeploymentPSMDB
 	environmentStateMachine *awsdeployer_pb.EnvironmentPSM
 	stackStateMachine       *awsdeployer_pb.StackPSM
 	clusterStateMachine     *awsdeployer_pb.ClusterPSM
+	specBuilder             SpecBuilder
 
 	db     sqrlx.Transactor
 	github GithubClient
@@ -40,7 +41,7 @@ type CommandService struct {
 	awsdeployer_spb.UnsafeDeploymentCommandServiceServer
 }
 
-func NewCommandService(db sqrlx.Transactor, github GithubClient, stateMachines *states.StateMachines) (*CommandService, error) {
+func NewCommandService(db sqrlx.Transactor, specBuilder SpecBuilder, github GithubClient, stateMachines *states.StateMachines) (*CommandService, error) {
 
 	lookupProvider, err := NewLookupProvider(db)
 	if err != nil {
@@ -48,11 +49,12 @@ func NewCommandService(db sqrlx.Transactor, github GithubClient, stateMachines *
 	}
 
 	return &CommandService{
-		deploymentStateMachine:  stateMachines.Deployment,
+		deploymentStateMachine:  stateMachines.Deployment.WithDB(db),
 		environmentStateMachine: stateMachines.Environment,
 		stackStateMachine:       stateMachines.Stack,
 		clusterStateMachine:     stateMachines.Cluster,
 		LookupProvider:          lookupProvider,
+		specBuilder:             specBuilder,
 
 		db:     db,
 		github: github,
@@ -111,12 +113,39 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *awsdeploye
 			},*/
 	}
 
-	if err := ds.db.Transact(ctx, &sqrlx.TxOptions{
-		Isolation: sql.LevelReadCommitted,
-		ReadOnly:  false,
-	}, func(ctx context.Context, tx sqrlx.Transaction) error {
-		return outbox.Send(ctx, tx, requestMessage)
-	}); err != nil {
+	appID, err := ds.lookupAppStack(ctx, requestMessage.EnvironmentId, requestMessage.Application.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	spec, err := ds.specBuilder.BuildSpec(ctx, requestMessage, appID.cluster, appID.environment)
+	if err != nil {
+		return nil, err
+	}
+
+	createDeploymentEvent := &awsdeployer_pb.DeploymentPSMEventSpec{
+		Keys: &awsdeployer_pb.DeploymentKeys{
+			DeploymentId:  req.DeploymentId,
+			EnvironmentId: appID.environmentID,
+			StackId:       appID.stackID,
+			ClusterId:     appID.clusterID,
+		},
+		EventID:   req.DeploymentId,
+		Timestamp: time.Now(),
+		Event: &awsdeployer_pb.DeploymentEventType_Created{
+			Spec: spec,
+		},
+		Cause: &psm_j5pb.Cause{
+			Type: &psm_j5pb.Cause_ExternalEvent{
+				ExternalEvent: &psm_j5pb.ExternalEventCause{
+					SystemName: "deployer",
+					EventName:  "RequestDeployment",
+				},
+			},
+		},
+	}
+
+	if _, err := ds.deploymentStateMachine.Transition(ctx, createDeploymentEvent); err != nil {
 		return nil, err
 	}
 
@@ -144,7 +173,7 @@ func (ds *CommandService) TerminateDeployment(ctx context.Context, req *awsdeplo
 		Action:    action,
 	}
 
-	_, err = ds.deploymentStateMachine.Transition(ctx, ds.db, event)
+	_, err = ds.deploymentStateMachine.Transition(ctx, event)
 	if err != nil {
 		return nil, err
 	}

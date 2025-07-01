@@ -38,7 +38,7 @@ func NewApp(deps AppDeps) (*App, error) {
 		return nil, err
 	}
 
-	commandService, err := NewCommandService(deps.DB, deps.GithubClient, stateMachines)
+	commandService, err := NewCommandService(deps.DB, deps.SpecBuilder, deps.GithubClient, stateMachines)
 	if err != nil {
 		return nil, err
 	}

@@ -14,11 +14,14 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
 	"github.com/pentops/o5-deploy-aws/internal/apps/service/internal/states"
-	"github.com/pentops/o5-deploy-aws/internal/deployer"
 	"github.com/pentops/o5-messaging/outbox"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
+
+type SpecBuilder interface {
+	BuildSpec(ctx context.Context, msg *awsdeployer_tpb.RequestDeploymentMessage, cluster *environment_pb.Cluster, environment *environment_pb.Environment) (*awsdeployer_pb.DeploymentSpec, error)
+}
 
 type DeployerWorker struct {
 	awsdeployer_tpb.UnsafeDeploymentRequestTopicServer
@@ -28,7 +31,7 @@ type DeployerWorker struct {
 
 	lookup *LookupProvider
 
-	specBuilder       *deployer.SpecBuilder
+	specBuilder       SpecBuilder
 	stackEventer      *awsdeployer_pb.StackPSM
 	deploymentEventer *awsdeployer_pb.DeploymentPSMDB
 }
@@ -38,7 +41,7 @@ var _ awsinfra_tpb.CloudFormationReplyTopicServer = &DeployerWorker{}
 var _ awsinfra_tpb.PostgresReplyTopicServer = &DeployerWorker{}
 var _ awsdeployer_tpb.DeploymentRequestTopicServer = &DeployerWorker{}
 
-func NewDeployerWorker(db sqrlx.Transactor, specBuilder *deployer.SpecBuilder, states *states.StateMachines) (*DeployerWorker, error) {
+func NewDeployerWorker(db sqrlx.Transactor, specBuilder SpecBuilder, states *states.StateMachines) (*DeployerWorker, error) {
 
 	lookupProvider, err := NewLookupProvider(db)
 	if err != nil {
