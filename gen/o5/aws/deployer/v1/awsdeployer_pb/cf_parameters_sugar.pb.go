@@ -5,7 +5,6 @@ package awsdeployer_pb
 import (
 	driver "database/sql/driver"
 	fmt "fmt"
-
 	proto "google.golang.org/protobuf/proto"
 )
 

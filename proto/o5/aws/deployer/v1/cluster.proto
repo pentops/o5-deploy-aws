@@ -24,7 +24,7 @@ message ClusterState {
   j5.state.v1.StateMetadata metadata = 1 [(buf.validate.field).required = true];
 
   ClusterKeys keys = 2 [
-    (j5.ext.v1.field).message.flatten = true,
+    (j5.ext.v1.field).object.flatten = true,
     (buf.validate.field).required = true
   ];
 
@@ -60,7 +60,7 @@ message ClusterEvent {
   j5.state.v1.EventMetadata metadata = 1 [(buf.validate.field).required = true];
   ClusterKeys keys = 2 [
     (buf.validate.field).required = true,
-    (j5.ext.v1.field).message.flatten = true
+    (j5.ext.v1.field).object.flatten = true
   ];
   ClusterEventType event = 3 [(buf.validate.field).required = true];
 }

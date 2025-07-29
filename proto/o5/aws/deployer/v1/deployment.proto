@@ -31,7 +31,7 @@ message DeploymentState {
   j5.state.v1.StateMetadata metadata = 1 [(buf.validate.field).required = true];
 
   DeploymentKeys keys = 2 [
-    (j5.ext.v1.field).message.flatten = true,
+    (j5.ext.v1.field).object.flatten = true,
     (buf.validate.field).required = true
   ];
 
