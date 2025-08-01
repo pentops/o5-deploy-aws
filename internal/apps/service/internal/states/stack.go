@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
-	"github.com/pentops/protostate/psm"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -19,7 +18,6 @@ func StackID(envName, appName string) string {
 
 func NewStackEventer() (*awsdeployer_pb.StackPSM, error) {
 	sm, err := awsdeployer_pb.StackPSMBuilder().
-		SystemActor(psm.MustSystemActor("0F34118E-6263-4634-A5FB-5C04D71203D2")).
 		BuildStateMachine()
 	if err != nil {
 		return nil, err

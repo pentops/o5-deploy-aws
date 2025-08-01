@@ -11,6 +11,7 @@ import (
 	"github.com/iancoleman/strcase"
 	"github.com/pentops/flowtest"
 	"github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
+	"github.com/pentops/j5/lib/j5codec"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/j5/drss/v1/drss_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_epb"
@@ -25,7 +26,6 @@ import (
 	"github.com/pentops/o5-messaging/outbox/outboxtest"
 	"github.com/pentops/pgtest.go/pgtest"
 	"github.com/pentops/sqrlx.go/sqrlx"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 type UniverseAsserter struct {
@@ -47,7 +47,7 @@ func (ua *UniverseAsserter) afterEach(_ context.Context) {
 		switch fullTopic {
 		case "/o5.aws.deployer.v1.events.DeployerEvents/Stack":
 			event := &awsdeployer_epb.StackEvent{}
-			if err := protojson.Unmarshal(msg.Body.Value, event); err != nil {
+			if err := j5codec.Global.JSONToProto(msg.Body.Value, event.ProtoReflect()); err != nil {
 				ua.Fatalf("unmarshal error: %v", err)
 			}
 			ua.Logf("Unexpected Stack Event: %s -> %s", event.Event.PSMEventKey(), event.Status.ShortString())
@@ -55,7 +55,7 @@ func (ua *UniverseAsserter) afterEach(_ context.Context) {
 
 		case "/o5.aws.deployer.v1.events.DeployerEvents/Deployment":
 			event := &awsdeployer_epb.DeploymentEvent{}
-			if err := protojson.Unmarshal(msg.Body.Value, event); err != nil {
+			if err := j5codec.Global.JSONToProto(msg.Body.Value, event.ProtoReflect()); err != nil {
 				ua.Fatalf("unmarshal error: %v", err)
 			}
 			ua.Logf("Unexpected Deployment Event: %s -> %s", event.Event.PSMEventKey(), event.Status.ShortString())

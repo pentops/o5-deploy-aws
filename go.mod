@@ -6,7 +6,6 @@ toolchain go1.24.1
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.6-20250613105001-9f2d3c737feb.1
-	buf.build/go/protoyaml v0.6.0
 	github.com/aws/aws-sdk-go-v2 v1.36.5
 	github.com/aws/aws-sdk-go-v2/config v1.29.17
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.70
@@ -15,7 +14,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.51.0
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.57.6
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.45.5
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.81.0
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.83.0
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.35.7
 	github.com/aws/aws-sdk-go-v2/service/sns v1.34.7
 	github.com/aws/aws-sdk-go-v2/service/sts v1.34.0
@@ -30,14 +29,13 @@ require (
 	github.com/iancoleman/strcase v0.3.0
 	github.com/lib/pq v1.10.9
 	github.com/pentops/envconf.go v0.0.0-20241008010024-9864aef6219d
-	github.com/pentops/flowtest v0.0.0-20250611222350-b5c7162d9db1
+	github.com/pentops/flowtest v0.0.0-20250731234319-af76c17154d5
 	github.com/pentops/grpc.go v0.0.0-20250604193928-b45524df9c41
-	github.com/pentops/j5 v0.0.0-20250627203711-1cb261630b87
+	github.com/pentops/j5 v0.0.0-20250801211806-cc2c675904a4
 	github.com/pentops/log.go v0.0.16
 	github.com/pentops/o5-messaging v0.0.0-20250619024104-7e07c29129f0
 	github.com/pentops/pgtest.go v0.0.0-20241223222214-7638cc50e15b
-	github.com/pentops/protostate v0.0.0-20250627220531-ea6dfe7edca9
-	github.com/pentops/realms v0.0.0-20250619030211-be302569b3fc
+	github.com/pentops/realms v0.0.0-20250715235616-5072ccca27d1
 	github.com/pentops/runner v0.0.0-20250619010747-2bb7a5385324
 	github.com/pentops/sqrlx.go v0.0.0-20250520210217-2f46de329c7a
 	github.com/pkg/errors v0.9.1
@@ -50,6 +48,7 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20250603155806-513f23925822
 	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
@@ -81,13 +80,13 @@ require (
 	github.com/jhump/protoreflect v1.17.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/pentops/golib v0.0.0-20250326060930-8c83d58ddb63 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/stoewer/go-strcase v1.3.1 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
+	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/crypto v0.39.0 // indirect
 	golang.org/x/net v0.41.0 // indirect
 	golang.org/x/sync v0.15.0 // indirect

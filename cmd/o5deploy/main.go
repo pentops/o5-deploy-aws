@@ -22,7 +22,7 @@ import (
 	"github.com/pentops/o5-deploy-aws/internal/deployer"
 	"github.com/pentops/o5-deploy-aws/internal/protoread"
 	"github.com/pentops/runner/commander"
-	"github.com/pentops/sqrlx.go/sqrlx"
+	"github.com/pentops/sqrlx.go/pgenv"
 	"github.com/pressly/goose"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
@@ -45,10 +45,10 @@ func main() {
 
 func runMigrate(ctx context.Context, config struct {
 	MigrationsDir string `env:"MIGRATIONS_DIR" default:"./ext/db"`
-	DBConfig
+	pgenv.DatabaseConfig
 }) error {
 
-	db, err := config.OpenDatabase(ctx)
+	db, err := config.OpenPostgres(ctx)
 	if err != nil {
 		return err
 	}
@@ -70,7 +70,7 @@ func runServe(ctx context.Context, cfg struct {
 	CFTemplates        string `env:"CF_TEMPLATES"`
 	GithubAppsJSON     string `env:"GITHUB_APPS"`
 
-	DBConfig
+	pgenv.DatabaseConfig
 }) error {
 
 	log.WithField(ctx, "PORT", cfg.GRPCPort).Info("Boot")
@@ -85,12 +85,10 @@ func runServe(ctx context.Context, cfg struct {
 	// The AWS adaptor should be able to read the configs with the assumed role
 	s3Client := s3.NewFromConfig(awsConfig)
 
-	dbConn, err := cfg.OpenDatabase(ctx)
+	db, err := cfg.OpenPostgresTransactor(ctx)
 	if err != nil {
 		return err
 	}
-
-	db := sqrlx.NewPostgres(dbConn)
 
 	middleware := service.GRPCMiddleware()
 	grpcServer := grpc.NewServer(
@@ -164,13 +162,13 @@ func runTemplate(ctx context.Context, cfg struct {
 	}
 
 	appConfig := &application_pb.Application{}
-	if err := protoread.PullAndParse(ctx, cfg.AppFilename, appConfig); err != nil {
+	if err := protoread.PullAndParse(ctx, cfg.AppFilename, appConfig.J5Object()); err != nil {
 		return err
 	}
 
-	hostType := environment_pb.RDSAuth_SecretsManager
+	hostType := environment_pb.RDSAuth_Type_SecretsManager
 	if cfg.RDSIAM {
-		hostType = environment_pb.RDSAuth_Iam
+		hostType = environment_pb.RDSAuth_Type_Iam
 	}
 	built, err := appbuilder.BuildApplication(appbuilder.AppInput{
 		Application: appConfig,
@@ -215,7 +213,7 @@ func runValidate(ctx context.Context, cfg struct {
 
 	if cfg.AppFilename != "" {
 		appConfig := &application_pb.Application{}
-		if err := protoread.PullAndParse(ctx, cfg.AppFilename, appConfig); err != nil {
+		if err := protoread.PullAndParse(ctx, cfg.AppFilename, appConfig.J5Object()); err != nil {
 			return err
 		}
 		if err := pv.Validate(appConfig); err != nil {
@@ -225,7 +223,7 @@ func runValidate(ctx context.Context, cfg struct {
 
 	if cfg.ClusterFile != "" {
 		clusterFile := &environment_pb.CombinedConfig{}
-		if err := protoread.PullAndParse(ctx, cfg.ClusterFile, clusterFile); err != nil {
+		if err := protoread.PullAndParse(ctx, cfg.ClusterFile, clusterFile.J5Object()); err != nil {
 			return err
 		}
 		if err := pv.Validate(clusterFile); err != nil {
@@ -245,7 +243,7 @@ func (hh fakeHosts) FindRDSHost(string) (*appbuilder.RDSHost, bool) {
 
 func getCluster(ctx context.Context, clusterFilename string, envName string) (*environment_pb.Cluster, *environment_pb.Environment, error) {
 	clusterFile := &environment_pb.CombinedConfig{}
-	if err := protoread.PullAndParse(ctx, clusterFilename, clusterFile); err != nil {
+	if err := protoread.PullAndParse(ctx, clusterFilename, clusterFile.J5Object()); err != nil {
 		return nil, nil, err
 	}
 
@@ -310,7 +308,7 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 	s3Client := s3.NewFromConfig(awsConfig)
 
 	appConfig := &application_pb.Application{}
-	if err := protoread.PullAndParse(ctx, cfg.AppFilename, appConfig); err != nil {
+	if err := protoread.PullAndParse(ctx, cfg.AppFilename, appConfig.J5Object()); err != nil {
 		return err
 	}
 

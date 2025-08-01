@@ -81,9 +81,6 @@ func (rr *Runner) RunDeployment(ctx context.Context, deployment *awsdeployer_pb.
 	}
 
 	if stackStatus != nil {
-		fmt.Printf("Existing Stack: %s\n", stackStatus.StackName)
-		fmt.Printf("  Status: %s\n", stackStatus.Status)
-		fmt.Printf("  Lifecycle: %s\n", stackStatus.Lifecycle.ShortString())
 		switch stackStatus.Lifecycle {
 		case awsdeployer_pb.CFLifecycle_COMPLETE,
 			awsdeployer_pb.CFLifecycle_ROLLED_BACK:
@@ -228,7 +225,7 @@ func Ask(prompt string) string {
 	if inputReader == nil {
 		inputReader = bufio.NewReader(os.Stdin)
 	}
-	fmt.Printf("%s: \n", prompt)
+	fmt.Printf("%s: \n", prompt) //nolint:forbidigo
 	answer, err := inputReader.ReadString('\n')
 	if err != nil {
 		panic(err)
@@ -242,16 +239,16 @@ func AskBool(prompt string) bool {
 }
 
 func confirmPlan(steps []*awsdeployer_pb.DeploymentStep) bool {
-	fmt.Printf("CONFIRM STEPS\n")
+	fmt.Printf("CONFIRM STEPS\n") //nolint:forbidigo
 	stepMap := make(map[string]*awsdeployer_pb.DeploymentStep)
 	for _, step := range steps {
 		stepMap[step.Meta.StepId] = step
 	}
 	for _, step := range steps {
-		typeKey := step.Step.Get().TypeKey()
-		fmt.Printf("- %s (%s)\n", step.Meta.Name, typeKey)
+		typeKey := step.Step.Get().DeploymentStepTypeKey()
+		fmt.Printf("- %s (%s)\n", step.Meta.Name, typeKey) //nolint:forbidigo
 		for _, dep := range step.Meta.DependsOn {
-			fmt.Printf("   <- %s\n", stepMap[dep].Meta.Name)
+			fmt.Printf("   <- %s\n", stepMap[dep].Meta.Name) //nolint:forbidigo
 		}
 	}
 	return AskBool("Continue?")

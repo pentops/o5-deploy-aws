@@ -102,7 +102,7 @@ func (dd *SpecBuilder) BuildSpec(ctx context.Context, trigger *awsdeployer_tpb.R
 	rdsHosts := appbuilder.RDSHostMap{}
 	for _, host := range awsCluster.RdsHosts {
 		rdsHosts[host.ServerGroupName] = &appbuilder.RDSHost{
-			AuthType: host.Auth.Get().TypeKey(),
+			AuthType: host.Auth.Get().RDSAuthTypeKey(),
 		}
 	}
 

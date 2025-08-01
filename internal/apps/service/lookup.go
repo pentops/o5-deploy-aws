@@ -9,13 +9,13 @@ import (
 
 	sq "github.com/elgris/sqrl"
 	"github.com/google/uuid"
+	"github.com/pentops/j5/lib/j5codec"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/internal/apps/service/internal/states"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 var environmentIDNamespace = uuid.MustParse("0D783718-F8FD-4543-AE3D-6382AB0B8178")
@@ -291,12 +291,12 @@ func (ds *LookupProvider) lookupAppStack(ctx context.Context, environmentId stri
 	}
 
 	cluster := &awsdeployer_pb.ClusterState{}
-	if err := protojson.Unmarshal(clusterJSON, cluster); err != nil {
+	if err := j5codec.Global.JSONToProto(clusterJSON, cluster.ProtoReflect()); err != nil {
 		return nil, fmt.Errorf("unmarshal cluster: %w", err)
 	}
 
 	env := &awsdeployer_pb.EnvironmentState{}
-	if err := protojson.Unmarshal(envJSON, env); err != nil {
+	if err := j5codec.Global.JSONToProto(envJSON, env.ProtoReflect()); err != nil {
 		return nil, fmt.Errorf("unmarshal environment: %w", err)
 	}
 	return &appStack{

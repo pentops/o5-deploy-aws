@@ -5,7 +5,6 @@ import (
 
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/environment/v1/environment_pb"
-	"github.com/pentops/protostate/psm"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -13,7 +12,7 @@ import (
 
 func NewClusterEventer() (*awsdeployer_pb.ClusterPSM, error) {
 	sm, err := awsdeployer_pb.ClusterPSMBuilder().
-		SystemActor(psm.MustSystemActor("D777D42C-3FE6-4A0D-9F70-5BC1348516F5")).BuildStateMachine()
+		BuildStateMachine()
 	if err != nil {
 		return nil, err
 	}

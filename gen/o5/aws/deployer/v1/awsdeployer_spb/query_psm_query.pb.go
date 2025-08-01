@@ -4,67 +4,55 @@ package awsdeployer_spb
 
 import (
 	context "context"
-	psm "github.com/pentops/protostate/psm"
+	fmt "fmt"
+	j5reflect "github.com/pentops/j5/lib/j5reflect"
+	j5schema "github.com/pentops/j5/lib/j5schema"
+	psm "github.com/pentops/j5/lib/psm"
 	sqrlx "github.com/pentops/sqrlx.go/sqrlx"
 )
 
 // State Query Service for %sDeployment
 // QuerySet is the query set for the Deployment service.
 
-type DeploymentPSMQuerySet = psm.StateQuerySet[
-	*GetDeploymentRequest,
-	*GetDeploymentResponse,
-	*ListDeploymentsRequest,
-	*ListDeploymentsResponse,
-	*ListDeploymentEventsRequest,
-	*ListDeploymentEventsResponse,
-]
+type DeploymentPSMQuerySet = psm.StateQuerySet
 
 func NewDeploymentPSMQuerySet(
-	smSpec psm.QuerySpec[
-		*GetDeploymentRequest,
-		*GetDeploymentResponse,
-		*ListDeploymentsRequest,
-		*ListDeploymentsResponse,
-		*ListDeploymentEventsRequest,
-		*ListDeploymentEventsResponse,
-	],
+	smSpec psm.QuerySpec,
 	options psm.StateQueryOptions,
 ) (*DeploymentPSMQuerySet, error) {
-	return psm.BuildStateQuerySet[
-		*GetDeploymentRequest,
-		*GetDeploymentResponse,
-		*ListDeploymentsRequest,
-		*ListDeploymentsResponse,
-		*ListDeploymentEventsRequest,
-		*ListDeploymentEventsResponse,
-	](smSpec, options)
+	return psm.BuildStateQuerySet(smSpec, options)
 }
 
-type DeploymentPSMQuerySpec = psm.QuerySpec[
-	*GetDeploymentRequest,
-	*GetDeploymentResponse,
-	*ListDeploymentsRequest,
-	*ListDeploymentsResponse,
-	*ListDeploymentEventsRequest,
-	*ListDeploymentEventsResponse,
-]
+type DeploymentPSMQuerySpec = psm.QuerySpec
 
 func DefaultDeploymentPSMQuerySpec(tableSpec psm.QueryTableSpec) DeploymentPSMQuerySpec {
-	return psm.QuerySpec[
-		*GetDeploymentRequest,
-		*GetDeploymentResponse,
-		*ListDeploymentsRequest,
-		*ListDeploymentsResponse,
-		*ListDeploymentEventsRequest,
-		*ListDeploymentEventsResponse,
-	]{
+	return psm.QuerySpec{
+		GetMethod: &j5schema.MethodSchema{
+			Request:  j5schema.MustObjectSchema((&GetDeploymentRequest{}).ProtoReflect().Descriptor()),
+			Response: j5schema.MustObjectSchema((&GetDeploymentResponse{}).ProtoReflect().Descriptor()),
+		},
+		ListMethod: &j5schema.MethodSchema{
+			Request:  j5schema.MustObjectSchema((&ListDeploymentsRequest{}).ProtoReflect().Descriptor()),
+			Response: j5schema.MustObjectSchema((&ListDeploymentsResponse{}).ProtoReflect().Descriptor()),
+		},
+		ListEventsMethod: &j5schema.MethodSchema{
+			Request:  j5schema.MustObjectSchema((&ListDeploymentEventsRequest{}).ProtoReflect().Descriptor()),
+			Response: j5schema.MustObjectSchema((&ListDeploymentEventsResponse{}).ProtoReflect().Descriptor()),
+		},
 		QueryTableSpec: tableSpec,
-		ListRequestFilter: func(req *ListDeploymentsRequest) (map[string]interface{}, error) {
+		ListRequestFilter: func(reqReflect j5reflect.Object) (map[string]interface{}, error) {
+			req, ok := reqReflect.Interface().(*ListDeploymentsRequest)
+			if !ok {
+				return nil, fmt.Errorf("expected *ListDeploymentsRequest but got %T", req)
+			}
 			filter := map[string]interface{}{}
 			return filter, nil
 		},
-		ListEventsRequestFilter: func(req *ListDeploymentEventsRequest) (map[string]interface{}, error) {
+		ListEventsRequestFilter: func(reqReflect j5reflect.Object) (map[string]interface{}, error) {
+			req, ok := reqReflect.Interface().(*ListDeploymentEventsRequest)
+			if !ok {
+				return nil, fmt.Errorf("expected *ListDeploymentEventsRequest but got %T", req)
+			}
 			filter := map[string]interface{}{}
 			filter["deployment_id"] = req.DeploymentId
 			return filter, nil
@@ -89,7 +77,7 @@ func NewDeploymentQueryServiceImpl(db sqrlx.Transactor, querySet *DeploymentPSMQ
 
 func (s *DeploymentQueryServiceImpl) GetDeployment(ctx context.Context, req *GetDeploymentRequest) (*GetDeploymentResponse, error) {
 	resObject := &GetDeploymentResponse{}
-	err := s.querySet.Get(ctx, s.db, req, resObject)
+	err := s.querySet.Get(ctx, s.db, req.J5Object(), resObject.J5Object())
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +86,7 @@ func (s *DeploymentQueryServiceImpl) GetDeployment(ctx context.Context, req *Get
 
 func (s *DeploymentQueryServiceImpl) ListDeployments(ctx context.Context, req *ListDeploymentsRequest) (*ListDeploymentsResponse, error) {
 	resObject := &ListDeploymentsResponse{}
-	err := s.querySet.List(ctx, s.db, req, resObject)
+	err := s.querySet.List(ctx, s.db, req.J5Object(), resObject.J5Object())
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +95,7 @@ func (s *DeploymentQueryServiceImpl) ListDeployments(ctx context.Context, req *L
 
 func (s *DeploymentQueryServiceImpl) ListDeploymentEvents(ctx context.Context, req *ListDeploymentEventsRequest) (*ListDeploymentEventsResponse, error) {
 	resObject := &ListDeploymentEventsResponse{}
-	err := s.querySet.ListEvents(ctx, s.db, req, resObject)
+	err := s.querySet.ListEvents(ctx, s.db, req.J5Object(), resObject.J5Object())
 	if err != nil {
 		return nil, err
 	}
@@ -117,60 +105,45 @@ func (s *DeploymentQueryServiceImpl) ListDeploymentEvents(ctx context.Context, r
 // State Query Service for %sStack
 // QuerySet is the query set for the Stack service.
 
-type StackPSMQuerySet = psm.StateQuerySet[
-	*GetStackRequest,
-	*GetStackResponse,
-	*ListStacksRequest,
-	*ListStacksResponse,
-	*ListStackEventsRequest,
-	*ListStackEventsResponse,
-]
+type StackPSMQuerySet = psm.StateQuerySet
 
 func NewStackPSMQuerySet(
-	smSpec psm.QuerySpec[
-		*GetStackRequest,
-		*GetStackResponse,
-		*ListStacksRequest,
-		*ListStacksResponse,
-		*ListStackEventsRequest,
-		*ListStackEventsResponse,
-	],
+	smSpec psm.QuerySpec,
 	options psm.StateQueryOptions,
 ) (*StackPSMQuerySet, error) {
-	return psm.BuildStateQuerySet[
-		*GetStackRequest,
-		*GetStackResponse,
-		*ListStacksRequest,
-		*ListStacksResponse,
-		*ListStackEventsRequest,
-		*ListStackEventsResponse,
-	](smSpec, options)
+	return psm.BuildStateQuerySet(smSpec, options)
 }
 
-type StackPSMQuerySpec = psm.QuerySpec[
-	*GetStackRequest,
-	*GetStackResponse,
-	*ListStacksRequest,
-	*ListStacksResponse,
-	*ListStackEventsRequest,
-	*ListStackEventsResponse,
-]
+type StackPSMQuerySpec = psm.QuerySpec
 
 func DefaultStackPSMQuerySpec(tableSpec psm.QueryTableSpec) StackPSMQuerySpec {
-	return psm.QuerySpec[
-		*GetStackRequest,
-		*GetStackResponse,
-		*ListStacksRequest,
-		*ListStacksResponse,
-		*ListStackEventsRequest,
-		*ListStackEventsResponse,
-	]{
+	return psm.QuerySpec{
+		GetMethod: &j5schema.MethodSchema{
+			Request:  j5schema.MustObjectSchema((&GetStackRequest{}).ProtoReflect().Descriptor()),
+			Response: j5schema.MustObjectSchema((&GetStackResponse{}).ProtoReflect().Descriptor()),
+		},
+		ListMethod: &j5schema.MethodSchema{
+			Request:  j5schema.MustObjectSchema((&ListStacksRequest{}).ProtoReflect().Descriptor()),
+			Response: j5schema.MustObjectSchema((&ListStacksResponse{}).ProtoReflect().Descriptor()),
+		},
+		ListEventsMethod: &j5schema.MethodSchema{
+			Request:  j5schema.MustObjectSchema((&ListStackEventsRequest{}).ProtoReflect().Descriptor()),
+			Response: j5schema.MustObjectSchema((&ListStackEventsResponse{}).ProtoReflect().Descriptor()),
+		},
 		QueryTableSpec: tableSpec,
-		ListRequestFilter: func(req *ListStacksRequest) (map[string]interface{}, error) {
+		ListRequestFilter: func(reqReflect j5reflect.Object) (map[string]interface{}, error) {
+			req, ok := reqReflect.Interface().(*ListStacksRequest)
+			if !ok {
+				return nil, fmt.Errorf("expected *ListStacksRequest but got %T", req)
+			}
 			filter := map[string]interface{}{}
 			return filter, nil
 		},
-		ListEventsRequestFilter: func(req *ListStackEventsRequest) (map[string]interface{}, error) {
+		ListEventsRequestFilter: func(reqReflect j5reflect.Object) (map[string]interface{}, error) {
+			req, ok := reqReflect.Interface().(*ListStackEventsRequest)
+			if !ok {
+				return nil, fmt.Errorf("expected *ListStackEventsRequest but got %T", req)
+			}
 			filter := map[string]interface{}{}
 			filter["stack_id"] = req.StackId
 			return filter, nil
@@ -195,7 +168,7 @@ func NewStackQueryServiceImpl(db sqrlx.Transactor, querySet *StackPSMQuerySet) *
 
 func (s *StackQueryServiceImpl) GetStack(ctx context.Context, req *GetStackRequest) (*GetStackResponse, error) {
 	resObject := &GetStackResponse{}
-	err := s.querySet.Get(ctx, s.db, req, resObject)
+	err := s.querySet.Get(ctx, s.db, req.J5Object(), resObject.J5Object())
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +177,7 @@ func (s *StackQueryServiceImpl) GetStack(ctx context.Context, req *GetStackReque
 
 func (s *StackQueryServiceImpl) ListStacks(ctx context.Context, req *ListStacksRequest) (*ListStacksResponse, error) {
 	resObject := &ListStacksResponse{}
-	err := s.querySet.List(ctx, s.db, req, resObject)
+	err := s.querySet.List(ctx, s.db, req.J5Object(), resObject.J5Object())
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +186,7 @@ func (s *StackQueryServiceImpl) ListStacks(ctx context.Context, req *ListStacksR
 
 func (s *StackQueryServiceImpl) ListStackEvents(ctx context.Context, req *ListStackEventsRequest) (*ListStackEventsResponse, error) {
 	resObject := &ListStackEventsResponse{}
-	err := s.querySet.ListEvents(ctx, s.db, req, resObject)
+	err := s.querySet.ListEvents(ctx, s.db, req.J5Object(), resObject.J5Object())
 	if err != nil {
 		return nil, err
 	}
@@ -223,60 +196,45 @@ func (s *StackQueryServiceImpl) ListStackEvents(ctx context.Context, req *ListSt
 // State Query Service for %sEnvironment
 // QuerySet is the query set for the Environment service.
 
-type EnvironmentPSMQuerySet = psm.StateQuerySet[
-	*GetEnvironmentRequest,
-	*GetEnvironmentResponse,
-	*ListEnvironmentsRequest,
-	*ListEnvironmentsResponse,
-	*ListEnvironmentEventsRequest,
-	*ListEnvironmentEventsResponse,
-]
+type EnvironmentPSMQuerySet = psm.StateQuerySet
 
 func NewEnvironmentPSMQuerySet(
-	smSpec psm.QuerySpec[
-		*GetEnvironmentRequest,
-		*GetEnvironmentResponse,
-		*ListEnvironmentsRequest,
-		*ListEnvironmentsResponse,
-		*ListEnvironmentEventsRequest,
-		*ListEnvironmentEventsResponse,
-	],
+	smSpec psm.QuerySpec,
 	options psm.StateQueryOptions,
 ) (*EnvironmentPSMQuerySet, error) {
-	return psm.BuildStateQuerySet[
-		*GetEnvironmentRequest,
-		*GetEnvironmentResponse,
-		*ListEnvironmentsRequest,
-		*ListEnvironmentsResponse,
-		*ListEnvironmentEventsRequest,
-		*ListEnvironmentEventsResponse,
-	](smSpec, options)
+	return psm.BuildStateQuerySet(smSpec, options)
 }
 
-type EnvironmentPSMQuerySpec = psm.QuerySpec[
-	*GetEnvironmentRequest,
-	*GetEnvironmentResponse,
-	*ListEnvironmentsRequest,
-	*ListEnvironmentsResponse,
-	*ListEnvironmentEventsRequest,
-	*ListEnvironmentEventsResponse,
-]
+type EnvironmentPSMQuerySpec = psm.QuerySpec
 
 func DefaultEnvironmentPSMQuerySpec(tableSpec psm.QueryTableSpec) EnvironmentPSMQuerySpec {
-	return psm.QuerySpec[
-		*GetEnvironmentRequest,
-		*GetEnvironmentResponse,
-		*ListEnvironmentsRequest,
-		*ListEnvironmentsResponse,
-		*ListEnvironmentEventsRequest,
-		*ListEnvironmentEventsResponse,
-	]{
+	return psm.QuerySpec{
+		GetMethod: &j5schema.MethodSchema{
+			Request:  j5schema.MustObjectSchema((&GetEnvironmentRequest{}).ProtoReflect().Descriptor()),
+			Response: j5schema.MustObjectSchema((&GetEnvironmentResponse{}).ProtoReflect().Descriptor()),
+		},
+		ListMethod: &j5schema.MethodSchema{
+			Request:  j5schema.MustObjectSchema((&ListEnvironmentsRequest{}).ProtoReflect().Descriptor()),
+			Response: j5schema.MustObjectSchema((&ListEnvironmentsResponse{}).ProtoReflect().Descriptor()),
+		},
+		ListEventsMethod: &j5schema.MethodSchema{
+			Request:  j5schema.MustObjectSchema((&ListEnvironmentEventsRequest{}).ProtoReflect().Descriptor()),
+			Response: j5schema.MustObjectSchema((&ListEnvironmentEventsResponse{}).ProtoReflect().Descriptor()),
+		},
 		QueryTableSpec: tableSpec,
-		ListRequestFilter: func(req *ListEnvironmentsRequest) (map[string]interface{}, error) {
+		ListRequestFilter: func(reqReflect j5reflect.Object) (map[string]interface{}, error) {
+			req, ok := reqReflect.Interface().(*ListEnvironmentsRequest)
+			if !ok {
+				return nil, fmt.Errorf("expected *ListEnvironmentsRequest but got %T", req)
+			}
 			filter := map[string]interface{}{}
 			return filter, nil
 		},
-		ListEventsRequestFilter: func(req *ListEnvironmentEventsRequest) (map[string]interface{}, error) {
+		ListEventsRequestFilter: func(reqReflect j5reflect.Object) (map[string]interface{}, error) {
+			req, ok := reqReflect.Interface().(*ListEnvironmentEventsRequest)
+			if !ok {
+				return nil, fmt.Errorf("expected *ListEnvironmentEventsRequest but got %T", req)
+			}
 			filter := map[string]interface{}{}
 			filter["environment_id"] = req.EnvironmentId
 			return filter, nil
@@ -301,7 +259,7 @@ func NewEnvironmentQueryServiceImpl(db sqrlx.Transactor, querySet *EnvironmentPS
 
 func (s *EnvironmentQueryServiceImpl) GetEnvironment(ctx context.Context, req *GetEnvironmentRequest) (*GetEnvironmentResponse, error) {
 	resObject := &GetEnvironmentResponse{}
-	err := s.querySet.Get(ctx, s.db, req, resObject)
+	err := s.querySet.Get(ctx, s.db, req.J5Object(), resObject.J5Object())
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +268,7 @@ func (s *EnvironmentQueryServiceImpl) GetEnvironment(ctx context.Context, req *G
 
 func (s *EnvironmentQueryServiceImpl) ListEnvironments(ctx context.Context, req *ListEnvironmentsRequest) (*ListEnvironmentsResponse, error) {
 	resObject := &ListEnvironmentsResponse{}
-	err := s.querySet.List(ctx, s.db, req, resObject)
+	err := s.querySet.List(ctx, s.db, req.J5Object(), resObject.J5Object())
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +277,7 @@ func (s *EnvironmentQueryServiceImpl) ListEnvironments(ctx context.Context, req 
 
 func (s *EnvironmentQueryServiceImpl) ListEnvironmentEvents(ctx context.Context, req *ListEnvironmentEventsRequest) (*ListEnvironmentEventsResponse, error) {
 	resObject := &ListEnvironmentEventsResponse{}
-	err := s.querySet.ListEvents(ctx, s.db, req, resObject)
+	err := s.querySet.ListEvents(ctx, s.db, req.J5Object(), resObject.J5Object())
 	if err != nil {
 		return nil, err
 	}

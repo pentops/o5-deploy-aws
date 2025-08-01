@@ -163,7 +163,6 @@ func (d *ecsRunner) findLogGroups(ctx context.Context, task types.Task) ([]LogSt
 		taskID := splitPart("/", 2, *task.TaskArn)
 		logStream := fmt.Sprintf("%s/%s/%s", streamPrefix, *container.Name, taskID)
 
-		fmt.Printf("  %s %s\n", logGroup, logStream)
 		streams = append(streams, LogStream{
 			Container: *container.Name,
 			LogGroup:  logGroup,

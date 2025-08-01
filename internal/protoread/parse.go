@@ -10,13 +10,13 @@ import (
 	"strconv"
 	"strings"
 
-	"buf.build/go/protoyaml"
+	"sigs.k8s.io/yaml"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/bufbuild/protovalidate-go"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
+	"github.com/pentops/j5/lib/j5codec"
+	"github.com/pentops/j5/lib/j5reflect"
+	"github.com/pentops/j5/lib/j5validate"
 )
 
 type s3API interface {
@@ -61,7 +61,7 @@ func readFile(ctx context.Context, path string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
-func PullAndParse(ctx context.Context, filename string, into proto.Message) error {
+func PullAndParse(ctx context.Context, filename string, into j5reflect.Object) error {
 	data, err := readFile(ctx, filename)
 	if err != nil {
 		return fmt.Errorf("reading file %s: %w", filename, err)
@@ -73,31 +73,33 @@ func PullAndParse(ctx context.Context, filename string, into proto.Message) erro
 	return nil
 }
 
-func Parse(filename string, data []byte, into proto.Message) error {
-	fileSuffix := filepath.Ext(filename)
-	switch fileSuffix {
-	case ".json":
-		err := protojson.Unmarshal(data, into)
+func Parse(filename string, data []byte, out j5reflect.Object) error {
+
+	switch filepath.Ext(filename) {
+	case ".yaml", ".yml":
+		jsonData, err := yaml.YAMLToJSON(data)
 		if err != nil {
-			return findTokenError(data, err)
+			return fmt.Errorf("unmarshal %s: %w", filename, err)
+		}
+		err = j5codec.Global.JSONToReflect(jsonData, out)
+		if err != nil {
+			return fmt.Errorf("unmarshal %s: %w", filename, err)
 		}
 
-	case ".yaml", ".yml":
-		if err := protoyaml.Unmarshal(data, into); err != nil {
-			return err
+	case ".json":
+		err := j5codec.Global.JSONToReflect(data, out)
+		if err != nil {
+			return fmt.Errorf("unmarshal %s: %w", filename, err)
 		}
 
 	default:
-		return fmt.Errorf("unknown file type: %s", fileSuffix)
+		return fmt.Errorf("unmarshal %s: unknown file extension %q", filename, filepath.Ext(filename))
 	}
 
 	// should usually be cached, but this is used rarely.
-	validator, err := protovalidate.New()
-	if err != nil {
-		return fmt.Errorf("protovalidate.New: %w", err)
-	}
+	validator := j5validate.NewValidator()
 
-	if err := validator.Validate(into); err != nil {
+	if err := validator.Validate(out); err != nil {
 		return err
 	}
 

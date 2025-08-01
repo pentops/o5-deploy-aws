@@ -2,7 +2,6 @@ package localrun
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -47,12 +46,10 @@ func (m *MockInfra) StabalizeStack(ctx context.Context, msg *awsinfra_tpb.Stabal
 func (m *MockInfra) HandleMessage(ctx context.Context, msg proto.Message) (*awsdeployer_pb.DeploymentPSMEventSpec, error) {
 	ctx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	defer cancel()
-	fmt.Printf("MSG: %s\n", msg.ProtoReflect().Descriptor().FullName())
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case m.incoming <- msg:
-		fmt.Printf("Released\n")
 		msg := <-m.outgoing
 		return &awsdeployer_pb.DeploymentPSMEventSpec{
 			Keys:    &awsdeployer_pb.DeploymentKeys{},
@@ -214,9 +211,9 @@ func TestLocalRun(t *testing.T) {
 		go func() {
 			err := RunLocalDeploy(runCtx, templateStore, infra, spec)
 			if err != nil {
-				fmt.Printf("RunLocalDeploy: %s\n", err)
+				t.Logf("RunLocalDeploy: %s\n", err)
 			} else {
-				fmt.Printf("RunLocalDeploy: success\n")
+				t.Logf("RunLocalDeploy: success\n")
 			}
 			cancel()
 			runErr <- err

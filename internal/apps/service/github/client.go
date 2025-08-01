@@ -146,7 +146,7 @@ func (cl Client) PullO5Configs(ctx context.Context, org string, repo string, ref
 		}
 
 		app := &application_pb.Application{}
-		err = protoread.Parse(path.Base(*content.Path), data, app)
+		err = protoread.Parse(path.Base(*content.Path), data, app.J5Object())
 		if err != nil {
 			return nil, fmt.Errorf("parse app: %w", err)
 		}

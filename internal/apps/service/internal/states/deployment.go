@@ -10,7 +10,6 @@ import (
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_tpb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/awsinfra/v1/awsinfra_tpb"
 	"github.com/pentops/o5-deploy-aws/internal/deployer/plan"
-	"github.com/pentops/protostate/psm"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -29,7 +28,6 @@ func buildRequestMetadata(contextMessage proto.Message) (*messaging_j5pb.Request
 
 func NewDeploymentEventer() (*awsdeployer_pb.DeploymentPSM, error) {
 	sm, err := awsdeployer_pb.DeploymentPSMBuilder().
-		SystemActor(psm.MustSystemActor("9C88DF5B-6ED0-46DF-A389-474F27A7395F")).
 		BuildStateMachine()
 	if err != nil {
 		return nil, err

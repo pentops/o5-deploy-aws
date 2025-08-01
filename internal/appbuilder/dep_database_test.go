@@ -55,7 +55,7 @@ func newPGTestCase() *pgTestCase {
 	}
 
 	rdsHost := &RDSHost{
-		AuthType: environment_pb.RDSAuth_SecretsManager,
+		AuthType: environment_pb.RDSAuth_Type_SecretsManager,
 	}
 
 	tc := &pgTestCase{
@@ -230,7 +230,7 @@ func TestDatabaseCases(t *testing.T) {
 
 	t.Run("SimpleProxy", func(t *testing.T) {
 		tc := newPGTestCase()
-		tc.rdsHost.AuthType = environment_pb.RDSAuth_Iam
+		tc.rdsHost.AuthType = environment_pb.RDSAuth_Type_Iam
 
 		assertIAMCase(t, tc, &wantSecret{
 			appKey:     "appkey",
@@ -240,7 +240,7 @@ func TestDatabaseCases(t *testing.T) {
 
 	t.Run("OutboxProxy", func(t *testing.T) {
 		tc := newPGTestCase()
-		tc.rdsHost.AuthType = environment_pb.RDSAuth_Iam
+		tc.rdsHost.AuthType = environment_pb.RDSAuth_Type_Iam
 		tc.pg.RunOutbox = true
 
 		assertIAMCase(t, tc, &wantSecret{
@@ -251,7 +251,7 @@ func TestDatabaseCases(t *testing.T) {
 
 	t.Run("OutboxProxy", func(t *testing.T) {
 		tc := newPGTestCase()
-		tc.rdsHost.AuthType = environment_pb.RDSAuth_Iam
+		tc.rdsHost.AuthType = environment_pb.RDSAuth_Type_Iam
 		tc.pg.RunOutbox = true
 		tc.pg.OutboxDelayable = true
 
@@ -264,7 +264,7 @@ func TestDatabaseCases(t *testing.T) {
 
 	t.Run("MigrateProxy", func(t *testing.T) {
 		tc := newPGTestCase()
-		tc.rdsHost.AuthType = environment_pb.RDSAuth_Iam
+		tc.rdsHost.AuthType = environment_pb.RDSAuth_Type_Iam
 		tc.pg.MigrateContainer = &application_pb.Container{
 			Source:  tc.runtime.Containers[0].Source,
 			Command: []string{"migrate"},
@@ -280,7 +280,7 @@ func TestDatabaseCases(t *testing.T) {
 
 	t.Run("MigrateAndOutboxProxy", func(t *testing.T) {
 		tc := newPGTestCase()
-		tc.rdsHost.AuthType = environment_pb.RDSAuth_Iam
+		tc.rdsHost.AuthType = environment_pb.RDSAuth_Type_Iam
 		tc.pg.RunOutbox = true
 		tc.pg.MigrateContainer = &application_pb.Container{
 			Source:  tc.runtime.Containers[0].Source,

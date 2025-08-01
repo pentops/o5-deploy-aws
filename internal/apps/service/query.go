@@ -5,22 +5,17 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/pentops/j5/lib/psm"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_spb"
 	"github.com/pentops/o5-deploy-aws/internal/apps/service/internal/states"
-	"github.com/pentops/protostate/psm"
 	"github.com/pentops/sqrlx.go/sqrlx"
 	"google.golang.org/grpc"
 )
 
 type QueryService struct {
-	deploymentQuery *awsdeployer_spb.DeploymentPSMQuerySet
-	*awsdeployer_spb.UnimplementedDeploymentQueryServiceServer
-
-	stackQuery *awsdeployer_spb.StackPSMQuerySet
-	*awsdeployer_spb.UnimplementedStackQueryServiceServer
-
-	environmentQuery *awsdeployer_spb.EnvironmentPSMQuerySet
-	*awsdeployer_spb.UnimplementedEnvironmentQueryServiceServer
+	deploymentQuery  *awsdeployer_spb.DeploymentQueryServiceImpl
+	stackQuery       *awsdeployer_spb.StackQueryServiceImpl
+	environmentQuery *awsdeployer_spb.EnvironmentQueryServiceImpl
 
 	clusterQuery *awsdeployer_spb.ClusterPSMQuerySet
 	*awsdeployer_spb.UnimplementedClusterQueryServiceServer
@@ -73,63 +68,20 @@ func NewQueryService(db sqrlx.Transactor, stateMachines *states.StateMachines) (
 		db:     db,
 		lookup: lookup,
 
-		deploymentQuery:  deploymentQuery,
-		stackQuery:       stackQuery,
-		environmentQuery: environmentQuery,
-		clusterQuery:     clusterQuery,
+		deploymentQuery:  awsdeployer_spb.NewDeploymentQueryServiceImpl(db, deploymentQuery),
+		environmentQuery: awsdeployer_spb.NewEnvironmentQueryServiceImpl(db, environmentQuery),
+		stackQuery:       awsdeployer_spb.NewStackQueryServiceImpl(db, stackQuery),
+
+		clusterQuery: clusterQuery,
 	}, nil
 }
 
 func (ds *QueryService) RegisterGRPC(s *grpc.Server) {
-	awsdeployer_spb.RegisterDeploymentQueryServiceServer(s, ds)
-	awsdeployer_spb.RegisterStackQueryServiceServer(s, ds)
-	awsdeployer_spb.RegisterEnvironmentQueryServiceServer(s, ds)
+	awsdeployer_spb.RegisterDeploymentQueryServiceServer(s, ds.deploymentQuery)
+	awsdeployer_spb.RegisterStackQueryServiceServer(s, ds.stackQuery)
+	awsdeployer_spb.RegisterEnvironmentQueryServiceServer(s, ds.environmentQuery)
+
 	awsdeployer_spb.RegisterClusterQueryServiceServer(s, ds)
-}
-
-func (ds *QueryService) GetDeployment(ctx context.Context, req *awsdeployer_spb.GetDeploymentRequest) (*awsdeployer_spb.GetDeploymentResponse, error) {
-	res := &awsdeployer_spb.GetDeploymentResponse{}
-	return res, ds.deploymentQuery.Get(ctx, ds.db, req, res)
-}
-
-func (ds *QueryService) ListDeployments(ctx context.Context, req *awsdeployer_spb.ListDeploymentsRequest) (*awsdeployer_spb.ListDeploymentsResponse, error) {
-	res := &awsdeployer_spb.ListDeploymentsResponse{}
-	return res, ds.deploymentQuery.List(ctx, ds.db, req, res)
-}
-
-func (ds *QueryService) ListDeploymentEvents(ctx context.Context, req *awsdeployer_spb.ListDeploymentEventsRequest) (*awsdeployer_spb.ListDeploymentEventsResponse, error) {
-	res := &awsdeployer_spb.ListDeploymentEventsResponse{}
-	return res, ds.deploymentQuery.ListEvents(ctx, ds.db, req, res)
-}
-
-func (ds *QueryService) GetStack(ctx context.Context, req *awsdeployer_spb.GetStackRequest) (*awsdeployer_spb.GetStackResponse, error) {
-	res := &awsdeployer_spb.GetStackResponse{}
-	return res, ds.stackQuery.Get(ctx, ds.db, req, res)
-}
-
-func (ds *QueryService) ListStacks(ctx context.Context, req *awsdeployer_spb.ListStacksRequest) (*awsdeployer_spb.ListStacksResponse, error) {
-	res := &awsdeployer_spb.ListStacksResponse{}
-	return res, ds.stackQuery.List(ctx, ds.db, req, res)
-}
-
-func (ds *QueryService) ListStackEvents(ctx context.Context, req *awsdeployer_spb.ListStackEventsRequest) (*awsdeployer_spb.ListStackEventsResponse, error) {
-	res := &awsdeployer_spb.ListStackEventsResponse{}
-	return res, ds.stackQuery.ListEvents(ctx, ds.db, req, res)
-}
-
-func (ds *QueryService) GetEnvironment(ctx context.Context, req *awsdeployer_spb.GetEnvironmentRequest) (*awsdeployer_spb.GetEnvironmentResponse, error) {
-	res := &awsdeployer_spb.GetEnvironmentResponse{}
-	return res, ds.environmentQuery.Get(ctx, ds.db, req, res)
-}
-
-func (ds *QueryService) ListEnvironments(ctx context.Context, req *awsdeployer_spb.ListEnvironmentsRequest) (*awsdeployer_spb.ListEnvironmentsResponse, error) {
-	res := &awsdeployer_spb.ListEnvironmentsResponse{}
-	return res, ds.environmentQuery.List(ctx, ds.db, req, res)
-}
-
-func (ds *QueryService) ListEnvironmentEvents(ctx context.Context, req *awsdeployer_spb.ListEnvironmentEventsRequest) (*awsdeployer_spb.ListEnvironmentEventsResponse, error) {
-	res := &awsdeployer_spb.ListEnvironmentEventsResponse{}
-	return res, ds.environmentQuery.ListEvents(ctx, ds.db, req, res)
 }
 
 func (ds *QueryService) GetCluster(ctx context.Context, req *awsdeployer_spb.GetClusterRequest) (*awsdeployer_spb.GetClusterResponse, error) {
@@ -141,12 +93,12 @@ func (ds *QueryService) GetCluster(ctx context.Context, req *awsdeployer_spb.Get
 		req.ClusterId = cluster.clusterID
 	}
 	res := &awsdeployer_spb.GetClusterResponse{}
-	return res, ds.clusterQuery.Get(ctx, ds.db, req, res)
+	return res, ds.clusterQuery.Get(ctx, ds.db, req.J5Object(), res.J5Object())
 }
 
 func (ds *QueryService) ListClusters(ctx context.Context, req *awsdeployer_spb.ListClustersRequest) (*awsdeployer_spb.ListClustersResponse, error) {
 	res := &awsdeployer_spb.ListClustersResponse{}
-	return res, ds.clusterQuery.List(ctx, ds.db, req, res)
+	return res, ds.clusterQuery.List(ctx, ds.db, req.J5Object(), res.J5Object())
 }
 
 func (ds *QueryService) ListClusterEvents(ctx context.Context, req *awsdeployer_spb.ListClusterEventsRequest) (*awsdeployer_spb.ListClusterEventsResponse, error) {
@@ -158,5 +110,5 @@ func (ds *QueryService) ListClusterEvents(ctx context.Context, req *awsdeployer_
 		req.ClusterId = cluster.clusterID
 	}
 	res := &awsdeployer_spb.ListClusterEventsResponse{}
-	return res, ds.clusterQuery.ListEvents(ctx, ds.db, req, res)
+	return res, ds.clusterQuery.ListEvents(ctx, ds.db, req.J5Object(), res.J5Object())
 }

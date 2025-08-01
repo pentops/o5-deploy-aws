@@ -195,13 +195,13 @@ func (ds *CommandService) UpsertEnvironment(ctx context.Context, req *awsdeploye
 
 	case *awsdeployer_spb.UpsertEnvironmentRequest_ConfigYaml:
 		config = &environment_pb.Environment{}
-		if err := protoread.Parse("env.yaml", src.ConfigYaml, config); err != nil {
+		if err := protoread.Parse("env.yaml", src.ConfigYaml, config.J5Object()); err != nil {
 			return nil, fmt.Errorf("unmarshal: %w", err)
 		}
 
 	case *awsdeployer_spb.UpsertEnvironmentRequest_ConfigJson:
 		config = &environment_pb.Environment{}
-		if err := protoread.Parse("env.json", src.ConfigJson, config); err != nil {
+		if err := protoread.Parse("env.json", src.ConfigJson, config.J5Object()); err != nil {
 			return nil, fmt.Errorf("unmarshal: %w", err)
 		}
 
@@ -336,13 +336,13 @@ func (ds *CommandService) UpsertCluster(ctx context.Context, req *awsdeployer_sp
 
 	case *awsdeployer_spb.UpsertClusterRequest_ConfigYaml:
 		config = &environment_pb.CombinedConfig{}
-		if err := protoread.Parse("env.yaml", src.ConfigYaml, config); err != nil {
+		if err := protoread.Parse("env.yaml", src.ConfigYaml, config.J5Object()); err != nil {
 			return nil, fmt.Errorf("unmarshal: %w", err)
 		}
 
 	case *awsdeployer_spb.UpsertClusterRequest_ConfigJson:
 		config = &environment_pb.CombinedConfig{}
-		if err := protoread.Parse("env.json", src.ConfigJson, config); err != nil {
+		if err := protoread.Parse("env.json", src.ConfigJson, config.J5Object()); err != nil {
 			return nil, fmt.Errorf("unmarshal: %w", err)
 		}
 

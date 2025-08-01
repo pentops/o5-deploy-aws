@@ -63,7 +63,7 @@ func (ta *TemplateAsserter) GetParameter(t testing.TB, want awsdeployer_pb.IsPar
 	gotClose := []awsdeployer_pb.IsParameterSourceTypeWrappedType{}
 	for _, param := range ta.built.Parameters {
 		s := param.Source.Get()
-		if s.TypeKey() != want.TypeKey() {
+		if s.ParameterSourceTypeKey() != want.ParameterSourceTypeKey() {
 			continue
 		}
 
@@ -76,10 +76,10 @@ func (ta *TemplateAsserter) GetParameter(t testing.TB, want awsdeployer_pb.IsPar
 	}
 
 	for _, got := range gotClose {
-		t.Logf("parameter correct type %q but no match \n%s", want.TypeKey(), prototext.Format(got))
+		t.Logf("parameter correct type %q but no match \n%s", want.ParameterSourceTypeKey(), prototext.Format(got))
 	}
 
-	t.Fatalf("parameter %q not found", want.TypeKey())
+	t.Fatalf("parameter %q not found", want.ParameterSourceTypeKey())
 
 	return nil
 }

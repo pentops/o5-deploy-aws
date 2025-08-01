@@ -157,7 +157,7 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (D
 
 	var ref DatabaseRef
 	switch dbHost.AuthType {
-	case environment_pb.RDSAuth_SecretsManager:
+	case environment_pb.RDSAuth_Type_SecretsManager:
 		secret := cflib.NewResource(cflib.CleanParameterName("Database", database.Name), &secretsmanager.Secret{
 			AWSCloudFormationDeletionPolicy: policies.DeletionPolicy("Retain"),
 			Name: cloudformation.JoinPtr("/", []string{
@@ -186,7 +186,7 @@ func mapPostgresDatabase(builder *Builder, database *application_pb.Database) (D
 			group:          group,
 		}
 
-	case environment_pb.RDSAuth_Iam:
+	case environment_pb.RDSAuth_Type_Iam:
 		endpointParamName := fmt.Sprintf("DatabaseParam%sJSON", cflib.CleanParameterName(database.Name))
 		identifierParamName := fmt.Sprintf("DatabaseParam%sIdentifier", cflib.CleanParameterName(database.Name))
 		dbNameParamName := fmt.Sprintf("DatabaseParam%sDbName", cflib.CleanParameterName(database.Name))
