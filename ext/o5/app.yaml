@@ -72,7 +72,7 @@ runtimes:
           - name: CF_TEMPLATES
             blobstore:
               name: cf-templates
-              s3_direct: true
+              s3Direct: true
           - name: GRPC_PORT
             value: "8080"
           - name: GITHUB_APPS
