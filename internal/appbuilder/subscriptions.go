@@ -205,6 +205,10 @@ func buildSubscriptionPlan(appName string, spec *application_pb.Runtime) (*subsc
 							}},
 						},
 					})
+				case "*":
+					rulePatterns = append(rulePatterns, singlePattern{
+						SourceEnv: rules.sourceEnvRef,
+					})
 				default:
 					return nil, fmt.Errorf("invalid global topic %s", global)
 

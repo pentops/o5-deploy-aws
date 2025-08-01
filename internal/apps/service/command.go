@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pentops/j5/gen/j5/state/v1/psm_j5pb"
 	"github.com/pentops/log.go/log"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
 	"github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
@@ -62,6 +61,12 @@ func NewCommandService(db sqrlx.Transactor, specBuilder SpecBuilder, github Gith
 }
 
 func (ds *CommandService) TriggerDeployment(ctx context.Context, req *awsdeployer_spb.TriggerDeploymentRequest) (*awsdeployer_spb.TriggerDeploymentResponse, error) {
+
+	action, err := j5auth.GetAuthenticatedAction(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	if req.Source == nil || req.Source.GetGithub() == nil {
 		return nil, status.Error(codes.Unimplemented, "only github source is supported")
 	}
@@ -135,14 +140,7 @@ func (ds *CommandService) TriggerDeployment(ctx context.Context, req *awsdeploye
 		Event: &awsdeployer_pb.DeploymentEventType_Created{
 			Spec: spec,
 		},
-		Cause: &psm_j5pb.Cause{
-			Type: &psm_j5pb.Cause_ExternalEvent{
-				ExternalEvent: &psm_j5pb.ExternalEventCause{
-					SystemName: "deployer",
-					EventName:  "RequestDeployment",
-				},
-			},
-		},
+		Action: action,
 	}
 
 	if _, err := ds.deploymentStateMachine.Transition(ctx, createDeploymentEvent); err != nil {
