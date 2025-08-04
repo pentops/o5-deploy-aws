@@ -217,7 +217,7 @@ func (cf *CFClient) CreateNewStack(ctx context.Context, reqToken string, msg *aw
 	}
 	_, err = cf.cfClient.CreateStack(ctx, input)
 	if err != nil {
-		log.WithFields(ctx, "Stack Input", "error", err.Error()).Error("CreateStack Call Failed")
+		log.WithFields(ctx, "Stack Input", input, "error", err.Error()).Error("CreateStack Call Failed")
 		return err
 	}
 
@@ -265,7 +265,7 @@ func (cf *CFClient) UpdateStack(ctx context.Context, reqToken string, msg *awsin
 
 	_, err = cf.cfClient.UpdateStack(ctx, input)
 	if err != nil {
-		log.WithFields(ctx, "Stack Input", "error", err.Error()).Error("UpdateStack Call Failed")
+		log.WithFields(ctx, "Stack Input", input, "error", err.Error()).Error("UpdateStack Call Failed")
 		return err
 	}
 
@@ -351,7 +351,7 @@ func (cf *CFClient) CreateChangeSet(ctx context.Context, reqToken string, msg *a
 
 	_, err = cf.cfClient.CreateChangeSet(ctx, input)
 	if err != nil {
-		log.WithFields(ctx, "Stack Input", "error", err.Error()).Error("CreateChangeSet Call Failed")
+		log.WithFields(ctx, "Stack Input", input, "error", err.Error()).Error("CreateChangeSet Call Failed")
 		return err
 	}
 
