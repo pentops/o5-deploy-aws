@@ -4,7 +4,9 @@ package awsinfra_tpb
 
 import (
 	j5reflect "github.com/pentops/j5/lib/j5reflect"
+	j5schema "github.com/pentops/j5/lib/j5schema"
 	proto "google.golang.org/protobuf/proto"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 func (msg *StabalizeStackMessage) Clone() any {
@@ -104,4 +106,76 @@ func (msg *ChangeSetStatusChangedMessage) J5Reflect() j5reflect.Root {
 
 func (msg *ChangeSetStatusChangedMessage) J5Object() j5reflect.Object {
 	return j5reflect.MustReflect(msg.ProtoReflect()).(j5reflect.Object)
+}
+
+// CreateNewStack is a J5 method for service CloudFormationRequestTopic
+func CreateNewStackJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&CreateNewStackMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// UpdateStack is a J5 method for service CloudFormationRequestTopic
+func UpdateStackJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&UpdateStackMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// CreateChangeSet is a J5 method for service CloudFormationRequestTopic
+func CreateChangeSetJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&CreateChangeSetMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// ApplyChangeSet is a J5 method for service CloudFormationRequestTopic
+func ApplyChangeSetJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&ApplyChangeSetMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// ScaleStack is a J5 method for service CloudFormationRequestTopic
+func ScaleStackJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&ScaleStackMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// CancelStackUpdate is a J5 method for service CloudFormationRequestTopic
+func CancelStackUpdateJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&CancelStackUpdateMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// StabalizeStack is a J5 method for service CloudFormationRequestTopic
+func StabalizeStackJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&StabalizeStackMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// StackStatusChanged is a J5 method for service CloudFormationReplyTopic
+func StackStatusChangedJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&StackStatusChangedMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// ChangeSetStatusChanged is a J5 method for service CloudFormationReplyTopic
+func ChangeSetStatusChangedJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&ChangeSetStatusChangedMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
 }

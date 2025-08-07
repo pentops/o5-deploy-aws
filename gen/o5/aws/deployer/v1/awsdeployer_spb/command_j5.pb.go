@@ -4,6 +4,7 @@ package awsdeployer_spb
 
 import (
 	j5reflect "github.com/pentops/j5/lib/j5reflect"
+	j5schema "github.com/pentops/j5/lib/j5schema"
 	proto "google.golang.org/protobuf/proto"
 )
 
@@ -226,4 +227,52 @@ func (msg *SetClusterOverrideResponse) J5Reflect() j5reflect.Root {
 
 func (msg *SetClusterOverrideResponse) J5Object() j5reflect.Object {
 	return j5reflect.MustReflect(msg.ProtoReflect()).(j5reflect.Object)
+}
+
+// TriggerDeployment is a J5 method for service DeploymentCommandService
+func TriggerDeploymentJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&TriggerDeploymentRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&TriggerDeploymentResponse{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// TerminateDeployment is a J5 method for service DeploymentCommandService
+func TerminateDeploymentJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&TerminateDeploymentRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&TerminateDeploymentResponse{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// UpsertCluster is a J5 method for service DeploymentCommandService
+func UpsertClusterJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&UpsertClusterRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&UpsertClusterResponse{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// UpsertEnvironment is a J5 method for service DeploymentCommandService
+func UpsertEnvironmentJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&UpsertEnvironmentRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&UpsertEnvironmentResponse{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// UpsertStack is a J5 method for service DeploymentCommandService
+func UpsertStackJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&UpsertStackRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&UpsertStackResponse{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// SetClusterOverride is a J5 method for service DeploymentCommandService
+func SetClusterOverrideJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&SetClusterOverrideRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&SetClusterOverrideResponse{}).ProtoReflect().Descriptor()),
+	}
 }

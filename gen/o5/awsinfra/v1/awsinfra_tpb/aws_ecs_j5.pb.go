@@ -4,7 +4,9 @@ package awsinfra_tpb
 
 import (
 	j5reflect "github.com/pentops/j5/lib/j5reflect"
+	j5schema "github.com/pentops/j5/lib/j5schema"
 	proto "google.golang.org/protobuf/proto"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 func (msg *RunECSTaskMessage) Clone() any {
@@ -192,4 +194,36 @@ func (msg *ECSDeploymentStatusMessage) J5Reflect() j5reflect.Root {
 
 func (msg *ECSDeploymentStatusMessage) J5Object() j5reflect.Object {
 	return j5reflect.MustReflect(msg.ProtoReflect()).(j5reflect.Object)
+}
+
+// RunECSTask is a J5 method for service ECSRequestTopic
+func RunECSTaskJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&RunECSTaskMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// SetECSScale is a J5 method for service ECSRequestTopic
+func SetECSScaleJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&SetECSScaleMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// ECSTaskStatus is a J5 method for service ECSReplyTopic
+func ECSTaskStatusJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&ECSTaskStatusMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// ECSDeploymentStatus is a J5 method for service ECSReplyTopic
+func ECSDeploymentStatusJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&ECSDeploymentStatusMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
 }

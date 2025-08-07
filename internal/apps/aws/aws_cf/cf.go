@@ -205,12 +205,12 @@ func (cf *CFClient) CreateNewStack(ctx context.Context, reqToken string, msg *aw
 		},
 	}
 
-	switch tpl := msg.Spec.Template.(type) {
-	case *awsdeployer_pb.CFStackInput_TemplateBody:
-		input.TemplateBody = aws.String(tpl.TemplateBody)
-	case *awsdeployer_pb.CFStackInput_S3Template:
+	switch tpl := msg.Spec.Template.Type.(type) {
+	case *awsdeployer_pb.TemplateType_TemplateBody_:
+		input.TemplateBody = aws.String(tpl.TemplateBody.Body)
+	case *awsdeployer_pb.TemplateType_S3Template:
 		input.TemplateURL = aws.String(templateURL(tpl.S3Template))
-	case *awsdeployer_pb.CFStackInput_EmptyStack:
+	case *awsdeployer_pb.TemplateType_EmptyStack_:
 		input.TemplateBody = aws.String(EmptyTemplate())
 	default:
 		return fmt.Errorf("unknown template type: %T", tpl)
@@ -252,12 +252,12 @@ func (cf *CFClient) UpdateStack(ctx context.Context, reqToken string, msg *awsin
 			types.CapabilityCapabilityNamedIam,
 		},
 	}
-	switch tpl := msg.Spec.Template.(type) {
-	case *awsdeployer_pb.CFStackInput_TemplateBody:
-		input.TemplateBody = aws.String(tpl.TemplateBody)
-	case *awsdeployer_pb.CFStackInput_S3Template:
+	switch tpl := msg.Spec.Template.Type.(type) {
+	case *awsdeployer_pb.TemplateType_TemplateBody_:
+		input.TemplateBody = aws.String(tpl.TemplateBody.Body)
+	case *awsdeployer_pb.TemplateType_S3Template:
 		input.TemplateURL = aws.String(templateURL(tpl.S3Template))
-	case *awsdeployer_pb.CFStackInput_EmptyStack:
+	case *awsdeployer_pb.TemplateType_EmptyStack_:
 		input.TemplateBody = aws.String(EmptyTemplate())
 	default:
 		return fmt.Errorf("unknown template type: %T", tpl)
@@ -307,16 +307,16 @@ func (cf *CFClient) CreateChangeSet(ctx context.Context, reqToken string, msg *a
 
 	if msg.ImportResources {
 		templateBody := ""
-		switch tpl := msg.Spec.Template.(type) {
-		case *awsdeployer_pb.CFStackInput_TemplateBody:
-			templateBody = tpl.TemplateBody
-		case *awsdeployer_pb.CFStackInput_S3Template:
+		switch tpl := msg.Spec.Template.Type.(type) {
+		case *awsdeployer_pb.TemplateType_TemplateBody_:
+			templateBody = tpl.TemplateBody.Body
+		case *awsdeployer_pb.TemplateType_S3Template:
 			template, err := cf.downloadCFTemplate(ctx, tpl.S3Template)
 			if err != nil {
 				return err
 			}
 			templateBody = template
-		case *awsdeployer_pb.CFStackInput_EmptyStack:
+		case *awsdeployer_pb.TemplateType_EmptyStack_:
 			return fmt.Errorf("cannot import resources with empty stack")
 		default:
 			return fmt.Errorf("unknown template type: %T", tpl)
@@ -337,12 +337,12 @@ func (cf *CFClient) CreateChangeSet(ctx context.Context, reqToken string, msg *a
 		input.ChangeSetType = types.ChangeSetTypeImport
 
 	} else {
-		switch tpl := msg.Spec.Template.(type) {
-		case *awsdeployer_pb.CFStackInput_TemplateBody:
-			input.TemplateBody = aws.String(tpl.TemplateBody)
-		case *awsdeployer_pb.CFStackInput_S3Template:
+		switch tpl := msg.Spec.Template.Type.(type) {
+		case *awsdeployer_pb.TemplateType_TemplateBody_:
+			input.TemplateBody = aws.String(tpl.TemplateBody.Body)
+		case *awsdeployer_pb.TemplateType_S3Template:
 			input.TemplateURL = aws.String(templateURL(tpl.S3Template))
-		case *awsdeployer_pb.CFStackInput_EmptyStack:
+		case *awsdeployer_pb.TemplateType_EmptyStack_:
 			input.TemplateBody = aws.String(EmptyTemplate())
 		default:
 			return fmt.Errorf("unknown template type: %T", tpl)

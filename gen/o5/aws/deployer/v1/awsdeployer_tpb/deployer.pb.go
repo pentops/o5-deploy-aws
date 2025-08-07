@@ -7,9 +7,6 @@
 package awsdeployer_tpb
 
 import (
-	reflect "reflect"
-	sync "sync"
-
 	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 	messaging_j5pb "github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	application_pb "github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
@@ -17,6 +14,8 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	reflect "reflect"
+	sync "sync"
 )
 
 const (

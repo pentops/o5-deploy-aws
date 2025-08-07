@@ -5,9 +5,10 @@ package awsdeployer_tpb
 import (
 	driver "database/sql/driver"
 	fmt "fmt"
-
 	j5reflect "github.com/pentops/j5/lib/j5reflect"
+	j5schema "github.com/pentops/j5/lib/j5schema"
 	proto "google.golang.org/protobuf/proto"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 func (msg *RequestDeploymentMessage) Clone() any {
@@ -90,4 +91,20 @@ func (x *DeploymentStatus) Scan(value interface{}) error {
 	val := DeploymentStatus_value_either[strVal]
 	*x = DeploymentStatus(val)
 	return nil
+}
+
+// RequestDeployment is a J5 method for service DeploymentRequestTopic
+func RequestDeploymentJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&RequestDeploymentMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// DeploymentStatus is a J5 method for service DeploymentReplyTopic
+func DeploymentStatusJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&DeploymentStatusMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
 }

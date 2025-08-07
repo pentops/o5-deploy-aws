@@ -5,7 +5,6 @@ package awsdeployer_pb
 import (
 	driver "database/sql/driver"
 	fmt "fmt"
-
 	j5reflect "github.com/pentops/j5/lib/j5reflect"
 	proto "google.golang.org/protobuf/proto"
 )
@@ -363,14 +362,101 @@ func (msg *StepContext) J5Object() j5reflect.Object {
 func (msg *CFStackInput) Clone() any {
 	return proto.Clone(msg).(*CFStackInput)
 }
-
-type IsCFStackInput_Template = isCFStackInput_Template
-
 func (msg *CFStackInput) J5Reflect() j5reflect.Root {
 	return j5reflect.MustReflect(msg.ProtoReflect())
 }
 
 func (msg *CFStackInput) J5Object() j5reflect.Object {
+	return j5reflect.MustReflect(msg.ProtoReflect()).(j5reflect.Object)
+}
+
+// TemplateType is a oneof wrapper
+type TemplateTypeKey string
+
+const (
+	Template_Type_S3Template   TemplateTypeKey = "s3Template"
+	Template_Type_TemplateBody TemplateTypeKey = "templateBody"
+	Template_Type_EmptyStack   TemplateTypeKey = "emptyStack"
+)
+
+func (x *TemplateType) TypeKey() (TemplateTypeKey, bool) {
+	switch x.Type.(type) {
+	case *TemplateType_S3Template:
+		return Template_Type_S3Template, true
+	case *TemplateType_TemplateBody_:
+		return Template_Type_TemplateBody, true
+	case *TemplateType_EmptyStack_:
+		return Template_Type_EmptyStack, true
+	default:
+		return "", false
+	}
+}
+
+type IsTemplateTypeWrappedType interface {
+	TemplateTypeKey() TemplateTypeKey
+	proto.Message
+}
+
+func (x *TemplateType) Set(val IsTemplateTypeWrappedType) {
+	switch v := val.(type) {
+	case *S3Template:
+		x.Type = &TemplateType_S3Template{S3Template: v}
+	case *TemplateType_TemplateBody:
+		x.Type = &TemplateType_TemplateBody_{TemplateBody: v}
+	case *TemplateType_EmptyStack:
+		x.Type = &TemplateType_EmptyStack_{EmptyStack: v}
+	}
+}
+func (x *TemplateType) Get() IsTemplateTypeWrappedType {
+	switch v := x.Type.(type) {
+	case *TemplateType_S3Template:
+		return v.S3Template
+	case *TemplateType_TemplateBody_:
+		return v.TemplateBody
+	case *TemplateType_EmptyStack_:
+		return v.EmptyStack
+	default:
+		return nil
+	}
+}
+func (x *S3Template) TemplateTypeKey() TemplateTypeKey {
+	return Template_Type_S3Template
+}
+func (x *TemplateType_TemplateBody) TemplateTypeKey() TemplateTypeKey {
+	return Template_Type_TemplateBody
+}
+func (x *TemplateType_EmptyStack) TemplateTypeKey() TemplateTypeKey {
+	return Template_Type_EmptyStack
+}
+func (msg *TemplateType) Clone() any {
+	return proto.Clone(msg).(*TemplateType)
+}
+
+type IsTemplateType_Type = isTemplateType_Type
+
+func (msg *TemplateType) J5Reflect() j5reflect.Root {
+	return j5reflect.MustReflect(msg.ProtoReflect())
+}
+
+func (msg *TemplateType_TemplateBody) Clone() any {
+	return proto.Clone(msg).(*TemplateType_TemplateBody)
+}
+func (msg *TemplateType_TemplateBody) J5Reflect() j5reflect.Root {
+	return j5reflect.MustReflect(msg.ProtoReflect())
+}
+
+func (msg *TemplateType_TemplateBody) J5Object() j5reflect.Object {
+	return j5reflect.MustReflect(msg.ProtoReflect()).(j5reflect.Object)
+}
+
+func (msg *TemplateType_EmptyStack) Clone() any {
+	return proto.Clone(msg).(*TemplateType_EmptyStack)
+}
+func (msg *TemplateType_EmptyStack) J5Reflect() j5reflect.Root {
+	return j5reflect.MustReflect(msg.ProtoReflect())
+}
+
+func (msg *TemplateType_EmptyStack) J5Object() j5reflect.Object {
 	return j5reflect.MustReflect(msg.ProtoReflect()).(j5reflect.Object)
 }
 

@@ -7,14 +7,13 @@
 package awsdeployer_epb
 
 import (
-	reflect "reflect"
-	sync "sync"
-
 	_ "github.com/pentops/j5/gen/j5/messaging/v1/messaging_j5pb"
 	awsdeployer_pb "github.com/pentops/o5-deploy-aws/gen/o5/aws/deployer/v1/awsdeployer_pb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	reflect "reflect"
+	sync "sync"
 )
 
 const (

@@ -4,6 +4,7 @@ package awsdeployer_spb
 
 import (
 	j5reflect "github.com/pentops/j5/lib/j5reflect"
+	j5schema "github.com/pentops/j5/lib/j5schema"
 	proto "google.golang.org/protobuf/proto"
 )
 
@@ -71,4 +72,28 @@ func (msg *ListClustersResponse) J5Reflect() j5reflect.Root {
 
 func (msg *ListClustersResponse) J5Object() j5reflect.Object {
 	return j5reflect.MustReflect(msg.ProtoReflect()).(j5reflect.Object)
+}
+
+// ListClusters is a J5 method for service ClusterQueryService
+func ListClustersJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&ListClustersRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&ListClustersResponse{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// GetCluster is a J5 method for service ClusterQueryService
+func GetClusterJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&GetClusterRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&GetClusterResponse{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// ListClusterEvents is a J5 method for service ClusterQueryService
+func ListClusterEventsJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&ListClusterEventsRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&ListClusterEventsResponse{}).ProtoReflect().Descriptor()),
+	}
 }

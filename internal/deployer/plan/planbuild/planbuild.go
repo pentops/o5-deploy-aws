@@ -84,8 +84,10 @@ func (plan *DeploymentPlan) stackInput(desiredCount int32) *awsdeployer_pb.CFSta
 	return &awsdeployer_pb.CFStackInput{
 		StackName:    plan.Deployment.CfStackName,
 		DesiredCount: desiredCount,
-		Template: &awsdeployer_pb.CFStackInput_S3Template{
-			S3Template: plan.Deployment.Template,
+		Template: &awsdeployer_pb.TemplateType{
+			Type: &awsdeployer_pb.TemplateType_S3Template{
+				S3Template: plan.Deployment.Template,
+			},
 		},
 		Parameters: plan.Deployment.Parameters,
 		SnsTopics:  plan.Deployment.SnsTopics,
@@ -143,8 +145,10 @@ func (ds *StepBuild) RunCFUpdate(sb awsdeployer_step_pb.StepBaton, req *awsdeplo
 
 func (plan *DeploymentPlan) CFCreateEmpty() *PlanStep {
 	spec := plan.stackInput(0)
-	spec.Template = &awsdeployer_pb.CFStackInput_EmptyStack{
-		EmptyStack: true,
+	spec.Template = &awsdeployer_pb.TemplateType{
+		Type: &awsdeployer_pb.TemplateType_EmptyStack_{
+			EmptyStack: &awsdeployer_pb.TemplateType_EmptyStack{},
+		},
 	}
 	spec.Parameters = nil
 

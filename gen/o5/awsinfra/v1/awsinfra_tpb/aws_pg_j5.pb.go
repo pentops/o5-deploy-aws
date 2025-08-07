@@ -5,9 +5,10 @@ package awsinfra_tpb
 import (
 	driver "database/sql/driver"
 	fmt "fmt"
-
 	j5reflect "github.com/pentops/j5/lib/j5reflect"
+	j5schema "github.com/pentops/j5/lib/j5schema"
 	proto "google.golang.org/protobuf/proto"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 func (msg *UpsertPostgresDatabaseMessage) Clone() any {
@@ -118,4 +119,36 @@ func (x *PostgresStatus) Scan(value interface{}) error {
 	val := PostgresStatus_value_either[strVal]
 	*x = PostgresStatus(val)
 	return nil
+}
+
+// UpsertPostgresDatabase is a J5 method for service PostgresRequestTopic
+func UpsertPostgresDatabaseJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&UpsertPostgresDatabaseMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// CleanupPostgresDatabase is a J5 method for service PostgresRequestTopic
+func CleanupPostgresDatabaseJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&CleanupPostgresDatabaseMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// DestroyPostgresDatabase is a J5 method for service PostgresRequestTopic
+func DestroyPostgresDatabaseJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&DestroyPostgresDatabaseMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// PostgresDatabaseStatus is a J5 method for service PostgresReplyTopic
+func PostgresDatabaseStatusJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&PostgresDatabaseStatusMessage{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
 }

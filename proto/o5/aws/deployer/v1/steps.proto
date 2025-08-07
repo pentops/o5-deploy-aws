@@ -116,14 +116,26 @@ enum StepPhase {
 
 message CFStackInput {
   string stack_name = 1;
-  oneof template {
-    S3Template s3_template = 20;
-    string template_body = 21;
-    bool empty_stack = 22;
-  }
+  TemplateType template = 2;
   int32 desired_count = 4;
   repeated CloudFormationStackParameter parameters = 5;
   repeated string sns_topics = 6;
+}
+
+message TemplateType {
+  oneof type {
+    S3Template s3_template = 1;
+    TemplateBody template_body = 2;
+    EmptyStack empty_stack = 3;
+  }
+
+  message TemplateBody {
+    string body = 1;
+  }
+
+  message EmptyStack {
+  
+  }
 }
 
 message S3Template {

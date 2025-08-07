@@ -4,6 +4,7 @@ package awsdeployer_spb
 
 import (
 	j5reflect "github.com/pentops/j5/lib/j5reflect"
+	j5schema "github.com/pentops/j5/lib/j5schema"
 	proto "google.golang.org/protobuf/proto"
 )
 
@@ -203,4 +204,76 @@ func (msg *ListEnvironmentEventsResponse) J5Reflect() j5reflect.Root {
 
 func (msg *ListEnvironmentEventsResponse) J5Object() j5reflect.Object {
 	return j5reflect.MustReflect(msg.ProtoReflect()).(j5reflect.Object)
+}
+
+// GetDeployment is a J5 method for service DeploymentQueryService
+func GetDeploymentJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&GetDeploymentRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&GetDeploymentResponse{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// ListDeploymentEvents is a J5 method for service DeploymentQueryService
+func ListDeploymentEventsJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&ListDeploymentEventsRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&ListDeploymentEventsResponse{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// ListDeployments is a J5 method for service DeploymentQueryService
+func ListDeploymentsJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&ListDeploymentsRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&ListDeploymentsResponse{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// GetStack is a J5 method for service StackQueryService
+func GetStackJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&GetStackRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&GetStackResponse{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// ListStacks is a J5 method for service StackQueryService
+func ListStacksJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&ListStacksRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&ListStacksResponse{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// ListStackEvents is a J5 method for service StackQueryService
+func ListStackEventsJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&ListStackEventsRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&ListStackEventsResponse{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// ListEnvironments is a J5 method for service EnvironmentQueryService
+func ListEnvironmentsJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&ListEnvironmentsRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&ListEnvironmentsResponse{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// GetEnvironment is a J5 method for service EnvironmentQueryService
+func GetEnvironmentJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&GetEnvironmentRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&GetEnvironmentResponse{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// ListEnvironmentEvents is a J5 method for service EnvironmentQueryService
+func ListEnvironmentEventsJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&ListEnvironmentEventsRequest{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&ListEnvironmentEventsResponse{}).ProtoReflect().Descriptor()),
+	}
 }

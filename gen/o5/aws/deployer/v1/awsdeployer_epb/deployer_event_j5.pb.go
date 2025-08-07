@@ -4,7 +4,9 @@ package awsdeployer_epb
 
 import (
 	j5reflect "github.com/pentops/j5/lib/j5reflect"
+	j5schema "github.com/pentops/j5/lib/j5schema"
 	proto "google.golang.org/protobuf/proto"
+	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 func (msg *DeploymentEvent) Clone() any {
@@ -38,4 +40,28 @@ func (msg *EnvironmentEvent) J5Reflect() j5reflect.Root {
 
 func (msg *EnvironmentEvent) J5Object() j5reflect.Object {
 	return j5reflect.MustReflect(msg.ProtoReflect()).(j5reflect.Object)
+}
+
+// Deployment is a J5 method for service DeployerEvents
+func DeploymentJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&DeploymentEvent{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// Stack is a J5 method for service DeployerEvents
+func StackJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&StackEvent{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
+}
+
+// Environment is a J5 method for service DeployerEvents
+func EnvironmentJ5MethodSchema() *j5schema.MethodSchema {
+	return &j5schema.MethodSchema{
+		Request:  j5schema.MustObjectSchema((&EnvironmentEvent{}).ProtoReflect().Descriptor()),
+		Response: j5schema.MustObjectSchema((&emptypb.Empty{}).ProtoReflect().Descriptor()),
+	}
 }
