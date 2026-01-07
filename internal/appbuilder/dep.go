@@ -3,13 +3,7 @@ package appbuilder
 import (
 	"fmt"
 
-	"github.com/awslabs/goformation/v7/cloudformation"
-	"github.com/awslabs/goformation/v7/cloudformation/policies"
-	"github.com/awslabs/goformation/v7/cloudformation/secretsmanager"
 	"github.com/pentops/o5-deploy-aws/gen/o5/application/v1/application_pb"
-	"github.com/pentops/o5-deploy-aws/internal/appbuilder/cflib"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 )
 
 type Globals interface {
@@ -82,31 +76,6 @@ func (gg globals) addDatabase(summary DatabaseRef) {
 	gg.databases[summary.Name()] = summary
 }
 
-type SecretRef interface {
-	ARN() cflib.TemplateRef
-	SecretValueFrom(jsonKey string) cflib.TemplateRef
-}
-
-type secretInfo struct {
-	refName string
-	arn     cflib.TemplateRef
-}
-
-func (si secretInfo) ARN() cflib.TemplateRef {
-	return si.arn
-}
-
-func (si secretInfo) SecretValueFrom(jsonKey string) cflib.TemplateRef {
-	versionStage := ""
-	versionID := ""
-	return cflib.Join(":",
-		si.arn,
-		jsonKey,
-		versionStage,
-		versionID,
-	)
-}
-
 func mapResources(bb *Builder, resources resourceBuilder, app *application_pb.Application) error {
 
 	for _, blobstoreDef := range app.Blobstores {
@@ -118,33 +87,11 @@ func mapResources(bb *Builder, resources resourceBuilder, app *application_pb.Ap
 	}
 
 	for _, secretDef := range app.Secrets {
-		parameterName := fmt.Sprintf("AppSecret%s", cases.Title(language.English).String(secretDef.Name))
-		secret := cflib.NewResource(parameterName, &secretsmanager.Secret{
-			Name: cflib.Join("/",
-				"", // Leading /
-				cloudformation.Ref(EnvNameParameter),
-				app.Name,
-				secretDef.Name,
-			).RefPtr(),
-			Description: cflib.Stringf("Application Level Secret for %s:%s - value must be set manually", app.Name, secretDef.Name),
-
-			AWSCloudFormationDeletionPolicy: policies.DeletionPolicy("Retain"),
-		})
-		bb.Template.AddResource(secret)
-		/*
-			arn := cloudformation.Join("", []string{
-				"arn:aws:secretsmanager:us-east-1:",
-				accountIDRef,
-				":secret:/",
-				envNameRef,
-				"/",
-				appName,
-				"/*",
-			}))*/
-		resources.addSecret(&secretInfo{
-			refName: secretDef.Name,
-			arn:     secret.Ref(),
-		})
+		ref, err := mapSecret(bb, secretDef)
+		if err != nil {
+			return fmt.Errorf("mapping secret %s: %w", secretDef.Name, err)
+		}
+		resources.addSecret(ref)
 	}
 
 	for _, databaseDef := range app.Databases {

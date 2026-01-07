@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pentops/log.go/log"
 	"sigs.k8s.io/yaml"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -48,15 +49,27 @@ func readFile(ctx context.Context, path string) ([]byte, error) {
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid s3 path: %s", path)
 		}
+		bucket, key := parts[0], parts[1]
+
+		log.WithFields(ctx,
+			"path", path,
+			"bucket", bucket,
+			"key", key,
+		).Debug("Reading file from S3")
+
 		res, err := client.GetObject(ctx, &s3.GetObjectInput{
-			Bucket: &parts[0],
-			Key:    &parts[1],
+			Bucket: &bucket,
+			Key:    &key,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("get object: %w", err)
+			return nil, fmt.Errorf("get object %q: %w", path, err)
 		}
 
-		return io.ReadAll(res.Body)
+		data, err := io.ReadAll(res.Body)
+		if err != nil {
+			return nil, fmt.Errorf("read object body %q: %w", path, err)
+		}
+		return data, nil
 	}
 	return os.ReadFile(path)
 }

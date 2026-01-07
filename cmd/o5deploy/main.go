@@ -337,7 +337,7 @@ func runLocalDeploy(ctx context.Context, cfg struct {
 
 	templateStore, err := deployer.NewS3TemplateStore(ctx, s3Client, cfg.ScratchBucket)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating template store at %q: %w", cfg.ScratchBucket, err)
 	}
 
 	clients, err := awsapi.LoadFromConfig(ctx, awsConfig)

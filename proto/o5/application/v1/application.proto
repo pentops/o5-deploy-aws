@@ -302,7 +302,24 @@ message SecretEnvVar {
 
 message Secret {
   string name = 1;
+
+  SecretScope scope = 2;
 }
+
+enum SecretScope {
+  SECRET_SCOPE_UNSPECIFIED = 0; // App Level Scope - /{env}/{app}/{name}
+
+  // Subenv Level Scope - /{env}/SHARED/{name} - must already exist
+  SECRET_SCOPE_ENVIRONMENT = 1; 
+
+  // Cluster Level Scope - /{cluster}/SHARED/{name} - must already exist
+  SECRET_SCOPE_CLUSTER = 2; // Cluster Level Scope - /{cluster}/SHARED/{name}
+
+
+  // Global Level Scope - /GLOBAL/{name} - must already exist
+  SECRET_SCOPE_GLOBAL = 3; 
+}
+
 
 enum O5Var {
   O5_VAR_UNSPECIFIED = 0;

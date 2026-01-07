@@ -437,6 +437,61 @@ func (x *Demand) Scan(value interface{}) error {
 	return nil
 }
 
+// SecretScope
+const (
+	SecretScope_UNSPECIFIED SecretScope = 0
+	SecretScope_ENVIRONMENT SecretScope = 1
+	SecretScope_CLUSTER     SecretScope = 2
+	SecretScope_GLOBAL      SecretScope = 3
+)
+
+var (
+	SecretScope_name_short = map[int32]string{
+		0: "UNSPECIFIED",
+		1: "ENVIRONMENT",
+		2: "CLUSTER",
+		3: "GLOBAL",
+	}
+	SecretScope_value_short = map[string]int32{
+		"UNSPECIFIED": 0,
+		"ENVIRONMENT": 1,
+		"CLUSTER":     2,
+		"GLOBAL":      3,
+	}
+	SecretScope_value_either = map[string]int32{
+		"UNSPECIFIED":              0,
+		"SECRET_SCOPE_UNSPECIFIED": 0,
+		"ENVIRONMENT":              1,
+		"SECRET_SCOPE_ENVIRONMENT": 1,
+		"CLUSTER":                  2,
+		"SECRET_SCOPE_CLUSTER":     2,
+		"GLOBAL":                   3,
+		"SECRET_SCOPE_GLOBAL":      3,
+	}
+)
+
+// ShortString returns the un-prefixed string representation of the enum value
+func (x SecretScope) ShortString() string {
+	return SecretScope_name_short[int32(x)]
+}
+func (x SecretScope) Value() (driver.Value, error) {
+	return []uint8(x.ShortString()), nil
+}
+func (x *SecretScope) Scan(value interface{}) error {
+	var strVal string
+	switch vt := value.(type) {
+	case []uint8:
+		strVal = string(vt)
+	case string:
+		strVal = vt
+	default:
+		return fmt.Errorf("invalid type %T", value)
+	}
+	val := SecretScope_value_either[strVal]
+	*x = SecretScope(val)
+	return nil
+}
+
 // O5Var
 const (
 	O5Var_UNSPECIFIED      O5Var = 0
