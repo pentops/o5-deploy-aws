@@ -88,7 +88,7 @@ func mapSecret(bb *Builder, secretDef *application_pb.Secret) (*secretInfo, erro
 
 	case application_pb.SecretScope_ENVIRONMENT:
 		parameterName = cflib.Join("/",
-			"", // Leading /
+			"parameter",
 			cloudformation.Ref(EnvNameParameter),
 			"SHARED",
 			secretDef.Name,
@@ -96,14 +96,14 @@ func mapSecret(bb *Builder, secretDef *application_pb.Secret) (*secretInfo, erro
 
 	case application_pb.SecretScope_CLUSTER:
 		parameterName = cflib.Join("/",
-			"", // Leading /
+			"parameter",
 			cloudformation.Ref(ClusterNameParameter),
 			"SHARED",
 			secretDef.Name,
 		)
 	case application_pb.SecretScope_GLOBAL:
 		parameterName = cflib.Join("/",
-			"", // Leading /
+			"parameter",
 			"GLOBAL",
 			secretDef.Name,
 		)
@@ -111,11 +111,10 @@ func mapSecret(bb *Builder, secretDef *application_pb.Secret) (*secretInfo, erro
 		return nil, fmt.Errorf("unsupported secret scope %v", secretDef.Scope)
 	}
 
-	arn := cflib.Join("", []string{
-		"arn:aws:ssm:",
-		AWSRegionParameter, ":",
-		AWSAccountIDParameter,
-		":parameter:/",
+	arn := cflib.Join(":", []string{
+		"arn:aws:ssm",
+		cloudformation.Ref(AWSRegionParameter),
+		cloudformation.Ref(AWSAccountIDParameter),
 		parameterName.Ref(),
 	})
 
